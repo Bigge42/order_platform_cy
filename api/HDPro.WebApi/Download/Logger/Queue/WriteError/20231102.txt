@@ -1,0 +1,4 @@
+vol:Invalid utf8 character string: '"------WebKitFormBoundarynIHLjsspD9xAZvC9
+Content-Disposition: '   at VolPro.Core.Dapper.SqlDapper.MySqlBulkInsert(DataTable table, String tableName, String fileName, String tmpPath) in E:\jxx\vol.pro\api\VolPro.Core\Dapper\SqlDapper.cs:line 835
+   at VolPro.Core.Dapper.SqlDapper.BulkInsert(DataTable table, String tableName, Nullable`1 sqlBulkCopyOptions, String fileName, String tmpPath) in E:\jxx\vol.pro\api\VolPro.Core\Dapper\SqlDapper.cs:line 749
+   at VolPro.Core.Services.Logger.Start() in E:\jxx\vol.pro\api\VolPro.Core\Services\Logger.cs:line 186VolPro.Core

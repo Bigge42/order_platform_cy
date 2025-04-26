@@ -1,0 +1,388 @@
+//多个页面指向同一个菜单时请加上属性：
+// meta: {
+//   dynamic: true,
+// }
+let viewgird = [
+  {
+    path: '/Sys_Log',
+    name: 'sys_Log',
+    component: () => import('@/views/sys/system/Sys_Log.vue')
+  },
+  {
+    path: '/Sys_User',
+    name: 'Sys_User',
+    component: () => import('@/views/sys/system/Sys_User.vue')
+  },
+  {
+    path: '/permission',
+    name: 'permission',
+    component: () => import('@/views/sys/Permission.vue')
+  },
+
+  {
+    path: '/Sys_Dictionary',
+    name: 'Sys_Dictionary',
+    component: () => import('@/views/sys/system/Sys_Dictionary.vue')
+  },
+  {
+    path: '/Sys_Role',
+    name: 'Sys_Role',
+    component: () => import('@/views/sys/system/Sys_Role.vue')
+  },
+  {
+    path: '/Sys_Language',
+    name: 'Sys_Language',
+    component: () => import('@/views/sys/lang/Sys_Language.vue')
+  },
+  {
+    path: '/FormDesignOptions',
+    name: 'FormDesignOptions',
+    component: () => import('@/views/sys/form/FormDesignOptions.vue')
+  },
+  {
+    path: '/FormCollectionObject',
+    name: 'FormCollectionObject',
+    component: () => import('@/views/sys/form/FormCollectionObject.vue')
+  },
+  {
+    path: '/Sys_WorkFlow',
+    name: 'Sys_WorkFlow',
+    component: () => import('@/views/sys/flow/Sys_WorkFlow.vue')
+  },
+  {
+    path: '/Sys_WorkFlowStep',
+    name: 'Sys_WorkFlowStep',
+    component: () => import('@/views/sys/flow/Sys_WorkFlowStep.vue')
+  },
+  {
+    path: '/Sys_WorkFlowTable',
+    name: 'Sys_WorkFlowTable',
+    component: () => import('@/views/sys/flow/Sys_WorkFlowTable.vue')
+  },
+  {
+    path: '/Sys_WorkFlowTableStep',
+    name: 'Sys_WorkFlowTableStep',
+    component: () => import('@/views/sys/flow/Sys_WorkFlowTableStep.vue')
+  },
+  {
+    path: '/flowList',
+    name: 'flowList',
+    component: () => import('@/views/sys/flow/FlowList.vue')
+  },
+  {
+    path: '/Sys_QuartzOptions',
+    name: 'Sys_QuartzOptions',
+    component: () => import('@/views/sys/quartz/Sys_QuartzOptions.vue')
+  },
+  {
+    path: '/Sys_QuartzLog',
+    name: 'Sys_QuartzLog',
+    component: () => import('@/views/sys/quartz/Sys_QuartzLog.vue')
+  },
+  {
+    path: '/Sys_Department',
+    name: 'Sys_Department',
+    component: () => import('@/views/sys/system/Sys_Department.vue')
+  },
+  {
+    path: '/Sys_DbService',
+    name: 'Sys_DbService',
+    component: () => import('@/views/sys/db/Sys_DbService.vue')
+  },
+  {
+    path: '/Sys_Group',
+    name: 'Sys_Group',
+    component: () => import('@/views/sys/group/Sys_Group.vue')
+  },
+  {
+    path: '/Sys_Region',
+    name: 'Sys_Region',
+    component: () => import('@/views/sys/system/Sys_Region.vue')
+  },
+  {
+    path: '/TestService',
+    name: 'TestService',
+    component: () => import('@/views/dbtest/test/TestService.vue')
+  },
+  {
+    path: '/TestDb',
+    name: 'TestDb',
+    component: () => import('@/views/dbtest/test/TestDb.vue')
+  },
+  {
+    path: '/Demo_Order',
+    name: 'Demo_Order',
+    component: () => import('@/views/dbtest/order/Demo_Order.vue')
+  },
+  {
+    path: '/Demo_Order/edit',
+    name: 'Demo_Order_edit',
+    component: () => import('@/views/dbtest/order/Demo_OrderWindow/Edit.vue'),
+    meta: {
+      name: '订单管理窗口模式',
+      edit: true,
+      keepAlive: false
+    }
+  },
+  {
+    path: '/Demo_OrderTables',
+    name: 'Demo_OrderTables',
+    component: () => import('@/views/dbtest/order/Demo_OrderTabs.vue')
+  },
+  {
+    path: '/Demo_OrderStats',
+    name: 'Demo_OrderStats',
+    component: () => import('@/views/dbtest/order/Demo_OrderStats.vue')
+  },
+  {
+    path: '/tabs',
+    name: 'tabs',
+    component: () => import('@/views/example/tabs.vue')
+  },
+  {
+    path: '/list',
+    name: 'list',
+    component: () => import('@/views/example/list.vue')
+  },
+  {
+    path: '/charts1',
+    name: 'charts1',
+    component: () => import('@/views/example/charts1.vue')
+  },
+  {
+    path: '/Demo_Customer',
+    name: 'Demo_Customer',
+    component: () => import('@/views/dbtest/customer/Demo_Customer.vue')
+  },
+  {
+    path: '/Demo_CustomerMap',
+    name: 'Demo_CustomerMap',
+    component: () => import('@/views/dbtest/customer/Demo_CustomerMap.vue')
+  },
+  {
+    path: '/Demo_Goods',
+    name: 'Demo_Goods',
+    component: () => import('@/views/dbtest/goods/Demo_Goods.vue')
+  },
+  {
+    path: '/Demo_GoodsTree',
+    name: 'Demo_GoodsTree',
+    component: () => import('@/views/dbtest/goods/Demo_GoodsTree.vue')
+  },
+  {
+    path: '/Demo_GoodsMerge',
+    name: 'Demo_GoodsMerge',
+    component: () => import('@/views/dbtest/goods/Demo_GoodsMerge.vue'),
+    meta: {
+      keepAlive: false
+    }
+  },
+  {
+    path: '/Demo_Product',
+    name: 'Demo_Product',
+    component: () => import('@/views/dbtest/product/Demo_Product.vue')
+  },
+  {
+    path: '/Demo_Product2',
+    name: 'Demo_Product2',
+    component: () => import('@/views/dbtest/product/Demo_Product2.vue')
+  },
+  {
+    path: '/Demo_ProductSize',
+    name: 'Demo_ProductSize',
+    component: () => import('@/views/dbtest/product/Demo_ProductSize.vue')
+  },
+  {
+    path: '/Demo_ProductColor',
+    name: 'Demo_ProductColor',
+    component: () => import('@/views/dbtest/product/Demo_ProductColor.vue')
+  },
+  {
+    path: '/Demo_Goods/edit',
+    name: 'Demo_Goods_edit',
+    component: () => import('@/views/dbtest/goods/Demo_Goods/Edit.vue'),
+    meta: {
+      name: '商品信息',
+      edit: true,
+      keepAlive: false
+    }
+  },
+  {
+    path: '/Sys_PrintOptions',
+    name: 'Sys_PrintOptions',
+    component: () => import('@/views/sys/system/Sys_PrintOptions.vue')
+  },
+  {
+    path: '/Sys_ReportOptions',
+    name: 'Sys_ReportOptions',
+    component: () => import('@/views/sys/system/Sys_ReportOptions.vue')
+  },
+  {
+    path: '/Sys_Dashboard',
+    name: 'Sys_Dashboard',
+    component: () => import('@/views/sys/dashboard/Sys_Dashboard.vue')
+  },
+  {
+    path: '/DashboardEdit', //工作台设计
+    name: 'DashboardEdit',
+    component: () => import('@/views/sys/dashboard/DashboardEdit.vue'),
+    meta: {
+      name: '工作台',
+      keepAlive: false
+    }
+  },
+  {
+    path: '/DashboardPreview',//工作台预览
+    name: 'DashboardPreview',
+    component: () => import('@/views/sys/dashboard/DashboardPreview.vue'),
+    meta: {
+      dynamic: true,
+      // keepAlive:false
+    }
+  },
+  {
+    path: '/Sys_CodeRule',
+    name: 'Sys_CodeRule',
+    component: () => import('@/views/sys/rule/Sys_CodeRule.vue')
+  }
+  , {
+    path: '/Sys_Post',
+    name: 'Sys_Post',
+    component: () => import('@/views/sys/system/Sys_Post.vue')
+  }, {
+    path: '/Demo_Product/edit',
+    name: 'Demo_Product_edit',
+    component: () => import('@/views/dbtest/product/Demo_Product/Edit.vue'),
+    meta: {
+      name: "产品管理",
+      edit: true,
+      keepAlive: false
+    }
+  }    ,{
+        path: '/Demo_Catalog',
+        name: 'Demo_Catalog',
+        component: () => import('@/views/dbtest/catalog/Demo_Catalog.vue')
+    }    ,{
+        path: '/MES_WarehouseManagement',
+        name: 'MES_WarehouseManagement',
+        component: () => import('@/views/mes/mes/MES_WarehouseManagement.vue')
+    }    ,{
+        path: '/MES_ProductOutbound',
+        name: 'MES_ProductOutbound',
+        component: () => import('@/views/mes/mes/MES_ProductOutbound.vue')
+    }    ,{
+        path: '/MES_LocationManagement',
+        name: 'MES_LocationManagement',
+        component: () => import('@/views/mes/mes/MES_LocationManagement.vue')
+    }    ,{
+        path: '/MES_InventoryManagement',
+        name: 'MES_InventoryManagement',
+        component: () => import('@/views/mes/mes/MES_InventoryManagement.vue')
+    }    ,{
+        path: '/MES_ProductInbound',
+        name: 'MES_ProductInbound',
+        component: () => import('@/views/mes/mes/MES_ProductInbound.vue')
+    }    ,{
+        path: '/MES_Customer',
+        name: 'MES_Customer',
+        component: () => import('@/views/mes/mes/MES_Customer.vue')
+    }    ,{
+        path: '/MES_Supplier',
+        name: 'MES_Supplier',
+        component: () => import('@/views/mes/mes/MES_Supplier.vue')
+    }    ,{
+        path: '/MES_ProductionLine',
+        name: 'MES_ProductionLine',
+        component: () => import('@/views/mes/mes/MES_ProductionLine.vue')
+    }    ,{
+        path: '/MES_Material',
+        name: 'MES_Material',
+        component: () => import('@/views/mes/mes/MES_Material.vue')
+    }    ,{
+        path: '/MES_ProductionLineDevice',
+        name: 'MES_ProductionLineDevice',
+        component: () => import('@/views/mes/mes/MES_ProductionLineDevice.vue')
+    }    ,{
+        path: '/MES_EquipmentManagement',
+        name: 'MES_EquipmentManagement',
+        component: () => import('@/views/mes/mes/MES_EquipmentManagement.vue')
+    }    ,{
+        path: '/MES_EquipmentRepair',
+        name: 'MES_EquipmentRepair',
+        component: () => import('@/views/mes/mes/MES_EquipmentRepair.vue')
+    }    ,{
+        path: '/MES_EquipmentFaultRecord',
+        name: 'MES_EquipmentFaultRecord',
+        component: () => import('@/views/mes/mes/MES_EquipmentFaultRecord.vue')
+    }    ,{
+        path: '/MES_EquipmentMaintenance',
+        name: 'MES_EquipmentMaintenance',
+        component: () => import('@/views/mes/mes/MES_EquipmentMaintenance.vue')
+    }    ,{
+        path: '/MES_Process',
+        name: 'MES_Process',
+        component: () => import('@/views/mes/mes/MES_Process.vue')
+    }    ,{
+        path: '/MES_ProcessReport',
+        name: 'MES_ProcessReport',
+        component: () => import('@/views/mes/mes/MES_ProcessReport.vue')
+    }    ,{
+        path: '/MES_ProcessRoute',
+        name: 'MES_ProcessRoute',
+        component: () => import('@/views/mes/mes/MES_ProcessRoute.vue')
+    }    ,{
+        path: '/MES_MaterialCatalog',
+        name: 'MES_MaterialCatalog',
+        component: () => import('@/views/mes/mes/MES_MaterialCatalog.vue')
+    }    ,{
+        path: '/MES_ProductionOrder',
+        name: 'MES_ProductionOrder',
+        component: () => import('@/views/mes/mes/MES_ProductionOrder.vue')
+    }    ,{
+        path: '/MES_ProductionPlanDetail',
+        name: 'MES_ProductionPlanDetail',
+        component: () => import('@/views/mes/mes/MES_ProductionPlanDetail.vue')
+    }    ,{
+        path: '/MES_ProductionPlanChangeRecord',
+        name: 'MES_ProductionPlanChangeRecord',
+        component: () => import('@/views/mes/mes/MES_ProductionPlanChangeRecord.vue')
+    }    ,{
+        path: '/MES_ProductionReporting',
+        name: 'MES_ProductionReporting',
+        component: () => import('@/views/mes/mes/MES_ProductionReporting.vue')
+    }    ,{
+        path: '/MES_DefectiveProductRecord',
+        name: 'MES_DefectiveProductRecord',
+        component: () => import('@/views/mes/mes/MES_DefectiveProductRecord.vue')
+    }    ,{
+        path: '/MES_Bom_Main',
+        name: 'MES_Bom_Main',
+        component: () => import('@/views/mes/mes/MES_Bom_Main.vue')
+    }    ,{
+        path: '/MES_QualityInspectionPlan',
+        name: 'MES_QualityInspectionPlan',
+        component: () => import('@/views/mes/mes/MES_QualityInspectionPlan.vue')
+    }    ,{
+        path: '/MES_QualityInspectionRecord',
+        name: 'MES_QualityInspectionRecord',
+        component: () => import('@/views/mes/mes/MES_QualityInspectionRecord.vue')
+    }    ,{
+        path: '/MES_SchedulingPlan',
+        name: 'MES_SchedulingPlan',
+        component: () => import('@/views/mes/mes/MES_SchedulingPlan.vue')
+    }    ,{
+      path: '/MES_Calendar',
+      name: 'MES_Calendar',
+      component: () => import('@/views/mes/mes/MES_Calendar.vue')
+  }  ,{
+    path: '/MES_Gantt',
+    name: 'MES_Gantt',
+    component: () => import('@/views/mes/mes/MES_Gantt.vue')
+}    ,{
+        path: '/MES_Bom_Detail',
+        name: 'MES_Bom_Detail',
+        component: () => import('@/views/mes/mes/MES_Bom_Detail.vue')
+    }]
+
+  //上面的demo、MES开头的都是示例菜单，可以任意删除 
+export default viewgird

@@ -1,0 +1,35 @@
+.drag-center {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.left-draggable-item {
+  //   flex: 1;
+  display: inline-block;
+  padding: 5px;
+  //   border-right: 1px solid #eee;
+}
+
+.left-draggable-item .item {
+  cursor: move;
+  float: left;
+  width: 97px;
+  text-align: center;
+  border: 1px solid #ededed;
+  padding: 2px 6px;
+  text-align: left;
+  line-height: 28px;
+  margin: 4px;
+  border-radius: 3px;
+  background: #f3faff;
+  font-size: 13px;
+  color: #111;
+}
+.item2:hover,
+.actived {
+  background: #f0f9eb;
+}
+.item:hover {
+  border: 1px dashed #787be8;
+  color: #787be8;
+}

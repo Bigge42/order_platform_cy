@@ -1,0 +1,60 @@
+.el-icon-plus {
+  font-weight: bolder;
+  color: #000;
+}
+.filter-list {
+  display: flex;
+  .filter-item {
+    position: relative;
+    margin-right: 10px;
+    padding: 6px 0;
+  }
+  .filter-item:after {
+    content: ' ';
+    position: absolute;
+    right: -1px;
+    height: 17px;
+    top: 8px;
+    width: 1px;
+    background: #d6d6d6;
+  }
+
+  .filter-item:last-child::after {
+    content: '';
+  }
+  .filter-item-more {
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 5px;
+    position: relative;
+    top: 1px;
+  }
+  button {
+    position: relative;
+    font-size: 13px !important;
+    color: #000;
+  }
+  .bi-filter-left {
+    margin-right: 2px;
+  }
+  .current-filter-btn {
+    button {
+      color: #158eee !important;
+    }
+    button:after {
+      content: ' ';
+      position: absolute;
+      height: 1px;
+      width: 100%;
+      background: #158eee;
+      bottom: -8px;
+      left: 4px;
+      border-radius: 0;
+    }
+  }
+}
+.custom-fx-filter{
+  margin: 0 10px 10px 10px;
+  border-bottom: 1px solid #eee;
+  margin-top: -9px;
+}
