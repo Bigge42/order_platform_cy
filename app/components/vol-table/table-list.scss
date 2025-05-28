@@ -1,0 +1,39 @@
+.vol-table-list{
+	// background: #fff;
+	margin: 20rpx;
+	border-radius: 10rpx;
+
+	.vol-table-list-item-content{
+		 //   box-shadow: 4px 1px 10px 1px #f2f2f27a;
+			// border: 1px solid #f8f8f8;
+	}
+	.vol-table-list-item-title{
+		    align-items: center;
+	}
+	
+	.item-name {
+		display: flex;
+		line-height: 1;
+		font-weight: bolder;
+	    padding-bottom: 6rpx;
+		padding-top: 10rpx;
+		height: 28rpx;
+		font-size: 28rpx;
+		width: 0;
+
+		.item-title-name{
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			overflow: hidden;
+		}
+		.border-name {
+			font-weight: bold;
+			//border: 4px solid #007bff;
+			background: #007bff;
+			padding-left: 6rpx;
+			font-size: 30rpx;
+			border-radius: 8rpx;
+			margin-right: 8rpx;
+		}
+	}
+}

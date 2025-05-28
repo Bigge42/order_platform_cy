@@ -1,0 +1,112 @@
+.vol-table{
+	
+}
+	.vol-table-header {
+		    top: 0;
+		    background-color: #f8fcff;
+		    z-index: 800;
+		    // width: 500px;
+		    display: flex;
+		    font-weight: bold;
+		    font-size: 26rpx;	
+	}
+
+	.row {
+		display: flex;
+		// width: 500px;
+	}
+
+
+	.vol-table-border{
+		.vol-table-cell{
+			border-right: 1px solid #f4f4f4;
+			border-bottom: 1px solid #f4f4f4;
+			box-sizing: border-box;
+		}
+		border: 1px solid #f4f4f4;
+	}
+	.vol-table-border .vol-table-header:last-child,
+	.vol-table-border .vol-table-row .vol-table-cell:last-child{
+		border-right: 0;
+	}
+	.vol-table-border .vol-table-content .vol-table-row:last-child .vol-table-cell{
+			border-bottom: 0;
+	}
+	.vol-table-content{
+		    border-bottom: 1px solid #f4f4f4;
+	}
+
+.vol-table-cell{
+	color: #4d4d4d;
+	/* flex: 1; */
+	// padding: 16rpx;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	//white-space: normal;
+	overflow: hidden;
+}
+
+.vol-table-inline .vol-table-cell{
+	    text-overflow: ellipsis;
+	    white-space: nowrap;
+		.cell-1{
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			// height: 100%;
+		}
+}
+.vol-table-cell-index{
+	text-align: center !important;
+	font-size: 28rpx;
+}
+.vol-table-cell-ck {
+	width: 60rpx !important;
+	 // :deep(.u-checkbox-group){
+		//   width: 100%;
+		//   justify-content: center;
+		//   .u-checkbox{
+		// 	  margin-top: 0 !important;
+		// 	  .u-checkbox__icon-wrap{
+		// 	  			     margin-right: 0;
+		// 	  			 	 width: 100%;
+		// 	  				 justify-content: center;	 
+		// 	  }
+		//   }
+		
+	 // }
+}
+.loading-warp {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+
+	.loading-warp-msg {
+		min-width: 120px;
+		height: 40px;
+		justify-content: center;
+		background-color: #414141;
+		align-items: center;
+		text-align: center;
+		line-height: 40px;
+		border-radius: 5px;
+		color: #fff;
+	}
+}
+.empty-data{
+	height: 60%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+//flex超出没显示...或者换行，再处理
+// .vol-table-full-column .vol-table-content .vol-table-row .vol-table-cell:last-child{
+// 	width:  auto;
+// 	flex: 1;
+// }
+.vol-action-sheet-fx-header{
+    position:sticky;
+	 top:0.1;
+	 background: #fff;
+	 z-index: 1;
+}

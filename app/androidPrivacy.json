@@ -1,0 +1,28 @@
+{
+    "version" : "1",
+    "prompt" : "template",
+    "title" : "服务协议和隐私政策",
+    "message" : "这是一条message1",
+    "buttonAccept" : "同意并接受",
+    "buttonRefuse" : "暂不同意",
+    "hrefLoader" : "system|default",
+    "second" : {
+        "title" : "确认提示",
+        "message" : "这是一条message2",
+        "buttonAccept" : "同意并继续",
+        "buttonRefuse" : "退出应用"
+    },
+    "styles" : {
+        "backgroundColor" : "#fafafa",
+        "borderRadius" : "5px",
+        "title" : {
+            "color" : "#000000"
+        },
+        "buttonAccept" : {
+            "color" : "#222222"
+        },
+        "buttonRefuse" : {
+            "color" : "#565656"
+        }
+    }
+}

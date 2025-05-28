@@ -1,0 +1,111 @@
+.vol-action-sheet-select-container .vol-action-sheet-select-title {
+		padding: 24rpx;
+		text-align: center;
+		position: relative;
+        border-bottom: 1px solid #f7f7f7;
+	}
+
+	.vol-action-sheet-select-container .vol-action-sheet-select-title {
+		 position: relative;
+		// right: 30rpx;
+		// color: #007AFF;
+		// font-weight: 500;
+	}
+	.vol-action-sheet-select-confirm{
+			color: #007AFF;
+			margin: 0 32rpx;
+	}
+	.vol-action-sheet-select-reset{
+		    color: #747474;
+			margin-right: 30rpx;
+	}
+	.vol-action-sheet-select-btn{
+		    position: absolute;
+		    right: 0;
+		    font-size: 28rpx;
+		    height: 100%;
+		    top: 0;
+		    display: flex;
+		    align-items: center;
+			font-weight: 400;
+	}
+
+	.vol-action-sheet-select-container .vol-action-sheet-select-content {
+		flex: 1;
+		// height: 0;
+		overflow: scroll;
+	}
+
+
+.vol-action-sheet-select-container {
+	    display: flex;
+	    flex-direction: column;
+		.vol-action-sheet-select-filter {
+			display: flex;
+			background: #ffff;
+			padding: 10rpx;
+			border-bottom: 1px solid #eeee;
+
+			.search-btn {
+				position: relative;
+				top: 3px;
+				// margin-left: 20rpx;
+				// padding-right: 20rpx;
+				// width: 100rpx;
+			}
+		}
+
+		.vol-action-sheet-select-content {
+
+			// flex: 1;
+			// height: 0;
+			// overflow: scroll;
+			.vol-action-sheet-select-item {
+				// border-bottom: 1px solid rgb(247 247 247);
+				padding: 22rpx;
+				text-align: center;
+				position: relative;
+				color: #5a5a5a;
+				font-size: 30rpx;
+
+				.vol-action-sheet-select-icon {
+					position: absolute;
+					// display: none;
+					width: 70rpx;
+					z-index: 999;
+					right: 20rpx;
+					padding: 0 10rpx;
+					background: #FFFFFF;
+				}
+			}
+
+			.vol-action-sheet-select-actived {
+				color: #007aff;
+			}
+
+			.vol-action-sheet-select-item:last-child {
+				border-bottom: none;
+			}
+		}
+	}
+	.f-form-item-group{
+		display: flex;
+		width: 100%;
+		background: #fff;
+		.vol-form-item{
+			flex: 1;
+			.f-form-label{
+				color: red;
+			}
+		 }
+	   ::v-deep .vol-form-item-right{
+				justify-content: flex-start;
+				text-align: left;
+		}
+	}
+.vol-action-sheet-fx-header{
+    position:sticky;
+	 top:0.1;
+	 background: #fff;
+	 z-index: 1;
+}
