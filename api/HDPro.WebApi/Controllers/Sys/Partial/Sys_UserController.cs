@@ -1,5 +1,4 @@
-﻿
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +23,9 @@ using HDPro.Core.Infrastructure;
 using HDPro.Core.ManageUser;
 using HDPro.Core.ObjectActionValidator;
 using HDPro.Core.Services;
+using HDPro.Core.SignalR;
 using HDPro.Core.Utilities;
+using HDPro.Core.UserManager;
 using HDPro.Entity.AttributeManager;
 using HDPro.Entity.DomainModels;
 using HDPro.Sys.IRepositories;
@@ -159,16 +160,41 @@ namespace HDPro.Sys.Controllers
             {
                 return Json(webResponse.Error("参数不完整"));
             }
-            if (password.Length < 6) return Json(webResponse.Error("密码长度不能少于6位"));
+
+            // 密码强度校验：8~12位大小写字母数字特殊字符
+            var passwordValidation = HDPro.Utilities.PasswordValidator.ValidatePassword(password);
+            if (!passwordValidation.IsValid)
+            {
+                return Json(webResponse.Error(passwordValidation.ErrorMessage));
+            }
+
             Sys_User user = _userRepository.FindFirst(x => x.UserName == userName);
             if (user == null)
             {
                 return Json(webResponse.Error("用户不存在".Translator()));
             }
             user.UserPwd = password.EncryptDES(AppSetting.Secret.User);
-            _userRepository.Update(user, x => new { x.UserPwd }, true);
+            user.LastModifyPwdDate = DateTime.Now;
+            user.ModifyDate = DateTime.Now;
+            _userRepository.Update(user, x => new { x.UserPwd, x.LastModifyPwdDate, x.ModifyDate }, true);
             //如果用户在线，强制下线
             UserContext.Current.LogOut(user.User_Id);
+
+            if (userName != UserContext.Current.UserName)
+            {
+                var message = HttpContext.GetService<IMessageService>();
+                message.SendMessage(new MessageChannelData()
+                {
+                    UserName = new List<string>() { userName },
+                    Code = "-1",
+                    MessageNotification = new MessageNotification()
+                    {
+                        Content = "密码已被修改,即将退出登录"
+                    }
+                });
+                //通知下线
+                message.Remove(user.UserName);
+            }
             return Json(webResponse.OK("密码修改成功"));
         }
 
@@ -208,9 +234,10 @@ namespace HDPro.Sys.Controllers
             //是否使用用户数据权限
             gridData.extra = AppSetting.UserAuth;
             //设置用户是否在线
+            var message = HttpContext.GetService<IMessageService>();
             foreach (var item in gridData.rows)
             {
-                item.IsOnline = UserCache.GetOnline(item.UserName);
+                item.IsOnline = message.GetOnline(item.UserName);
             }
             return JsonNormal(gridData);
         }
@@ -266,5 +293,135 @@ namespace HDPro.Sys.Controllers
             UserContext.Current.RemoveUserAuthData(userId);
             return Content("保存成功");
         }
+
+        /// <summary>
+        /// 根据部门ID查找部门以及子部门下的所有用户
+        /// </summary>
+        /// <param name="departmentId">部门ID</param>
+        /// <returns></returns>
+        [HttpPost, Route("getUsersByDepartment")]
+        public async Task<IActionResult> GetUsersByDepartment(Guid departmentId)
+        {
+            try
+            {
+                // 获取部门及其所有子部门ID
+                var allDeptIds = DepartmentContext.GetAllChildrenIds(departmentId);
+                
+                // 查询用户部门关联表，获取所有相关用户ID
+                var userDepartmentQuery = _userRepository.DbContext.Set<Sys_UserDepartment>()
+                    .Where(ud => ud.Enable == 1 && allDeptIds.Contains(ud.DepartmentId));
+                
+                var userIds = await userDepartmentQuery.Select(ud => ud.UserId).Distinct().ToListAsync();
+                
+                // 查询用户信息
+                var users = await _userRepository.FindAsIQueryable(u => 
+                    userIds.Contains(u.User_Id) && u.Enable == 1)
+                    .Select(u => new
+                    {
+                        userId = u.User_Id,
+                        userName = u.UserName,
+                        userTrueName = u.UserTrueName,
+                        phoneNo = u.PhoneNo,
+                        email = u.Email
+                    })
+                    .OrderBy(u => u.userName)
+                    .ToListAsync();
+                
+                return JsonNormal(new { 
+                    success = true, 
+                    data = users,
+                    total = users.Count,
+                    message = $"查询到 {users.Count} 个用户"
+                });
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new { 
+                    success = false, 
+                    message = "查询用户失败：" + ex.Message,
+                    data = new List<object>(),
+                    total = 0
+                });
+            }
+        }
+
+        /// <summary>
+        /// 根据多个部门ID查找部门以及子部门下的所有用户
+        /// </summary>
+        /// <param name="request">包含部门ID列表的请求对象</param>
+        /// <returns></returns>
+        [HttpPost, Route("getUsersByDepartments")]
+        [ApiActionPermission(ActionPermissionOptions.Search)]
+        public async Task<IActionResult> GetUsersByDepartments([FromBody] GetUsersByDepartmentsRequest request)
+        {
+            try
+            {
+                if (request?.DepartmentIds == null || !request.DepartmentIds.Any())
+                {
+                    return JsonNormal(new { 
+                        success = false, 
+                        message = "部门ID列表不能为空",
+                        data = new List<object>(),
+                        total = 0
+                    });
+                }
+
+                // 获取所有部门及其子部门ID
+                var allDeptIds = new List<Guid>();
+                foreach (var deptId in request.DepartmentIds)
+                {
+                    var childDeptIds = DepartmentContext.GetAllChildrenIds(deptId);
+                    allDeptIds.AddRange(childDeptIds);
+                }
+                allDeptIds = allDeptIds.Distinct().ToList();
+                
+                // 查询用户部门关联表，获取所有相关用户ID
+                var userDepartmentQuery = _userRepository.DbContext.Set<Sys_UserDepartment>()
+                    .Where(ud => ud.Enable == 1 && allDeptIds.Contains(ud.DepartmentId));
+                
+                var userIds = await userDepartmentQuery.Select(ud => ud.UserId).Distinct().ToListAsync();
+                
+                // 查询用户信息
+                var users = await _userRepository.FindAsIQueryable(u => 
+                    userIds.Contains(u.User_Id) && u.Enable == 1)
+                    .Select(u => new
+                    {
+                        userId = u.User_Id,
+                        userName = u.UserName,
+                        userTrueName = u.UserTrueName,
+                        phoneNo = u.PhoneNo,
+                        email = u.Email
+                    })
+                    .OrderBy(u => u.userTrueName)
+                    .ToListAsync();
+                
+                return JsonNormal(new { 
+                    success = true, 
+                    data = users,
+                    total = users.Count,
+                    message = $"查询到 {users.Count} 个用户"
+                });
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new { 
+                    success = false, 
+                    message = "查询用户失败：" + ex.Message,
+                    data = new List<object>(),
+                    total = 0
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// 根据多个部门ID查询用户的请求对象
+    /// </summary>
+    public class GetUsersByDepartmentsRequest
+    {
+        /// <summary>
+        /// 部门ID列表
+        /// </summary>
+        public List<Guid> DepartmentIds { get; set; }
     }
 }

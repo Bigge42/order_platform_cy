@@ -35,7 +35,8 @@ namespace HDPro.Core.Quartz
             ISchedulerFactory _schedulerFactory = services.GetService<ISchedulerFactory>();
             try
             {
-                _taskList = services.GetService<SysDbContext>().Set<Sys_QuartzOptions>().Where(x => true).ToList();
+                using var context = new SysDbContext();
+                _taskList = context.Set<Sys_QuartzOptions>().Where(x => true).ToList();
 
                 _taskList.ForEach(options =>
                 {
@@ -107,7 +108,7 @@ namespace HDPro.Core.Quartz
                 (bool, string) validExpression = taskOptions.CronExpression.IsValidExpression();
                 if (!validExpression.Item1)
                 {
-                    msg = $"添加作业失败，作业:{taskOptions.TaskName},表达式不正确:{ taskOptions.CronExpression}";
+                    msg = $"添加作业失败，作业:{taskOptions.TaskName},表达式不正确:{taskOptions.CronExpression}";
                     Console.WriteLine(msg);
                     QuartzFileHelper.Error(msg);
                     return new { status = false, msg = validExpression.Item2 };

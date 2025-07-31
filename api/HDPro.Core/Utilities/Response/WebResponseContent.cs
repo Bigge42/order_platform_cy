@@ -64,6 +64,13 @@ namespace HDPro.Core.Utilities
             this.Message = ts ? message?.Translator() : message;
             return this;
         }
+        public WebResponseContent ErrorData(string message = null,object data=null)
+        {
+            this.Status = false;
+            this.Message =message;
+            this.Data = data;
+            return this;
+        }
         public WebResponseContent Error(ResponseType responseType, bool ts = false)
         {
             return Set(responseType, false, ts);

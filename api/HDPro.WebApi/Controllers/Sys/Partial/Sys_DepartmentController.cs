@@ -127,6 +127,116 @@ namespace HDPro.Sys.Controllers
                 }).ToListAsync();
             return JsonNormal(new { rows });
         }
+
+        /// <summary>
+        /// 获取完整的组织架构树
+        /// </summary>
+        /// <returns></returns>
+        [HttpPost, Route("getDepartmentTree")]
+        public async Task<IActionResult> GetDepartmentTree()
+        {
+            try
+            {
+                // 获取用户有权限的部门ID列表
+                var authorizedDeptIds = UserContext.Current.GetAllChildrenDeptIds();
+                
+                // 获取所有部门数据
+                var query = _repository.FindAsIQueryable(x => x.Enable == 1);
+                
+                // 根据用户权限筛选部门
+                if (!UserContext.Current.IsSuperAdmin)
+                {
+                    query = query.Where(x => authorizedDeptIds.Contains(x.DepartmentId));
+                }
+                
+                var allDepartments = await query.Select(s => new DepartmentTreeDto
+                {
+                    DepartmentId = s.DepartmentId,
+                    ParentId = s.ParentId,
+                    DepartmentName = s.DepartmentName,
+                    DepartmentType = s.DepartmentType,
+                    DepartmentCode = s.DepartmentCode
+                }).ToListAsync();
+
+                // 构建树形结构
+                var tree = BuildDepartmentTree(allDepartments);
+                
+                return JsonNormal(new { data = tree });
+            }
+            catch (Exception ex)
+            {
+                return Error("获取组织架构树失败：" + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 构建部门树形结构
+        /// </summary>
+        /// <param name="departments">部门列表</param>
+        /// <returns></returns>
+        private List<object> BuildDepartmentTree(List<DepartmentTreeDto> departments)
+        {
+            var tree = new List<object>();
+            
+            // 找到根节点（ParentId为null的节点）
+            var rootDepartments = departments.Where(d => d.ParentId == null).ToList();
+            
+            foreach (var rootDept in rootDepartments)
+            {
+                var treeNode = new
+                {
+                    id = rootDept.DepartmentId.ToString(),
+                    name = rootDept.DepartmentName,
+                    code = rootDept.DepartmentCode,
+                    type = string.IsNullOrEmpty(rootDept.DepartmentType) ? "department" : rootDept.DepartmentType.ToLower(),
+                    children = BuildChildrenNodes(rootDept.DepartmentId, departments)
+                };
+                
+                tree.Add(treeNode);
+            }
+            
+            return tree;
+        }
+
+        /// <summary>
+        /// 递归构建子节点
+        /// </summary>
+        /// <param name="parentId">父节点ID</param>
+        /// <param name="allDepartments">所有部门列表</param>
+        /// <returns></returns>
+        private List<object> BuildChildrenNodes(Guid parentId, List<DepartmentTreeDto> allDepartments)
+        {
+            var children = new List<object>();
+            var childDepartments = allDepartments.Where(d => d.ParentId == parentId).ToList();
+            
+            foreach (var childDept in childDepartments)
+            {
+                var childNode = new
+                {
+                    id = childDept.DepartmentId.ToString(),
+                    name = childDept.DepartmentName,
+                    code = childDept.DepartmentCode,
+                    type = string.IsNullOrEmpty(childDept.DepartmentType) ? "department" : childDept.DepartmentType.ToLower(),
+                    children = BuildChildrenNodes(childDept.DepartmentId, allDepartments)
+                };
+                
+                children.Add(childNode);
+            }
+            
+            return children;
+        }
+    }
+
+    /// <summary>
+    /// 部门树形结构DTO
+    /// </summary>
+    public class DepartmentTreeDto
+    {
+        public Guid DepartmentId { get; set; }
+        public Guid? ParentId { get; set; }
+        public string DepartmentName { get; set; }
+        public string DepartmentType { get; set; }
+        public string DepartmentCode { get; set; }
     }
 }
 

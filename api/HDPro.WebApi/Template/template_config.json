@@ -1,0 +1,29 @@
+{
+  "templateMappings": {
+    "HDPro.CY.Order": {
+      "serviceTemplate": "CYOrderServiceBase.html",
+      "servicePartialTemplate": "CYOrderServiceBasePartial.html",
+      "description": "CY.Order项目专用服务模板"
+    },
+    "HDPro.Sys": {
+      "serviceTemplate": "ServiceBase.html",
+      "servicePartialTemplate": "ServiceBasePartial.html",
+      "description": "系统默认服务模板"
+    },
+    "HDPro.MES": {
+      "serviceTemplate": "ServiceBase.html",
+      "servicePartialTemplate": "ServiceBasePartial.html",
+      "description": "MES项目服务模板"
+    },
+    "default": {
+      "serviceTemplate": "ServiceBase.html",
+      "servicePartialTemplate": "ServiceBasePartial.html",
+      "description": "默认服务模板"
+    }
+  },
+  "templateSettings": {
+    "templatesPath": "Template/Services/",
+    "autoDetectProject": true,
+    "fallbackToDefault": true
+  }
+} 

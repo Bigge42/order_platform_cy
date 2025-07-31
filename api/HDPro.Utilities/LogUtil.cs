@@ -1,0 +1,137 @@
+﻿using NLog;
+using HDPro.Utilities.Extensions;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace HDPro.Utilities
+{
+    public class LogUtil
+    {
+
+
+        private static readonly Logger log = LogManager.GetLogger(string.Empty);
+
+
+        public static void Trace(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Trace(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Trace(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Debug(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Debug(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Debug(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Info(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Info(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Info(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Info(string lgoName, string msg)
+        {
+            Logger logger = LogManager.GetLogger(lgoName);
+            logger.Info(msg);
+        }
+
+        public static void Warn(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Warn(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Warn(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Error(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Error(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Error(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Error(Exception ex)
+        {
+            if (ex != null)
+            {
+                log.Error(GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Fatal(object msg, Exception ex = null)
+        {
+            if (ex == null)
+            {
+                log.Fatal(Convert.ToString(msg));
+            }
+            else
+            {
+                log.Fatal(msg + GetExceptionMessage(ex));
+            }
+        }
+
+        public static void Fatal(Exception ex)
+        {
+            if (ex != null)
+            {
+                log.Fatal(GetExceptionMessage(ex));
+            }
+        }
+
+        private static string GetExceptionMessage(Exception ex)
+        {
+
+
+            return ex.Format("");
+            //string message = string.Empty;
+            //if (ex != null)
+            //{
+            //    message += ex.Message;
+            //    message += Environment.NewLine;
+            //    Exception originalException = ex.GetOriginalException();
+            //    if (originalException != null)
+            //    {
+            //        if (originalException.Message != ex.Message)
+            //        {
+            //            message += originalException.Message;
+            //            message += Environment.NewLine;
+            //        }
+            //    }
+            //    message += ex.StackTrace;
+            //    message += Environment.NewLine;
+            //}
+            //return message;
+        }
+    }
+}

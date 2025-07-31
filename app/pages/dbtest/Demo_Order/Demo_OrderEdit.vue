@@ -1,4 +1,3 @@
-
 <template>
 	<vol-edit ref="editRef" :id="id" :table="table" :detail="detail" :details="details" :editFormFields="editFormFields"
 		:editFormOptions="editFormOptions" :saveBefore="saveBefore" :labelWidth="70" labelPosition="left"
@@ -29,6 +28,9 @@
 		</template>
 
 	</vol-edit>
+
+	<!-- 流程图演示 -->
+	<FlowProgress :steps="steps" :currentKey="currentKey" />
 </template>
 <script setup>
 	import options from "./Demo_OrderOptions.js";
@@ -46,6 +48,7 @@
 		watch,
 		nextTick
 	} from "vue";
+	import FlowProgress from '@/comp/flow/FlowProgress.vue'
 
 	const props = defineProps({
 		id: ''
@@ -167,6 +170,21 @@
 	// 	() => editFormFields.字段,
 	// 	(newValue, oldValue) => {
 	// 	})
+
+	const steps = [
+		{ name: '领料', percent: 100, key: 'materialReceiving' },
+		{ name: '预装', percent: 10, key: 'preAssembly' },
+		{ name: '部件装配', percent: 100, key: 'componentAssembly' },
+		{ name: '强压泄漏', percent: 75, key: 'pressureLeakTest' },
+		{ name: '附件安装', percent: 50, key: 'accessoryInstallation' },
+		{ name: '终检', percent: 100, key: 'finalInspection' },
+		{ name: '油漆', percent: 0, key: 'painting' },
+		{ name: '装箱', percent: 100, key: 'packaging' },
+		{ name: '装箱检验', percent: 0, key: 'packagingInspection' },
+		{ name: '装配完工', percent: 100, key: 'assemblyCompletion' },
+		{ name: '出库', percent: 100, key: 'outbound' },
+	]
+	const currentKey = 'accessoryInstallation'
 </script>
 <style lang="less" scoped>
 

@@ -18,6 +18,15 @@ import viewgird from './components/basic/ViewGrid'
 import ServiceSelect from './components/ServiceSelect'
 import VolEdit from './components/basic/VolEdit'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import './assets/css/common.less'
+
+const search = window.location.search;
+const code = new URLSearchParams(search).get('code');
+const hasHash = window.location.hash && window.location.hash.length > 2;
+
+if (code && !hasHash) {
+  window.location.replace(`${window.location.origin}#/sso-login?code=${code}`);
+}
 
 const app = createApp(App)
 

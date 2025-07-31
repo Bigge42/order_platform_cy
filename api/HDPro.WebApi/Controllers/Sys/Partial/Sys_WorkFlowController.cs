@@ -22,6 +22,7 @@ using HDPro.Core.Infrastructure;
 using HDPro.Core.UserManager;
 using System.Linq.Expressions;
 using HDPro.Core.Configuration;
+using HDPro.Core.Filters;
 
 namespace HDPro.Sys.Controllers
 {
@@ -210,7 +211,7 @@ namespace HDPro.Sys.Controllers
                                               && c.StepId == flow.CurrentStepId && GetAuditStepValue(c.StepType, c.StepValue);
                 return b;
             }
-
+            string currentSetpId = null;
             object GetStep(string stepId)
             {
                 var list = flow.Sys_WorkFlowTableStep.Where(x => x.StepId == stepId)
@@ -240,6 +241,12 @@ namespace HDPro.Sys.Controllers
                         isCurrent = c.StepId == flow.CurrentStepId
                         && (flow.AuditStatus == null || flow.AuditStatus == (int)AuditStatus.审核中 || flow.AuditStatus == (int)AuditStatus.待审核)
                     }).ToList();
+
+                if (currentSetpId==null)
+                {
+                    currentSetpId = list.Where(x => x.isCurrentUser).Select(s => s.StepId).FirstOrDefault();
+                }
+            
                 if (list.Count == 1)
                 {
                     return list[0];
@@ -304,7 +311,13 @@ namespace HDPro.Sys.Controllers
             //}).ToList();//.OrderBy(o => o.OrderId);
 
             object form = await WorkFlowManager.GetAuditFormDataAsync(ids[0], tableName);
-
+            object attachInfo = null;
+            if (currentSetpId!=null)
+            {
+                attachInfo= _workFlowRepository.DbContext.Set<Sys_WorkFlowStep>()
+                    .Where(x => x.WorkFlow_Id == flow.WorkFlow_Id && x.StepId == currentSetpId)
+                    .Select(s => new { s.AllowUpload, s.AttachQty, s.AttachType }).FirstOrDefault();
+            }
             var data = new
             {
                 status = true,
@@ -313,7 +326,8 @@ namespace HDPro.Sys.Controllers
                 auditDic,// = DictionaryManager.GetDictionary("audit")?.Sys_DictionaryList?.Select(s => new { key = s.DicValue, value = s.DicName }),
                 list = steps,//.OrderBy(x => x.OrderId).ToList(),
                 logs,
-                form
+                form,
+                attachInfo
             };
 
             return Json(data);
@@ -518,6 +532,16 @@ namespace HDPro.Sys.Controllers
             }
 
             return Success("加签成功");
+        }
+        [ApiActionPermission()]
+        public override ActionResult Audit([FromBody] object[] id, int? auditStatus, string auditReason)
+        {
+            return base.Audit(id, auditStatus, auditReason);
+        }
+        [ApiActionPermission()]
+        public override IActionResult Upload(IEnumerable<IFormFile> fileInput)
+        {
+            return base.Upload(fileInput);
         }
     }
     public enum SignType

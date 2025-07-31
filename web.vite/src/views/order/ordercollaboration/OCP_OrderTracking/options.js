@@ -1,0 +1,123 @@
+// *Author：jxx
+// *Contact：461857658@qq.com
+// *代码由框架生成,任何更改都可能导致被代码生成器覆盖
+export default function(){
+    const table = {
+        key: 'Id',
+        footer: "Foots",
+        cnName: '订单跟踪',
+        name: 'OCP_OrderTracking',
+        newTabEdit: false,
+        url: "/OCP_OrderTracking/",
+        sortName: "CreateDate"
+    };
+    const tableName = table.name;
+    const tableCNName = table.cnName;
+    const newTabEdit = false;
+    const key = table.key;
+    const editFormFields = {"MaterialNumber":"","MaterialName":"","TopSpecification":"","CustName":"","Urgency":"","DeliveryDate":"","ReplyDeliveryDate":"","BidDate":"","BomCreateDate":"","OrderAuditDate":"","JoinTaskBillNo":"","PrdScheduleDate":"","PlanConfirmDate":"","PlanStartDate":"","StartDate":"","InstockQty":"","FinishStatus":"","UnInstockQty":"","SOBillID":"","SOEntryID":"","OrderCreateDate":"","MtoNoStatus":"","CancelStatus":"","SalesPerson":"","ContractType":"","UseUnit":"","ProjectName":"","Amount":"","MRPTERMINATESTATUS":"","OrderQty":"","MRPFREEZESTATUS":""};
+    const editFormOptions = [[{"title":"规格型号","field":"TopSpecification"},
+                               {"title":"物料编码","field":"MaterialNumber"},
+                               {"title":"物料名称","field":"MaterialName"}],
+                              [{"title":"紧急等级","field":"Urgency"},
+                               {"title":"客户名称","field":"CustName"}],
+                              [{"title":"客户要货日期","field":"DeliveryDate","type":"datetime"},
+                               {"title":"回复交货日期","field":"ReplyDeliveryDate","type":"datetime"},
+                               {"title":"中标日期","field":"BidDate","type":"datetime"}],
+                              [{"title":"BOM创建日期","field":"BomCreateDate","type":"datetime"},
+                               {"title":"订单审核日期","field":"OrderAuditDate","type":"datetime"},
+                               {"title":"关联总任务单据号","field":"JoinTaskBillNo"}],
+                              [{"title":"排产日期","field":"PrdScheduleDate","type":"datetime"},
+                               {"title":"计划确认日期","field":"PlanConfirmDate","type":"datetime"},
+                               {"title":"计划开工日期","field":"PlanStartDate","type":"datetime"}],
+                              [{"title":"实际开工日期","field":"StartDate","type":"datetime"},
+                               {"title":"订单完成状态","field":"FinishStatus"},
+                               {"title":"入库数量","field":"InstockQty","type":"decimal"}],
+                              [{"title":"未完数量","field":"UnInstockQty","type":"decimal"},
+                               {"title":"订单ID","field":"SOBillID"},
+                               {"title":"订单明细ID","field":"SOEntryID"}],
+                              [{"title":"订单创建日期","field":"OrderCreateDate","type":"datetime"},
+                               {"title":"交货情况","field":"MtoNoStatus"},
+                               {"title":"作废状态","field":"CancelStatus"}],
+                              [{"title":"使用单位","field":"UseUnit"},
+                               {"title":"合同类型","field":"ContractType"},
+                               {"title":"销售员","field":"SalesPerson"}],
+                              [{"title":"订单明细金额","field":"Amount","type":"decimal"},
+                               {"title":"项目名称","field":"ProjectName"},
+                               {"title":"业务终止","field":"MRPTERMINATESTATUS"}],
+                              [{"title":"业务冻结","field":"MRPFREEZESTATUS"},
+                               {"title":"订单数量","field":"OrderQty","type":"decimal"}]];
+    const searchFormFields = {"MaterialNumber":"","MaterialName":"","IsJoinTask":[],"PlanTaskWeek":"","Urgency":""};
+    const searchFormOptions = [[{"title":"月度任务","field":"PlanTaskMonth","type":"like"},{"title":"销售合同号","field":"ContractNo","type":"like"},{"title":"销售订单号","field":"SOBillNo","type":"like"},{"title":"计划跟踪号","field":"MtoNo","type":"like"},{"title":"规格型号","field":"TopSpecification","type":"like"}],[{"dataKey":"enable","data":[],"title":"是否关联总任务","field":"IsJoinTask","type":"selectList"},{"title":"周任务","field":"PlanTaskWeek","type":"like"},{"title":"物料编码","field":"MaterialNumber","type":"like"},{"title":"物料名称","field":"MaterialName","type":"like"},{"title":"紧急等级","field":"Urgency","type":"like"}]];
+    const columns = [{field:'ProjectName',title:'项目名称',type:'string',sort:true,width:120,align:'left'},
+                       {field:'SalesPerson',title:'销售员',type:'string',sort:true,width:120,align:'left'},
+                       {field:'ContractType',title:'合同类型',type:'string',sort:true,width:120,align:'left'},
+                       {field:'ContractNo',title:'销售合同号',type:'string',sort:true,width:120,align:'left'},
+                       {field:'UseUnit',title:'使用单位',type:'string',sort:true,width:200,align:'left'},
+                       {field:'CustName',title:'客户名称',type:'string',sort:true,width:200,align:'left'},
+                       {field:'SOBillNo',title:'销售订单号',type:'string',sort:true,width:120,align:'left'},
+                       {field:'MtoNo',title:'计划跟踪号',type:'string',sort:true,width:120,align:'left'},
+                       {field:'MaterialNumber',title:'物料编码',type:'string',sort:true,width:220,align:'left'},
+                       {field:'MaterialName',title:'物料名称',type:'string',sort:true,width:220,align:'left'},
+                       {field:'ProductionModel',title:'产品型号',type:'string',width:220,align:'left'},
+                       {field:'TopSpecification',title:'规格型号',type:'string',sort:true,width:220,align:'left'},
+                       {field:'IsJoinTask',title:'是否关联总任务',type:'int',bind:{ key:'enable',data:[]},width:170,align:'left'},
+                       {field:'ProScheduleYearMonth',title:'排产月份',type:'string',width:220,align:'left'},
+                       {field:'PlanTaskMonth',title:'月度任务',type:'string',sort:true,width:120,align:'left'},
+                       {field:'PlanTaskWeek',title:'周任务',type:'string',sort:true,width:120,align:'left'},
+                       {field:'Urgency',title:'紧急等级',type:'string',sort:true,width:120,align:'left'},
+                       {field:'DeliveryDate',title:'客户要货日期',type:'date',sort:true,width:150,align:'left'},
+                       {field:'ReplyDeliveryDate',title:'回复交货日期',type:'date',sort:true,width:150,align:'left'},
+                       {field:'ComputedDate',title:'运算日期',type:'datetime',width:150,align:'left'},
+                       {field:'BidDate',title:'中标日期',type:'date',sort:true,width:150,align:'left'},
+                       {field:'BomCreateDate',title:'BOM创建日期',type:'date',sort:true,width:150,align:'left'},
+                       {field:'OrderCreateDate',title:'订单创建日期',type:'date',sort:true,width:170,align:'left'},
+                       {field:'OrderAuditDate',title:'订单审核日期',type:'date',sort:true,width:170,align:'left'},
+                       {field:'PrdScheduleDate',title:'排产日期',type:'date',sort:true,width:150,align:'left'},
+                       {field:'PlanConfirmDate',title:'计划确认日期',type:'date',sort:true,width:170,align:'left'},
+                       {field:'PlanStartDate',title:'计划开工日期',type:'date',sort:true,width:170,align:'left'},
+                       {field:'StartDate',title:'实际开工日期',type:'date',sort:true,width:170,align:'left'},
+                       {field:'LastInStockDate',title:'最近入库日期',type:'datetime',width:170,align:'left'},
+                       {field:'OrderQty',title:'订单数量',type:'decimal',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'InstockQty',title:'入库数量',type:'decimal',sort:true,width:110,align:'left'},
+                       {field:'LastOutStockDate',title:'最近出库日期',type:'datetime',width:150,align:'left'},
+                       {field:'OutStockQty',title:'出库数量',type:'decimal',width:110,align:'left'},
+                       {field:'UnInstockQty',title:'未完数量',type:'decimal',sort:true,width:110,align:'left'},
+                       {field:'MtoNoStatus',title:'交货情况',type:'string',sort:true,width:110,align:'left'},
+                       {field:'BillStatus',title:'订单状态',type:'string',width:120,align:'left'},
+                       {field:'Id',title:'主键ID',type:'long',width:80,hidden:true,readonly:true,require:true,align:'left'},
+                       {field:'JoinTaskBillNo',title:'关联总任务单据号',type:'string',sort:true,width:120,hidden:true,align:'left'},
+                       {field:'FinishStatus',title:'订单完成状态',type:'string',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'SOBillID',title:'订单ID',type:'long',sort:true,width:80,hidden:true,align:'left'},
+                       {field:'SOEntryID',title:'订单明细ID',type:'long',sort:true,width:80,hidden:true,align:'left'},
+                       {field:'CancelStatus',title:'作废状态',type:'string',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'Amount',title:'订单明细金额',type:'decimal',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'MRPTERMINATESTATUS',title:'业务终止',type:'string',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'MRPFREEZESTATUS',title:'业务冻结',type:'string',sort:true,width:110,hidden:true,align:'left'},
+                       {field:'CreateID',title:'创建人Id',type:'int',width:80,hidden:true,align:'left'},
+                       {field:'CreateDate',title:'创建日期',type:'datetime',width:150,hidden:true,align:'left'},
+                       {field:'Creator',title:'创建人',type:'string',width:100,hidden:true,align:'left'},
+                       {field:'Modifier',title:'修改人',type:'string',width:100,hidden:true,align:'left'},
+                       {field:'ModifyDate',title:'修改日期',type:'datetime',width:150,hidden:true,align:'left'},
+                       {field:'ModifyID',title:'修改人Id',type:'int',width:80,hidden:true,align:'left'},
+                       {field:'ESBModifyDate',title:'ESB修改日期',type:'datetime',width:150,hidden:true,align:'left'},
+                       {field:'MaterialID',title:'物料ID',type:'long',width:80,hidden:true,align:'left'},
+                       {field:'PrepareMtrl',title:'开工准备',type:'string',width:110,align:'left'}];
+    const detail ={columns:[]};
+    const details = [];
+
+    return {
+        table,
+        key,
+        tableName,
+        tableCNName,
+        newTabEdit,
+        editFormFields,
+        editFormOptions,
+        searchFormFields,
+        searchFormOptions,
+        columns,
+        detail,
+        details
+    };
+}

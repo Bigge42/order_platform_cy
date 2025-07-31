@@ -13,7 +13,7 @@ using HDPro.Entity.SystemModels;
 
 namespace HDPro.Entity.DomainModels
 {
-    [Entity(TableCnName = "审批节点",TableName = "Sys_WorkFlowTableStep",DBServer = "SysDbContext")]
+    [Entity(TableCnName = "审批流程节点",TableName = "Sys_WorkFlowTableStep",DBServer = "SysDbContext")]
     public partial class Sys_WorkFlowTableStep:SysEntity
     {
         /// <summary>
@@ -21,6 +21,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Key]
        [Display(Name ="Sys_WorkFlowTableStep_Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Required(AllowEmptyStrings=false)]
        public Guid Sys_WorkFlowTableStep_Id { get; set; }
@@ -29,6 +30,7 @@ namespace HDPro.Entity.DomainModels
        ///主表id
        /// </summary>
        [Display(Name ="主表id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Required(AllowEmptyStrings=false)]
        public Guid WorkFlowTable_Id { get; set; }
@@ -37,6 +39,7 @@ namespace HDPro.Entity.DomainModels
        ///流程id
        /// </summary>
        [Display(Name ="流程id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        public Guid? WorkFlow_Id { get; set; }
 
@@ -44,16 +47,16 @@ namespace HDPro.Entity.DomainModels
        ///节点id
        /// </summary>
        [Display(Name ="节点id")]
-       [MaxLength(200)]
-       [Column(TypeName="nvarchar(200)")]
+       [MaxLength(100)]
+       [Column(TypeName="nvarchar(100)")]
        public string StepId { get; set; }
 
        /// <summary>
        ///节名称
        /// </summary>
        [Display(Name ="节名称")]
-       [MaxLength(400)]
-       [Column(TypeName="nvarchar(400)")]
+       [MaxLength(200)]
+       [Column(TypeName="nvarchar(200)")]
        public string StepName { get; set; }
 
        /// <summary>
@@ -67,8 +70,7 @@ namespace HDPro.Entity.DomainModels
        ///节点类型(1=按用户审批,2=按角色审批)
        /// </summary>
        [Display(Name ="节点类型(1=按用户审批,2=按角色审批)")]
-       [MaxLength(500)]
-       [Column(TypeName="varchar(500)")]
+       [Column(TypeName="nvarchar(max)")]
        public string StepValue { get; set; }
 
        /// <summary>
@@ -82,8 +84,7 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="Remark")]
-       [MaxLength(1000)]
-       [Column(TypeName="nvarchar(1000)")]
+       [Column(TypeName="nvarchar(max)")]
        public string Remark { get; set; }
 
        /// <summary>
@@ -104,8 +105,8 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="Creator")]
-       [MaxLength(60)]
-       [Column(TypeName="nvarchar(60)")]
+       [MaxLength(30)]
+       [Column(TypeName="nvarchar(30)")]
        public string Creator { get; set; }
 
        /// <summary>
@@ -119,8 +120,8 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="Modifier")]
-       [MaxLength(60)]
-       [Column(TypeName="nvarchar(60)")]
+       [MaxLength(30)]
+       [Column(TypeName="nvarchar(30)")]
        public string Modifier { get; set; }
 
        /// <summary>
@@ -148,8 +149,8 @@ namespace HDPro.Entity.DomainModels
        ///审核人
        /// </summary>
        [Display(Name ="审核人")]
-       [MaxLength(100)]
-       [Column(TypeName="nvarchar(100)")]
+       [MaxLength(50)]
+       [Column(TypeName="nvarchar(50)")]
        public string Auditor { get; set; }
 
        /// <summary>
@@ -171,15 +172,14 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Display(Name ="节点属性(start、node、end))")]
        [MaxLength(50)]
-       [Column(TypeName="varchar(50)")]
+       [Column(TypeName="nvarchar(50)")]
        public string StepAttrType { get; set; }
 
        /// <summary>
        ///
        /// </summary>
        [Display(Name ="ParentId")]
-       [MaxLength(2000)]
-       [Column(TypeName="varchar(2000)")]
+       [Column(TypeName="nvarchar(max)")]
        public string ParentId { get; set; }
 
        /// <summary>
@@ -187,7 +187,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Display(Name ="NextStepId")]
        [MaxLength(100)]
-       [Column(TypeName="varchar(100)")]
+       [Column(TypeName="nvarchar(100)")]
        public string NextStepId { get; set; }
 
        /// <summary>
@@ -198,29 +198,63 @@ namespace HDPro.Entity.DomainModels
        public int? Weight { get; set; }
 
        /// <summary>
-       ///审批方式
+       ///
        /// </summary>
-       [Display(Name ="审批方式")]
+       [Display(Name ="AuditMethod")]
        [Column(TypeName="int")]
        [Editable(true)]
        public int? AuditMethod { get; set; }
 
        /// <summary>
-       ///表单参数
+       ///
        /// </summary>
-       [Display(Name ="表单参数")]
+       [Display(Name ="FormOptions")]
        [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string FormOptions { get; set; }
 
        /// <summary>
-       ///节点来源
+       ///
        /// </summary>
-       [Display(Name ="节点来源")]
+       [Display(Name ="SourceType")]
        [MaxLength(100)]
-       [Column(TypeName="varchar(100)")]
+       [Column(TypeName="nvarchar(100)")]
        [Editable(true)]
        public string SourceType { get; set; }
+
+       /// <summary>
+       ///附件
+       /// </summary>
+       [Display(Name ="附件")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string AttachFile { get; set; }
+
+       /// <summary>
+       ///附件类型
+       /// </summary>
+       [Display(Name ="附件类型")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string AttachType { get; set; }
+
+       /// <summary>
+       ///编辑表单
+       /// </summary>
+       [Display(Name ="编辑表单")]
+       [Column(TypeName="nvarchar(max)")]
+       [Editable(true)]
+       public string StepEditForm { get; set; }
+
+       /// <summary>
+       ///附件数量
+       /// </summary>
+       [Display(Name ="附件数量")]
+       [Column(TypeName="int")]
+       [Editable(true)]
+       public int? AttachQty { get; set; }
 
        
     }

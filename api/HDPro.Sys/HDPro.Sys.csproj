@@ -41,6 +41,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HDPro.Core\HDPro.Core.csproj" />
     <ProjectReference Include="..\HDPro.Entity\HDPro.Entity.csproj" />
+    <ProjectReference Include="..\HDPro.Utilities\HDPro.Utilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>

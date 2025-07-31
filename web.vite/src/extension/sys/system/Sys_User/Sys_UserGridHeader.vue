@@ -1,8 +1,8 @@
 <template>
-  <vol-box v-model="model" :padding="30" title="修改密码" :width="400" :height="180">
+  <vol-box v-model="model" :padding="30" title="修改密码" :width="400" :height="320">
     <el-alert type="success" :closable="false">
       <h3>
-        <span>{{ $ts("帐号") }}：{{ row.UserName }}</span>
+        <span>{{ $ts('帐号') }}：{{ row.UserName }}</span>
       </h3>
     </el-alert>
     <div>
@@ -12,13 +12,19 @@
         size="large"
         style="width: 100%; margin-top: 15px"
       />
+      <div class="password-tip">
+        <div class="tip-title">密码强度要求</div>
+        <div class="tip-item">长度：8-12位字符</div>
+        <div class="tip-item">大写字母：至少一个 (A-Z)</div>
+        <div class="tip-item">小写字母：至少一个 (a-z)</div>
+        <div class="tip-item">数字：至少一个 (0-9)</div>
+        <div class="tip-item">特殊字符：至少一个 (!@#$%^&*等)</div>
+      </div>
     </div>
     <template #footer>
       <div style="text-align: center">
-        <el-button @click="model = false">{{ $ts("关闭") }}</el-button>
-        <el-button color="#626aef" plain @click="savePwd()">{{
-          $ts("修改密码")
-        }}</el-button>
+        <el-button @click="model = false">{{ $ts('关闭') }}</el-button>
+        <el-button color="#626aef" plain @click="savePwd()">{{ $ts('修改密码') }}</el-button>
       </div>
     </template>
   </vol-box>
@@ -49,21 +55,16 @@
       </el-table-column>
       <el-table-column align="center" prop="address" width="110" :label="$ts('操作')">
         <template #default="scope">
-          <el-button
-            @click="showUser(scope.row)"
-            type="primary"
-            link
-            v-if="scope.row.sub"
-          >
-            <i class="el-icon-plus"></i>{{ $ts("选择用户") }}</el-button
+          <el-button @click="showUser(scope.row)" type="primary" link v-if="scope.row.sub">
+            <i class="el-icon-plus"></i>{{ $ts('选择用户') }}</el-button
           >
         </template>
       </el-table-column>
     </el-table>
     <template #footer>
       <div style="text-align: center">
-        <el-button size="small" @click="modelAuth = false">{{ $ts("关闭") }}</el-button>
-        <el-button type="primary" plain @click="save">{{ $ts("保存") }}</el-button>
+        <el-button size="small" @click="modelAuth = false">{{ $ts('关闭') }}</el-button>
+        <el-button type="primary" plain @click="save">{{ $ts('保存') }}</el-button>
       </div>
     </template>
   </vol-box>
@@ -71,19 +72,11 @@
   <vol-box v-model="modelUser" :padding="5" title="选择数据" :width="1000">
     <div class="search-form">
       <label>帐号：</label>
-      <el-input
-        style="width: 150px"
-        v-model="userName"
-        :placeholder="$ts('请输入')"
-      ></el-input>
+      <el-input style="width: 150px" v-model="userName" :placeholder="$ts('请输入')"></el-input>
       <label class="label">姓名：</label>
-      <el-input
-        style="width: 150px"
-        v-model="userTrueName"
-        :placeholder="$ts('请输入')"
-      ></el-input>
+      <el-input style="width: 150px" v-model="userTrueName" :placeholder="$ts('请输入')"></el-input>
       <el-button type="primary" @click="searchClick" plain
-        ><i class="el-icon-search"></i> {{ $ts("搜索") }}</el-button
+        ><i class="el-icon-search"></i> {{ $ts('搜索') }}</el-button
       >
     </div>
     <VolTable
@@ -97,262 +90,257 @@
     </VolTable>
     <template #footer>
       <div style="text-align: center">
-        <el-button size="small" @click="modelUser = false">{{ $ts("关闭") }}</el-button>
-        <el-button type="primary" size="small" @click="selectClick">{{
-          $ts("确定")
-        }}</el-button>
+        <el-button size="small" @click="modelUser = false">{{ $ts('关闭') }}</el-button>
+        <el-button type="primary" size="small" @click="selectClick">{{ $ts('确定') }}</el-button>
       </div>
     </template>
   </vol-box>
 </template>
 
 <script setup>
-import VolBox from "@/components/basic/VolBox.vue";
-import VolTable from "@/components/basic/VolTable.vue";
-import { defineComponent, ref, reactive,  getCurrentInstance } from "vue";
+import VolBox from '@/components/basic/VolBox.vue'
+import VolTable from '@/components/basic/VolTable.vue'
+import { defineComponent, ref, reactive, getCurrentInstance } from 'vue'
 
-const emit = defineEmits(["parentCall"]);
+const emit = defineEmits(['parentCall'])
 
-const row = ref({});
-const password = ref("");
-const model = ref(false);
-const modelAuth = ref(false);
+const row = ref({})
+const password = ref('')
+const model = ref(false)
+const modelAuth = ref(false)
 
-const modelUser = ref(false);
+const modelUser = ref(false)
 
-const userName = ref("");
+const userName = ref('')
 
-const userTrueName = ref("");
+const userTrueName = ref('')
 
 const open = (_row) => {
-  password.value = "";
-  row.value = _row;
-  model.value = true;
-};
+  password.value = ''
+  row.value = _row
+  model.value = true
+}
 
 const columns = reactive([
   {
-    field: "User_Id",
-    title: "User_Id",
-    type: "int",
+    field: 'User_Id',
+    title: 'User_Id',
+    type: 'int',
     width: 90,
     hidden: true,
     readonly: true,
     require: true,
-    align: "left",
+    align: 'left'
   },
   {
-    field: "UserName",
-    title: "帐号",
-    type: "string",
+    field: 'UserName',
+    title: '帐号',
+    type: 'string',
     width: 120,
     readonly: true,
     require: true,
-    align: "left",
-    sort: true,
+    align: 'left',
+    sort: true
   },
   {
-    field: "UserTrueName",
-    title: "姓名",
-    type: "string",
+    field: 'UserTrueName',
+    title: '姓名',
+    type: 'string',
     width: 100,
     require: true,
-    align: "left",
+    align: 'left'
   },
   {
-    field: "Gender",
-    title: "性别",
-    type: "int",
-    bind: { key: "gender", data: [] },
+    field: 'Gender',
+    title: '性别',
+    type: 'int',
+    bind: { key: 'gender', data: [] },
     width: 80,
-    align: "left",
+    align: 'left'
   },
-  { field: "HeadImageUrl", title: "头像", type: "img", width: 80, align: "left" },
-  { field: "Email", title: "邮箱", type: "string", width: 140, align: "left" },
+  { field: 'HeadImageUrl', title: '头像', type: 'img', width: 80, align: 'left' },
+  { field: 'Email', title: '邮箱', type: 'string', width: 140, align: 'left' },
   {
-    field: "Token",
-    title: "Token",
-    type: "string",
+    field: 'Token',
+    title: 'Token',
+    type: 'string',
     width: 180,
     hidden: true,
-    align: "left",
+    align: 'left'
   },
   {
-    field: "CreateDate",
-    title: "注册时间",
-    type: "datetime",
+    field: 'CreateDate',
+    title: '注册时间',
+    type: 'datetime',
     width: 150,
     readonly: true,
-    align: "left",
-    sort: true,
+    align: 'left',
+    sort: true
   },
   {
-    field: "PhoneNo",
-    title: "手机号",
-    type: "string",
+    field: 'PhoneNo',
+    title: '手机号',
+    type: 'string',
     width: 150,
     hidden: true,
-    align: "left",
+    align: 'left'
   },
-  { field: "Remark", title: "备注", type: "string", width: 100, align: "left" },
-]);
+  { field: 'Remark', title: '备注', type: 'string', width: 100, align: 'left' }
+])
 
-const { proxy } = getCurrentInstance();
+const { proxy } = getCurrentInstance()
 const savePwd = () => {
-  if (!password.value) return proxy.$Message.error(proxy.$ts("请输入密码"));
-  if (password.value.length < 6)
-    return proxy.$Message.error(proxy.$ts('"密码长度至少6位"'));
-  let url = "api/user/modifyUserPwd";
+  if (!password.value) return proxy.$Message.error(proxy.$ts('请输入密码'))
+  if (password.value.length < 6) return proxy.$Message.error(proxy.$ts('"密码长度至少6位"'))
+  let url = 'api/user/modifyUserPwd'
   proxy.http
     .post(url, { password: password.value, userName: row.value.UserName }, true)
     .then((x) => {
       if (!x.status) {
-        return proxy.$message.error(proxy.$ts(x.message));
+        return proxy.$message.error(proxy.$ts(x.message))
       }
-      model.value = false;
-      proxy.$Message.success(proxy.$ts(x.message));
-    });
-};
+      model.value = false
+      proxy.$Message.success(proxy.$ts(x.message))
+    })
+}
 const openAuth = async (_row) => {
-  row.value = _row;
-  modelAuth.value = true;
+  row.value = _row
+  modelAuth.value = true
   if (!roleTree.length) {
-    await getCurrentTreePermission();
+    await getCurrentTreePermission()
   }
   list.forEach((c) => {
-    c.data = [];
-  });
-  proxy.http
-    .post("api/sys_user/getUserAuth?userId=" + row.value.User_Id)
-    .then((result) => {
-      let data = result.data;
-      data.forEach((x) => {
-        x.data = x.userIds.split(",").map((c) => {
-          let obj = result.users.find((m) => {
-            return m.userId + "" === c;
-          });
-          if (!obj) {
-            return {
-              id: c.id,
-              name: c.id, // obj.userName
-            };
-          }
+    c.data = []
+  })
+  proxy.http.post('api/sys_user/getUserAuth?userId=' + row.value.User_Id).then((result) => {
+    let data = result.data
+    data.forEach((x) => {
+      x.data = x.userIds.split(',').map((c) => {
+        let obj = result.users.find((m) => {
+          return m.userId + '' === c
+        })
+        if (!obj) {
           return {
-            id: obj.userId,
-            name: obj.userName,
-          };
-        });
-      });
-
-      for (let index = 0; index < list.length; index++) {
-        const item = list[index];
-        const obj = data.find((c) => {
-          return c.id === item.id;
-        });
-        if (obj) {
-          item.data.splice(0);
-          item.data.push(...(obj.data || []));
-          // item.data =obj.data||[]// (obj.userIds || '').split(",").map(x => { return x * 1 }).filter(x => { return x > 0 })
+            id: c.id,
+            name: c.id // obj.userName
+          }
         }
+        return {
+          id: obj.userId,
+          name: obj.userName
+        }
+      })
+    })
+
+    for (let index = 0; index < list.length; index++) {
+      const item = list[index]
+      const obj = data.find((c) => {
+        return c.id === item.id
+      })
+      if (obj) {
+        item.data.splice(0)
+        item.data.push(...(obj.data || []))
+        // item.data =obj.data||[]// (obj.userIds || '').split(",").map(x => { return x * 1 }).filter(x => { return x > 0 })
       }
-    });
-};
-const list = reactive([]);
-const roleTree = reactive([]);
+    }
+  })
+}
+const list = reactive([])
+const roleTree = reactive([])
 const getCurrentTreePermission = async () => {
-  let url = "api/role/getCurrentTreePermission";
+  let url = 'api/role/getCurrentTreePermission'
   await proxy.http.post(url, {}, true).then((result) => {
-    if (!result.status) return;
-    list.push(...result.data.tree);
+    if (!result.status) return
+    list.push(...result.data.tree)
     list.forEach((x) => {
-      x.parentId = x.pid;
-      x.data = [];
+      x.parentId = x.pid
+      x.data = []
       // if (!list.some(c => { return c.pid+'' === x.id+'' })) {
       //   x.parentId = 0;
       // }
       x.sub = !list.some((c) => {
-        return c.pid + "" === x.id + "";
-      });
-    });
+        return c.pid + '' === x.id + ''
+      })
+    })
     let tree = proxy.base.convertTree(list, (node, data, isRoot) => {
       if (isRoot) {
-        node.lv = 1;
+        node.lv = 1
       }
-    });
-    roleTree.push(...tree);
-  });
-};
+    })
+    roleTree.push(...tree)
+  })
+}
 const delUser = (item, index) => {
-  item.splice(index, 1);
-};
+  item.splice(index, 1)
+}
 
-const table = ref(null);
+const table = ref(null)
 const save = () => {
   const authData = list
     .filter((x) => {
-      return x.sub;
+      return x.sub
     })
     .map((x) => {
       return {
         MenuId: x.id,
         AuthUserIds: x.data
           .map((c) => {
-            return c.id;
+            return c.id
           })
-          .join(","),
-      };
-    });
+          .join(',')
+      }
+    })
   proxy.http
-    .post("api/sys_user/saveUserAuth?userId=" + row.value.User_Id, authData)
+    .post('api/sys_user/saveUserAuth?userId=' + row.value.User_Id, authData)
     .then((result) => {
-      proxy.$Message.success(proxy.$ts("保存成功"));
-    });
-};
+      proxy.$Message.success(proxy.$ts('保存成功'))
+    })
+}
 
-let menuRow = {};
+let menuRow = {}
 const showUser = (_row) => {
-  menuRow = _row;
-  modelUser.value = true;
+  menuRow = _row
+  modelUser.value = true
   if (table.value && table.value.load) {
-    table.value.load(null, true);
+    table.value.load(null, true)
   }
-};
+}
 
 const searchClick = () => {
-  table.value.load(null, true);
-};
+  table.value.load(null, true)
+}
 const selectClick = () => {
-  let rows = table.value.getSelected();
+  let rows = table.value.getSelected()
   if (rows.length == 0) {
-    return proxy.$Message.error(proxy.$ts("请选择行!"));
+    return proxy.$Message.error(proxy.$ts('请选择行!'))
   }
   //{ id: 1, name: "123" }, { id: 1, name: "1234" }, { id: 1, name: "1235" }
   let currentUserIds = menuRow.data.map((x) => {
-    return x.id;
-  });
+    return x.id
+  })
   let userInfo = rows
     .filter((x) => {
-      return currentUserIds.indexOf(x.User_Id) == -1;
+      return currentUserIds.indexOf(x.User_Id) == -1
     })
     .map((x) => {
-      return { id: x.User_Id, name: x.UserTrueName };
-    });
-  userInfo.unshift(...menuRow.data);
-  menuRow.data = userInfo;
+      return { id: x.User_Id, name: x.UserTrueName }
+    })
+  userInfo.unshift(...menuRow.data)
+  menuRow.data = userInfo
   // menuRow.data.push(...userInfo);
 
-  modelUser.value = false;
-};
+  modelUser.value = false
+}
 
 const loadBefore = (params) => {
   params.wheres = [
-    { name: "UserName", value: userName.value, displayType: "like" },
-    { name: "UserTrueName", value: userTrueName.value, displayType: "like" },
-  ];
-  return true;
-};
+    { name: 'UserName', value: userName.value, displayType: 'like' },
+    { name: 'UserTrueName', value: userTrueName.value, displayType: 'like' }
+  ]
+  return true
+}
 
-defineExpose({ open, openAuth, getCurrentTreePermission });
+defineExpose({ open, openAuth, getCurrentTreePermission })
 </script>
 
 <style lang="less" scoped>
@@ -431,6 +419,25 @@ h3 {
 
   button {
     margin-left: 15px;
+  }
+}
+
+.password-tip {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+
+  .tip-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .tip-item {
+    margin-bottom: 2px;
   }
 }
 </style>

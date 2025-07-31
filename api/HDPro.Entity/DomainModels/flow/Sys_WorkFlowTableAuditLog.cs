@@ -21,6 +21,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Key]
        [Display(Name ="Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Editable(true)]
        [Required(AllowEmptyStrings=false)]
@@ -30,6 +31,7 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="WorkFlowTable_Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Editable(true)]
        public Guid? WorkFlowTable_Id { get; set; }
@@ -38,6 +40,7 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="WorkFlowTableStep_Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Editable(true)]
        public Guid? WorkFlowTableStep_Id { get; set; }
@@ -89,8 +92,7 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="AuditResult")]
-       [MaxLength(1000)]
-       [Column(TypeName="nvarchar(1000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string AuditResult { get; set; }
 
@@ -106,8 +108,7 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="Remark")]
-       [MaxLength(1000)]
-       [Column(TypeName="nvarchar(1000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string Remark { get; set; }
 
@@ -118,6 +119,24 @@ namespace HDPro.Entity.DomainModels
        [Column(TypeName="datetime")]
        [Editable(true)]
        public DateTime? CreateDate { get; set; }
+
+       /// <summary>
+       ///
+       /// </summary>
+       [Display(Name ="AttachFile")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string AttachFile { get; set; }
+
+       /// <summary>
+       ///
+       /// </summary>
+       [Display(Name ="AttachType")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string AttachType { get; set; }
 
        
     }

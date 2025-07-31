@@ -230,7 +230,7 @@ export const getSrc = (path, http,access_token) => {
     }
     return path
 }
-//将文件转换为upload的格式
+//将文件转换为volupload的格式
 const convertFileToArray = (item, formFields) => {
     if (!item.maxFile) {
         item.maxFile = 1 // 默认只能上传一个文件，可以在onInit中设置

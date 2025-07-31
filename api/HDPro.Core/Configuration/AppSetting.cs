@@ -57,6 +57,16 @@ namespace HDPro.Core.Configuration
         /// </summary>
         public static Kafka Kafka { get; set; }
 
+        /// <summary>
+        /// ESB配置
+        /// </summary>
+        public static ESBConfig ESB { get; set; }
+
+        /// <summary>
+        /// SSO配置
+        /// </summary>
+        public static SSOConfig SSOConfig { get; set; }
+
 
         /// <summary>
         /// JWT有效期(分钟=默认120)
@@ -94,6 +104,9 @@ namespace HDPro.Core.Configuration
             services.Configure<ModifyMember>(configuration.GetSection("ModifyMember"));
             services.Configure<GlobalFilter>(configuration.GetSection("GlobalFilter"));
             services.Configure<Kafka>(configuration.GetSection("Kafka"));
+            services.Configure<ESBConfig>(configuration.GetSection("ESB"));
+            services.Configure<SSOConfig>(configuration.GetSection("SSO"));
+            services.Configure<TCSystemOptions>(configuration.GetSection("TC"));
 
             var provider = services.BuildServiceProvider();
             IWebHostEnvironment environment = provider.GetRequiredService<IWebHostEnvironment>();
@@ -109,6 +122,8 @@ namespace HDPro.Core.Configuration
 
             GlobalFilter.Actions = GlobalFilter.Actions ?? new string[0];
             Kafka = provider.GetRequiredService<IOptions<Kafka>>().Value ?? new Kafka();
+            ESB = provider.GetRequiredService<IOptions<ESBConfig>>().Value ?? new ESBConfig();
+            SSOConfig = provider.GetRequiredService<IOptions<SSOConfig>>().Value ?? new SSOConfig();
 
             _connection = provider.GetRequiredService<IOptions<Connection>>().Value;
 

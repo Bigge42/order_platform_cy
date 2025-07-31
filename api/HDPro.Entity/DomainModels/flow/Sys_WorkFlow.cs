@@ -21,6 +21,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Key]
        [Display(Name ="WorkFlow_Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Required(AllowEmptyStrings=false)]
        public Guid WorkFlow_Id { get; set; }
@@ -34,6 +35,15 @@ namespace HDPro.Entity.DomainModels
        [Editable(true)]
        [Required(AllowEmptyStrings=false)]
        public string WorkName { get; set; }
+
+       /// <summary>
+       ///模板标题
+       /// </summary>
+       [Display(Name ="模板标题")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string TitleTemplate { get; set; }
 
        /// <summary>
        ///表名
@@ -82,7 +92,7 @@ namespace HDPro.Entity.DomainModels
        ///节点信息
        /// </summary>
        [Display(Name ="节点信息")]
-       [Column(TypeName= "nvarchar(10000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string NodeConfig { get; set; }
 
@@ -90,7 +100,7 @@ namespace HDPro.Entity.DomainModels
        ///连接配置
        /// </summary>
        [Display(Name ="连接配置")]
-       [Column(TypeName="nvarchar(10000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string LineConfig { get; set; }
 
@@ -98,8 +108,7 @@ namespace HDPro.Entity.DomainModels
        ///备注
        /// </summary>
        [Display(Name ="备注")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string Remark { get; set; }
 
@@ -140,24 +149,27 @@ namespace HDPro.Entity.DomainModels
        [Column(TypeName="nvarchar(30)")]
        public string Modifier { get; set; }
 
-        /// <summary>
-        ///
-        /// </summary>
-        [Display(Name = "DbServiceId")]
-        [Column(TypeName = "uniqueidentifier")]
-        [Editable(true)]
-        public Guid? DbServiceId { get; set; }
-
-        /// <summary>
-        ///修改时间
-        /// </summary>
-        [Display(Name ="修改时间")]
+       /// <summary>
+       ///修改时间
+       /// </summary>
+       [Display(Name ="修改时间")]
        [Column(TypeName="datetime")]
        public DateTime? ModifyDate { get; set; }
+
+       /// <summary>
+       ///
+       /// </summary>
+       [Display(Name ="DbServiceId")]
+       [MaxLength(36)]
+       [Column(TypeName="uniqueidentifier")]
+       [Editable(true)]
+       public Guid? DbServiceId { get; set; }
 
        [Display(Name ="审批步骤")]
        [ForeignKey("WorkFlow_Id")]
        public List<Sys_WorkFlowStep> Sys_WorkFlowStep { get; set; }
 
+
+       
     }
 }

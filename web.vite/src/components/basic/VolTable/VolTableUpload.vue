@@ -1,6 +1,6 @@
 <template>
   <VolBox v-model="model" title="上传" :height="228" :width="500" :padding="15" lazy>
-    <!-- 上传图片、excel或其他文件、文件数量、大小限制都可以，参照upload组件api -->
+    <!-- 上传图片、excel或其他文件、文件数量、大小限制都可以，参照volupload组件api -->
     <div class="vol-table-upload">
       <VolUpload
         style="text-align: center"

@@ -174,7 +174,7 @@ namespace HDPro.Core.WorkFlow
 
         public static bool Exists<T>(string workFlowTableName = null)
         {
-            return Exists(workFlowTableName??typeof(T).GetEntityTableName(false));
+            return Exists(workFlowTableName ?? typeof(T).GetEntityTableName(false));
         }
 
         public static bool Exists(string table)
@@ -228,7 +228,7 @@ namespace HDPro.Core.WorkFlow
             string key = typeof(T).GetKeyProperty().GetValue(entity).ToString();
 
             var flowTable = DBServerProvider.DbContext.Set<Sys_WorkFlowTable>().Include(c => c.Sys_WorkFlowTableStep)
-                   //2024.02.05增加租户区分
+                  //2024.02.05增加租户区分
                   .WhereIF(AppSetting.UseDynamicShareDB, c => c.DbServiceId == UserContext.CurrentServiceId)
                   .Where(c => c.WorkTableKey == key && c.WorkTable == tableName && (c.AuditStatus != (int)AuditStatus.草稿 && c.AuditStatus != (int)AuditStatus.待提交))
                   .OrderByDescending(x => x.CreateDate)
@@ -244,8 +244,8 @@ namespace HDPro.Core.WorkFlow
                 var filter = _workFlowTableOptions.Where(x => (AppSetting.UseDynamicShareDB ? x.DbServiceId == serviceId : true)
                                              && x.WorkTable == tableName
                                              && x.FilterList.Any(c => c.StepAttrType == StepType.start.ToString()
-                                             &&c.FieldFilters.CheckFilter<T>(entities,c.Expression)))
-                                           //  && c.Expression != null && entities.Any(((Func<T, bool>)c.Expression))))
+                                             && c.FieldFilters.CheckFilter<T>(entities, c.Expression)))
+                      //  && c.Expression != null && entities.Any(((Func<T, bool>)c.Expression))))
                       .OrderByDescending(x => x.Weight)
                       .FirstOrDefault();
                 if (filter != null)
@@ -299,7 +299,8 @@ namespace HDPro.Core.WorkFlow
                     WorkTable = workFlow.WorkTable,
                     WorkName = workFlow.WorkName,
                     Weight = workFlow.Weight,
-                    DbServiceId=workFlow.DbServiceId,
+                    DbServiceId = workFlow.DbServiceId,
+                    TitleTemplate = workFlow.TitleTemplate,
                     //2023.11.12增加默认状态
                     DefaultAuditStatus = _flowFormOptions.Where(x => x.TableName == workFlow.WorkTable).Select(s => s.DefaultAuditStatus).FirstOrDefault(),
                     FilterList = new List<FilterOptions>()
@@ -322,13 +323,17 @@ namespace HDPro.Core.WorkFlow
                             AuditBack = item.AuditBack,
                             AuditRefuse = item.AuditRefuse,
                             AuditMethod = item.AuditMethod,
-                            ParentIds=new string[] { },
+                            ParentIds = new string[] { },
                             SendMail = item.SendMail,
                             WorkFlow_Id = item.WorkFlow_Id,
                             WorkStepFlow_Id = item.WorkStepFlow_Id,
                             StepType = item.StepType,
                             StepValue = item.StepValue,
-                            FieldFilters=filters
+                            FieldFilters = filters,
+                            StepEditForm = item.StepEditForm,
+                            AllowUpload = item.AllowUpload,
+                            AttachQty = item.AttachQty,
+                            AttachType = item.AttachType
                         });
                     }
                     catch (Exception ex)
@@ -384,12 +389,12 @@ namespace HDPro.Core.WorkFlow
 
         public static string GetName<T>(string workTableName)
         {
-            if (!string.IsNullOrEmpty(workTableName)&& _container.TryGetValue(workTableName, out string name))
+            if (!string.IsNullOrEmpty(workTableName) && _container.TryGetValue(workTableName, out string name))
             {
                 return name;
             }
             Type type = typeof(T);
-            if (_container.TryGetValue(type.Name, out  name))
+            if (_container.TryGetValue(type.Name, out name))
             {
                 return name;
             }

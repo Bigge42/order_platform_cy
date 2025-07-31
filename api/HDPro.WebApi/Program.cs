@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Quartz.Impl;
@@ -30,20 +31,49 @@ using HDPro.Core.Language;
 using HDPro.WebApi.Controllers.Hubs;
 using System.Net;
 using HDPro.WebApi;
+using HDPro.Core.SignalR;
+using HDPro.Core.Utilities;
+using HDPro.CY.Order.Services.OrderCollaboration.ESB;
+using NLog;
+using NLog.Web;
 
+
+// 早期初始化NLog以便捕获所有日志
+var logger = NLog.LogManager.Setup().LoadConfigurationFromAppSettings().GetCurrentClassLogger();
+logger.Debug("应用程序启动初始化");
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddModule(builder.Configuration);
 
+// 设置全局编码为UTF-8
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+Console.OutputEncoding = Encoding.UTF8;
+
+// 配置NLog作为日志提供程序
+builder.Logging.ClearProviders();
+builder.Host.UseNLog();
+
+builder.Services.AddModule(builder.Configuration);
+// 添加ESB服务注册
+builder.Services.AddESBServices();
+// 添加后台服务
+builder.Services.AddHostedService<BackgroundMessageService>();
+// 添加消息服务
+builder.Services.AddSingleton<IMessageService, MessageService>();
+// 添加消息通道 
+builder.Services.AddSingleton<MessageChannel>();
+// 添加安全文件读取器
+builder.Services.AddScoped<SafeFileReader>();
 builder.Services
     .AddControllers()
         //https://learn.microsoft.com/zh-cn/aspnet/core/web-api/jsonpatch?view=aspnetcore-8.0
-        //��Ҫ��װMicrosoft.AspNetCore.Mvc.NewtonsoftJson��
+        // 需要安装Microsoft.AspNetCore.Mvc.NewtonsoftJson包
         .AddNewtonsoftJson(op =>
         {
             op.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver();
             op.SerializerSettings.DateFormatString = "yyyy-MM-dd HH:mm:ss";
             op.SerializerSettings.Converters.Add(new LongCovert());
+            // 确保中文字符正确序列化
+            op.SerializerSettings.StringEscapeHandling = Newtonsoft.Json.StringEscapeHandling.Default;
         });
 DapperParseGuidTypeHandler.InitParseGuid();
 builder.Services.AddAuthentication(options =>
@@ -55,13 +85,13 @@ builder.Services.AddAuthentication(options =>
           {
               options.TokenValidationParameters = new TokenValidationParameters
               {
-                  SaveSigninToken = true,//����token,��̨��֤token�Ƿ���Ч(��Ҫ)
-                  ValidateIssuer = true,//�Ƿ���֤Issuer
-                  ValidateAudience = true,//�Ƿ���֤Audience
-                  ValidateLifetime = true,//�Ƿ���֤ʧЧʱ��
-                  ValidateIssuerSigningKey = true,//�Ƿ���֤SecurityKey
+                  SaveSigninToken = true,// 保存token,后台验证token是否有效(必要)
+                  ValidateIssuer = true,// 是否验证Issuer
+                  ValidateAudience = true,// 是否验证Audience
+                  ValidateLifetime = true,// 是否验证失效时间
+                  ValidateIssuerSigningKey = true,// 是否验证SecurityKey
                   ValidAudience = AppSetting.Secret.Audience,//Audience
-                  ValidIssuer = AppSetting.Secret.Issuer,//Issuer���������ǰ��ǩ��jwt������һ��
+                  ValidIssuer = AppSetting.Secret.Issuer,//Issuer，这两项和前面签发jwt的设置一致
                   IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AppSetting.Secret.JWT))
               };
               options.Events = new JwtBearerEvents()
@@ -70,9 +100,9 @@ builder.Services.AddAuthentication(options =>
                   {
                       context.HandleResponse();
                       context.Response.Clear();
-                      context.Response.ContentType = "application/json";
+                      context.Response.ContentType = "application/json; charset=utf-8";
                       context.Response.StatusCode = 401;
-                      context.Response.WriteAsync(new { message = "��Ȩδͨ��", status = false, code = 401 }.Serialize());
+                      context.Response.WriteAsync(new { message = "授权未通过", status = false, code = 401 }.Serialize(), Encoding.UTF8);
                       return Task.CompletedTask;
                   }
               };
@@ -105,7 +135,7 @@ builder.Services.AddSwaggerGen(c =>
     var security = new Dictionary<string, IEnumerable<string>> { { AppSetting.Secret.Issuer, new string[] { } }};
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
     {
-        Description = "JWT��Ȩtokenǰ����Ҫ�����ֶ�Bearer��һ���ո�,��Bearer token",
+        Description = "JWT授权token前面需要加上字段Bearer和一个空格，如Bearer token",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -132,7 +162,12 @@ builder.Services.AddHttpClient()
 .AddTransient<HttpResultfulJob>()
 .AddSingleton<ISchedulerFactory, StdSchedulerFactory>()
 .AddSingleton<Quartz.Spi.IJobFactory, IOCJobFactory>()
-.AddSingleton<RedisCacheService>();
+.AddSingleton<RedisCacheService>()
+.AddScoped<HDPro.Core.Utilities.HttpClientHelper>();
+
+// 添加集成服务的HttpClient配置
+builder.Services.AddHttpClient<HDPro.CY.Order.IServices.SRM.ISRMIntegrationService, HDPro.CY.Order.Services.SRM.SRMIntegrationService>();
+builder.Services.AddHttpClient<HDPro.CY.Order.IServices.OA.IOAIntegrationService, HDPro.CY.Order.Services.OA.OAIntegrationService>();
 
 builder.Services.AddMvc(options =>
 {
@@ -147,7 +182,7 @@ builder.Services.AddSingleton<IObjectModelValidator>(new NullObjectModelValidato
 //Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.WebHost.UseUrls("http://*:9100");
+builder.WebHost.UseUrls("http://*:9200");
 builder.Services.Configure<FormOptions>(x =>
 {
     x.MultipartBodyLengthLimit = 1024 * 1024 * 100;
@@ -163,14 +198,14 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 else
 {
-    //��ʱ���������Ҫ����ִ�ж�ʱ�����뽫�˴������else����
+    // 定时任务，如果不需要定时执行定时任务，请将此处放到else里面
     app.UseQuartz(app.Environment);
 }
-app.UseSwagger();
-app.UseSwaggerUI();
 app.UseLanguagePack().UseMiddleware<LanguageMiddleWare>();
 app.UseMiddleware<ExceptionHandlerMiddleWare>();
 app.UseDefaultFiles();
@@ -194,22 +229,44 @@ app.UseStaticFiles(new StaticFileOptions()
     RequestPath = "/Upload",
     OnPrepareResponse = (Microsoft.AspNetCore.StaticFiles.StaticFileResponseContext staticFile) =>{}
 });
-//����HttpContext
+// 设置HttpContext
 app.UseStaticHttpContext();
 // Configure the HTTP request pipeline.
-app.UseSwaggerUI(options =>
+if (app.Environment.IsDevelopment())
 {
-    options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
-    options.RoutePrefix = string.Empty;
-});
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
+        options.RoutePrefix = string.Empty;
+        options.DocumentTitle = "HDPro API 文档";
+        options.DefaultModelsExpandDepth(-1);
+        options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+    });
+}
 app.UseCors("cors");
 app.UseCors();
-// ʹ�� HTTPS �ض���
+// 使用 HTTPS 重定向
 //app.UseHttpsRedirection();
-// ʹ��·��
+// 使用路由
 app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<HomePageMessageHub>("/message");
+app.MapHub<MessageHub>("/hub/message");
 app.MapControllers();
-app.Run();
+
+try
+{
+    logger.Debug("应用程序启动完成");
+    app.Run();
+}
+catch (Exception exception)
+{
+    // NLog: 捕获设置错误
+    logger.Error(exception, "应用程序因异常停止");
+    throw;
+}
+finally
+{
+    // 确保在应用程序退出前刷新和停止内部计时器/线程
+    NLog.LogManager.Shutdown();
+}

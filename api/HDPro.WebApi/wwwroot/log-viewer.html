@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日志查看器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin-bottom: 10px;
+        }
+
+        .auth-section {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .auth-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .auth-form input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        .auth-form input:last-of-type {
+            margin-right: 0;
+        }
+
+        #userInfo {
+            font-weight: bold;
+            color: #28a745;
+            margin-right: 15px;
+        }
+
+        .verification-code {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .verification-code input {
+            flex: 1;
+            margin-right: 0;
+        }
+
+        .verification-code img {
+            flex-shrink: 0;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .file-list {
+            margin-bottom: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .log-viewer {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f8f9fa;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .log-header {
+            background: #e9ecef;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .log-content {
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            background: #fff;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .search-box {
+            margin-bottom: 10px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        /* 文件列表搜索和过滤 */
+        .file-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .file-search {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .file-search input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .file-stats {
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        .file-filters {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #e9ecef;
+        }
+
+        .filter-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        /* 详情页面样式 */
+        .log-detail-page {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .detail-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .detail-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .detail-title h3 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .detail-info {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .file-metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            font-size: 14px;
+        }
+
+        .metadata-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .metadata-label {
+            font-weight: bold;
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .metadata-value {
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+
+        .detail-content {
+            padding: 20px;
+        }
+
+        .content-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .search-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .search-controls input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .view-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .view-controls label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .view-controls select {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .log-content-wrapper {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            max-height: 600px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .log-content {
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: white;
+            min-height: 400px;
+        }
+
+        .page-jump {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            margin-left: 15px;
+        }
+
+        .page-jump input {
+            width: 80px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        /* 高亮搜索结果 */
+        .search-highlight {
+            background-color: #ffeb3b;
+            padding: 1px 2px;
+            border-radius: 2px;
+        }
+
+        /* 文件项优化 */
+        .file-item {
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .file-item:hover {
+            border-left-color: #007bff;
+            background: #f8f9fa;
+        }
+
+        .file-item.hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .auth-form {
+                flex-direction: column;
+            }
+
+            .auth-form input {
+                min-width: 100%;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .file-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .file-list-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .file-search {
+                min-width: auto;
+            }
+
+            .detail-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .content-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .search-controls {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 日志查看器</h1>
+            <p>安全的日志文件管理和查看工具</p>
+        </div>
+
+        <div class="auth-section" id="loginSection">
+            <div class="auth-form">
+                <input type="text" id="usernameInput" placeholder="用户名" />
+                <input type="password" id="passwordInput" placeholder="密码" />
+                <div class="verification-code">
+                    <input type="text" id="verificationCodeInput" placeholder="验证码" maxlength="6" />
+                    <img id="verificationCodeImg" src="" alt="验证码" onclick="refreshVerificationCode()" style="cursor: pointer; height: 40px; border: 1px solid #ddd; border-radius: 5px;" />
+                </div>
+                <button class="btn btn-primary" onclick="login()">🔐 登录</button>
+            </div>
+        </div>
+
+        <div class="auth-section" id="loggedInSection" style="display: none;">
+            <div class="auth-form">
+                <span id="userInfo">欢迎，用户</span>
+                <button class="btn btn-info" onclick="refreshFiles()">🔄 刷新文件列表</button>
+                <button class="btn btn-danger" onclick="logout()">🚪 退出登录</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="status"></div>
+
+            <div class="file-list">
+                <div class="file-list-header">
+                    <h3>📁 日志文件列表</h3>
+                    <div class="file-search">
+                        <input type="text" id="fileSearchInput" placeholder="🔍 搜索文件名..." onkeyup="filterFiles()" />
+                        <div class="file-stats">
+                            <span id="fileStats">总计: 0 个文件</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="file-filters">
+                    <button class="filter-btn active" onclick="filterByType('all')">全部</button>
+                    <button class="filter-btn" onclick="filterByType('error')">错误日志</button>
+                    <button class="filter-btn" onclick="filterByType('info')">信息日志</button>
+                    <button class="filter-btn" onclick="filterByType('app')">应用日志</button>
+                </div>
+                <div id="fileList">
+                    <p>请先登录...</p>
+                </div>
+            </div>
+
+            <!-- 详情页面模式 -->
+            <div class="log-detail-page" id="logDetailPage" style="display: none;">
+                <div class="detail-header">
+                    <div class="detail-title">
+                        <button class="btn btn-secondary" onclick="backToFileList()">⬅️ 返回列表</button>
+                        <h3 id="detailFileName">文件详情</h3>
+                    </div>
+                    <div class="detail-actions">
+                        <button class="btn btn-info" onclick="downloadCurrentFile()">📥 下载</button>
+                        <button class="btn btn-success" onclick="refreshCurrentFile()">🔄 刷新</button>
+                        <button class="btn btn-warning" onclick="toggleViewMode()">📋 切换视图</button>
+                    </div>
+                </div>
+                
+                <div class="detail-info">
+                    <div class="file-metadata" id="fileMetadata">
+                        <!-- 文件元数据信息 -->
+                    </div>
+                </div>
+
+                <div class="detail-content">
+                    <div class="content-toolbar">
+                        <div class="search-controls">
+                            <input type="text" id="contentSearchInput" placeholder="🔍 搜索日志内容..." />
+                            <button class="btn btn-primary" onclick="searchInContent()">搜索</button>
+                            <button class="btn btn-secondary" onclick="clearContentSearch()">清除</button>
+                        </div>
+                        <div class="view-controls">
+                            <label>
+                                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> 自动刷新
+                            </label>
+                            <select id="pageSizeSelect" onchange="changePageSize()">
+                                <option value="50">50行/页</option>
+                                <option value="100" selected>100行/页</option>
+                                <option value="200">200行/页</option>
+                                <option value="500">500行/页</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="log-content-wrapper">
+                        <div class="log-content" id="logContent"></div>
+                    </div>
+                    
+                    <div class="pagination">
+                        <button class="btn btn-primary" onclick="previousPage()">⬅️ 上一页</button>
+                        <span id="pageInfo">第 1 页</span>
+                        <button class="btn btn-primary" onclick="nextPage()">➡️ 下一页</button>
+                        <div class="page-jump">
+                            <input type="number" id="pageJumpInput" placeholder="页码" min="1" />
+                            <button class="btn btn-secondary" onclick="jumpToPage()">跳转</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 传统查看器模式（保留兼容性） -->
+            <div class="log-viewer" id="logViewer" style="display: none;">
+                <div class="log-header">
+                    <span id="currentFile">当前文件: 无</span>
+                    <div>
+                        <button class="btn btn-info" onclick="downloadCurrentFile()">📥 下载</button>
+                        <button class="btn btn-danger" onclick="closeLogViewer()">❌ 关闭</button>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="搜索日志内容..." onkeyup="searchLogs()" />
+                </div>
+                <div class="log-content" id="logContentOld"></div>
+                <div class="pagination">
+                    <button class="btn btn-primary" onclick="previousPage()">⬅️ 上一页</button>
+                    <span id="pageInfoOld">第 1 页</span>
+                    <button class="btn btn-primary" onclick="nextPage()">➡️ 下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = '';
+        let currentFileName = '';
+        let currentPage = 1;
+        let totalPages = 1;
+        let searchKeyword = '';
+        let currentUser = '';
+        let verificationUUID = '';
+        let allFiles = []; // 存储所有文件数据
+        let filteredFiles = []; // 存储过滤后的文件数据
+        let currentFilter = 'all'; // 当前过滤类型
+        let autoRefreshInterval = null; // 自动刷新定时器
+        let currentPageSize = 100; // 当前页面大小
+        let isDetailMode = true; // 是否使用详情页面模式
+
+        const API_BASE = '/api/LogViewer';
+        const AUTH_API = '/api/User';
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        async function refreshVerificationCode() {
+            try {
+                const response = await fetch(`${AUTH_API}/getVierificationCode`, {
+                    method: 'GET'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.img && data.uuid) {
+                        document.getElementById('verificationCodeImg').src = `data:image/png;base64,${data.img}`;
+                        verificationUUID = data.uuid;
+                    } else {
+                        showStatus('获取验证码失败', 'error');
+                    }
+                } else {
+                    showStatus('获取验证码失败', 'error');
+                }
+            } catch (error) {
+                showStatus(`获取验证码失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value.trim();
+            const verificationCode = document.getElementById('verificationCodeInput').value.trim();
+            
+            if (!username || !password) {
+                showStatus('请输入用户名和密码', 'error');
+                return;
+            }
+
+            if (!verificationCode) {
+                showStatus('请输入验证码', 'error');
+                return;
+            }
+
+            if (!verificationUUID) {
+                showStatus('请先获取验证码', 'error');
+                refreshVerificationCode();
+                return;
+            }
+
+            try {
+                showStatus('正在登录...', 'info');
+                
+                const response = await fetch(`${AUTH_API}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userName: username,
+                        password: password,
+                        verificationCode: verificationCode,
+                        uuid: verificationUUID
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status && data.data && data.data.token) {
+                        authToken = data.data.token;
+                        currentUser = data.data.userName || username;
+                        
+                        // 保存到localStorage
+                        localStorage.setItem('authToken', authToken);
+                        localStorage.setItem('currentUser', currentUser);
+                        
+                        showLoginSuccess();
+                        showStatus('登录成功，正在加载文件列表...', 'success');
+                        refreshFiles();
+                    } else {
+                        showStatus(data.message || '登录失败', 'error');
+                        // 登录失败时刷新验证码
+                        refreshVerificationCode();
+                    }
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    showStatus(errorData.message || `登录失败: HTTP ${response.status}`, 'error');
+                    // 登录失败时刷新验证码
+                    refreshVerificationCode();
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        function showLoginSuccess() {
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('loggedInSection').style.display = 'block';
+            document.getElementById('userInfo').textContent = `欢迎，${currentUser}`;
+        }
+
+        function logout() {
+            authToken = '';
+            currentUser = '';
+            currentFileName = '';
+            
+            // 清除localStorage
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            
+            // 显示登录界面
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('loggedInSection').style.display = 'none';
+            
+            // 清空文件列表
+            document.getElementById('fileList').innerHTML = '<p>请先登录...</p>';
+            document.getElementById('logViewer').style.display = 'none';
+            
+            // 清空输入框
+            document.getElementById('usernameInput').value = '';
+            document.getElementById('passwordInput').value = '';
+            document.getElementById('verificationCodeInput').value = '';
+            
+            // 重新获取验证码
+            refreshVerificationCode();
+            
+            showStatus('已退出登录', 'info');
+        }
+
+        function checkStoredAuth() {
+            const storedToken = localStorage.getItem('authToken');
+            const storedUser = localStorage.getItem('currentUser');
+            
+            if (storedToken && storedUser) {
+                authToken = storedToken;
+                currentUser = storedUser;
+                showLoginSuccess();
+                showStatus('已自动登录，正在加载文件列表...', 'success');
+                refreshFiles();
+            }
+        }
+
+        async function refreshFiles() {
+            if (!authToken) {
+                showStatus('请先登录', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/files`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    allFiles = data.files || [];
+                    applyFilters();
+                    showStatus(`成功加载 ${data.count || 0} 个日志文件`, 'success');
+                } else if (response.status === 401) {
+                    showStatus('登录已过期，请重新登录', 'error');
+                    logout();
+                } else {
+                    const error = await response.text();
+                    showStatus(`加载文件列表失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        function displayFiles(files) {
+            const fileListDiv = document.getElementById('fileList');
+            
+            if (files.length === 0) {
+                fileListDiv.innerHTML = '<p>暂无日志文件</p>';
+                updateFileStats(0, 0);
+                return;
+            }
+
+            const html = files.map(file => `
+                <div class="file-item" data-filename="${file.name.toLowerCase()}" data-type="${getFileTypeCategory(file.type)}">
+                    <div class="file-info">
+                        <div class="file-name">📄 ${file.name}</div>
+                        <div class="file-meta">
+                            大小: ${formatFileSize(file.size)} | 
+                            修改时间: ${formatDate(file.lastModified)} | 
+                            类型: ${file.type} | 
+                            目录: ${file.directory || '根目录'}
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn btn-primary" onclick="viewFileDetail('${file.name}')">👁️ 详情</button>
+                        <button class="btn btn-success" onclick="downloadFile('${file.name}')">📥 下载</button>
+                        <button class="btn btn-info" onclick="tailFile('${file.name}')">🔄 实时</button>
+                    </div>
+                </div>
+            `).join('');
+
+            fileListDiv.innerHTML = html;
+            updateFileStats(files.length, allFiles.length);
+        }
+
+        // 文件搜索和过滤功能
+        function filterFiles() {
+            const searchTerm = document.getElementById('fileSearchInput').value.toLowerCase();
+            applyFilters(searchTerm);
+        }
+
+        function filterByType(type) {
+            // 更新过滤按钮状态
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            currentFilter = type;
+            const searchTerm = document.getElementById('fileSearchInput').value.toLowerCase();
+            applyFilters(searchTerm);
+        }
+
+        function applyFilters(searchTerm = '') {
+            filteredFiles = allFiles.filter(file => {
+                // 文件名搜索
+                const matchesSearch = searchTerm === '' || 
+                    file.name.toLowerCase().includes(searchTerm) ||
+                    file.directory.toLowerCase().includes(searchTerm);
+                
+                // 类型过滤
+                const matchesType = currentFilter === 'all' || 
+                    getFileTypeCategory(file.type) === currentFilter;
+                
+                return matchesSearch && matchesType;
+            });
+            
+            displayFiles(filteredFiles);
+        }
+
+        function getFileTypeCategory(fileType) {
+            if (fileType.includes('错误')) return 'error';
+            if (fileType.includes('信息')) return 'info';
+            if (fileType.includes('应用')) return 'app';
+            return 'other';
+        }
+
+        function updateFileStats(displayed, total) {
+            const statsElement = document.getElementById('fileStats');
+            if (displayed === total) {
+                statsElement.textContent = `总计: ${total} 个文件`;
+            } else {
+                statsElement.textContent = `显示: ${displayed} / ${total} 个文件`;
+            }
+        }
+
+        // 详情页面功能
+        function viewFileDetail(fileName) {
+            currentFileName = fileName;
+            currentPage = 1;
+            searchKeyword = '';
+            
+            // 隐藏文件列表，显示详情页面
+            document.querySelector('.file-list').style.display = 'none';
+            document.getElementById('logDetailPage').style.display = 'block';
+            document.getElementById('logViewer').style.display = 'none';
+            
+            // 设置文件名
+            document.getElementById('detailFileName').textContent = fileName;
+            
+            // 显示文件元数据
+            displayFileMetadata(fileName);
+            
+            // 加载文件内容
+            loadFileContent(fileName, 1, '');
+        }
+
+        function displayFileMetadata(fileName) {
+            const file = allFiles.find(f => f.name === fileName);
+            if (!file) return;
+            
+            const metadata = document.getElementById('fileMetadata');
+            metadata.innerHTML = `
+                <div class="metadata-item">
+                    <div class="metadata-label">文件名</div>
+                    <div class="metadata-value">${file.name}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">文件大小</div>
+                    <div class="metadata-value">${formatFileSize(file.size)}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">修改时间</div>
+                    <div class="metadata-value">${formatDate(file.lastModified)}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">文件类型</div>
+                    <div class="metadata-value">${file.type}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">所在目录</div>
+                    <div class="metadata-value">${file.directory || '根目录'}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">完整路径</div>
+                    <div class="metadata-value">${file.fullPath || file.name}</div>
+                </div>
+            `;
+        }
+
+        function backToFileList() {
+            document.querySelector('.file-list').style.display = 'block';
+            document.getElementById('logDetailPage').style.display = 'none';
+            document.getElementById('logViewer').style.display = 'none';
+            currentFileName = '';
+            
+            // 停止自动刷新
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                document.getElementById('autoRefresh').checked = false;
+            }
+        }
+
+        function refreshCurrentFile() {
+            if (currentFileName) {
+                loadFileContent(currentFileName, currentPage, searchKeyword);
+                showStatus('文件内容已刷新', 'success');
+            }
+        }
+
+        function toggleViewMode() {
+            // 在详情页面和传统查看器之间切换
+            const detailPage = document.getElementById('logDetailPage');
+            const oldViewer = document.getElementById('logViewer');
+            
+            if (detailPage.style.display !== 'none') {
+                // 切换到传统查看器
+                detailPage.style.display = 'none';
+                oldViewer.style.display = 'block';
+                isDetailMode = false;
+                
+                // 重新加载内容到传统查看器
+                viewFile(currentFileName, currentPage, searchKeyword);
+            } else {
+                // 切换到详情页面
+                oldViewer.style.display = 'none';
+                detailPage.style.display = 'block';
+                isDetailMode = true;
+                
+                // 重新加载内容到详情页面
+                loadFileContent(currentFileName, currentPage, searchKeyword);
+            }
+        }
+
+        // 加载文件内容（详情页面使用）
+        async function loadFileContent(fileName, page = 1, search = '') {
+            if (!authToken) {
+                showStatus('请先登录', 'error');
+                return;
+            }
+
+            try {
+                const encodedFileName = fileName.split('/').map(part => encodeURIComponent(part)).join('/');
+                const url = `${API_BASE}/view/${encodedFileName}?page=${page}&pageSize=${currentPageSize}&search=${encodeURIComponent(search)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayDetailLogContent(fileName, data);
+                    currentPage = page;
+                    searchKeyword = search;
+                } else if (response.status === 401) {
+                    showStatus('登录已过期，请重新登录', 'error');
+                    logout();
+                } else {
+                    const error = await response.text();
+                    showStatus(`查看文件失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 传统查看器（保持兼容性）
+        async function viewFile(fileName, page = 1, search = '') {
+            if (!authToken) {
+                showStatus('请先登录', 'error');
+                return;
+            }
+
+            try {
+                const encodedFileName = fileName.split('/').map(part => encodeURIComponent(part)).join('/');
+                const url = `${API_BASE}/view/${encodedFileName}?page=${page}&pageSize=100&search=${encodeURIComponent(search)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayLogContent(fileName, data);
+                    currentFileName = fileName;
+                    currentPage = page;
+                    searchKeyword = search;
+                } else if (response.status === 401) {
+                    showStatus('登录已过期，请重新登录', 'error');
+                    logout();
+                } else {
+                    const error = await response.text();
+                    showStatus(`查看文件失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 详情页面内容显示
+        function displayDetailLogContent(fileName, data) {
+            const logContent = document.getElementById('logContent');
+            const pageInfo = document.getElementById('pageInfo');
+            const pageJumpInput = document.getElementById('pageJumpInput');
+
+            // 高亮搜索关键词
+            let content = data.lines.join('\n');
+            if (searchKeyword) {
+                const regex = new RegExp(`(${escapeRegExp(searchKeyword)})`, 'gi');
+                content = content.replace(regex, '<span class="search-highlight">$1</span>');
+            }
+            
+            logContent.innerHTML = content;
+            
+            totalPages = data.totalPages || 1;
+            pageInfo.textContent = `第 ${data.currentPage || 1} 页 / 共 ${totalPages} 页 (${data.totalLines || 0} 行)`;
+            pageJumpInput.max = totalPages;
+            
+            // 滚动到顶部
+            document.querySelector('.log-content-wrapper').scrollTop = 0;
+        }
+
+        // 详情页面功能
+        function searchInContent() {
+            const searchTerm = document.getElementById('contentSearchInput').value;
+            searchKeyword = searchTerm;
+            loadFileContent(currentFileName, 1, searchTerm);
+        }
+
+        function clearContentSearch() {
+            document.getElementById('contentSearchInput').value = '';
+            searchKeyword = '';
+            loadFileContent(currentFileName, currentPage, '');
+        }
+
+        function changePageSize() {
+            const newPageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPageSize = newPageSize;
+            loadFileContent(currentFileName, 1, searchKeyword);
+        }
+
+        function jumpToPage() {
+            const targetPage = parseInt(document.getElementById('pageJumpInput').value);
+            if (targetPage >= 1 && targetPage <= totalPages) {
+                loadFileContent(currentFileName, targetPage, searchKeyword);
+            } else {
+                showStatus(`页码必须在 1 到 ${totalPages} 之间`, 'error');
+            }
+        }
+
+        function toggleAutoRefresh() {
+            const isEnabled = document.getElementById('autoRefresh').checked;
+            
+            if (isEnabled) {
+                autoRefreshInterval = setInterval(() => {
+                    refreshCurrentFile();
+                }, 5000); // 每5秒刷新一次
+                showStatus('已启用自动刷新（每5秒）', 'info');
+            } else {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+                showStatus('已关闭自动刷新', 'info');
+            }
+        }
+
+        // 工具函数
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function displayLogContent(fileName, data) {
+            const logViewer = document.getElementById('logViewer');
+            const currentFileSpan = document.getElementById('currentFile');
+            const logContent = document.getElementById('logContentOld');
+            const pageInfo = document.getElementById('pageInfoOld');
+
+            currentFileSpan.textContent = `当前文件: ${fileName}`;
+            logContent.textContent = data.lines.join('\n');
+            
+            totalPages = data.totalPages || 1;
+            pageInfo.textContent = `第 ${data.currentPage || 1} 页 / 共 ${totalPages} 页 (${data.totalLines || 0} 行)`;
+
+            logViewer.style.display = 'block';
+            logViewer.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function downloadFile(fileName) {
+            if (!authToken) {
+                showStatus('请先登录', 'error');
+                return;
+            }
+
+            try {
+                // 对于子目录路径，不要对斜杠进行编码
+                const encodedFileName = fileName.split('/').map(part => encodeURIComponent(part)).join('/');
+                const response = await fetch(`${API_BASE}/download/${encodedFileName}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showStatus(`文件 ${fileName} 下载成功`, 'success');
+                } else if (response.status === 401) {
+                    showStatus('登录已过期，请重新登录', 'error');
+                    logout();
+                } else {
+                    const error = await response.text();
+                    showStatus(`下载文件失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function tailFile(fileName) {
+            if (!authToken) {
+                showStatus('请先登录', 'error');
+                return;
+            }
+
+            try {
+                // 对于子目录路径，不要对斜杠进行编码
+                const encodedFileName = fileName.split('/').map(part => encodeURIComponent(part)).join('/');
+                const response = await fetch(`${API_BASE}/tail/${encodedFileName}?lines=50`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayLogContent(fileName, {
+                        lines: data.lines,
+                        currentPage: 1,
+                        totalPages: 1,
+                        totalLines: data.actualLines
+                    });
+                    showStatus(`显示 ${fileName} 的最新 ${data.actualLines} 行`, 'success');
+                } else if (response.status === 401) {
+                    showStatus('登录已过期，请重新登录', 'error');
+                    logout();
+                } else {
+                    const error = await response.text();
+                    showStatus(`获取实时日志失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        function downloadCurrentFile() {
+            if (currentFileName) {
+                downloadFile(currentFileName);
+            }
+        }
+
+        function closeLogViewer() {
+            document.getElementById('logViewer').style.display = 'none';
+            currentFileName = '';
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                if (isDetailMode && document.getElementById('logDetailPage').style.display !== 'none') {
+                    loadFileContent(currentFileName, currentPage - 1, searchKeyword);
+                } else {
+                    viewFile(currentFileName, currentPage - 1, searchKeyword);
+                }
+            }
+        }
+
+        function nextPage() {
+            if (currentPage < totalPages) {
+                if (isDetailMode && document.getElementById('logDetailPage').style.display !== 'none') {
+                    loadFileContent(currentFileName, currentPage + 1, searchKeyword);
+                } else {
+                    viewFile(currentFileName, currentPage + 1, searchKeyword);
+                }
+            }
+        }
+
+        function searchLogs() {
+            const search = document.getElementById('searchInput').value;
+            if (currentFileName) {
+                viewFile(currentFileName, 1, search);
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleString('zh-CN');
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 检查是否有保存的认证信息
+            checkStoredAuth();
+            
+            // 如果没有自动登录，显示登录提示并获取验证码
+            if (!authToken) {
+                showStatus('请登录以查看日志文件', 'info');
+                refreshVerificationCode();
+            }
+            
+            // 添加回车键登录支持
+            document.getElementById('verificationCodeInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    login();
+                }
+            });
+            
+            document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('verificationCodeInput').focus();
+                }
+            });
+            
+            document.getElementById('usernameInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('passwordInput').focus();
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

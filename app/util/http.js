@@ -6,9 +6,9 @@ if (process.env.NODE_ENV === 'development') {
 	ipAddress = "http://localhost:9100/"
 } else {
 	//发布后的地址
-	ipAddress = "http://localhost:9100/"
+	ipAddress = "http://10.11.0.18:9200/"
 }
-ipAddress = "http://localhost:9100/"
+//ipAddress = "http://localhost:9100/"
 function post(url, data, loading, error) {
 	return request(url, 'POST', data, loading, error);
 }

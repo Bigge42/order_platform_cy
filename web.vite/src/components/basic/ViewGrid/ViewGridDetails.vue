@@ -191,13 +191,9 @@ const loadBefore = (rows, callBack, item) => {
   //callBack(true)
 };
 const loadAfter = (rows, callBack, item) => {
-  //callBack(true)
-  emit("loadAfter", rows, callBack, item.table, item);
-  if (item.detail) {
-    // rows.forEach(x=>{
-    //     x[item.detail.table]=[];
-    // })
-  }
+  callBack(true)
+  emit("loadAfter", rows, ()=>{}, item.table, item);
+  //callBack();
   setFreeze(item.table, rows);
 };
 

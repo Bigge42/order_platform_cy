@@ -13,22 +13,24 @@
       :formRules="modifyOptions.data"
       :formFields="modifyOptions.fields"
     ></vol-form>
+    <div class="password-tip">
+      <div class="tip-title">密码强度要求</div>
+      <div class="tip-item">长度：8-12位字符</div>
+      <div class="tip-item">大写字母：至少一个 (A-Z)</div>
+      <div class="tip-item">小写字母：至少一个 (a-z)</div>
+      <div class="tip-item">数字：至少一个 (0-9)</div>
+      <div class="tip-item">特殊字符：至少一个 (!@#$%^&*等)</div>
+    </div>
     <template #footer>
       <div class="center">
-        <el-button type="primary" plain size="small" long @click="savePwd"
-          >保存</el-button
-        >
+        <el-button type="primary" plain size="small" long @click="savePwd">保存</el-button>
       </div>
     </template>
   </VolBox>
   <div class="user-info">
     <div class="user-content">
       <div class="left">
-        <img
-          class="header-img"
-          @click="showUpload"
-          :src="http.ipAddress + userInfo.headImageUrl"
-        />
+        <img class="header-img" @click="showUpload" :src="http.ipAddress + userInfo.headImageUrl" />
         <div class="text">
           <p class="name center">
             <span style="font-size: 13px">{{ userInfo.userName }}</span>
@@ -54,11 +56,7 @@
           :formFields="userInfo"
         >
           <div class="footer center">
-            <el-button
-              style="margin-top: 2px"
-              type="primary"
-              size="small"
-              @click="modifyInfo"
+            <el-button style="margin-top: 2px" type="primary" size="small" @click="modifyInfo"
               >保存</el-button
             >
           </div>
@@ -68,103 +66,118 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, getCurrentInstance, nextTick } from "vue";
-const { proxy } = getCurrentInstance();
+import { ref, reactive, getCurrentInstance, nextTick } from 'vue'
+const { proxy } = getCurrentInstance()
 const modifyOptions = reactive({
   model: false,
-  fields: { oldPwd: "", newPwd: "", newPwd1: "" },
+  fields: { oldPwd: '', newPwd: '', newPwd1: '' },
   data: [
-    [{ required: true, title: "旧密码", type: "password", field: "oldPwd" }],
-    [{ type: "password", required: true, title: "新密码", field: "newPwd" }],
-    [{ type: "password", required: true, title: "确认密码", field: "newPwd1" }],
-  ],
-});
+    [{ required: true, title: '旧密码', type: 'password', field: 'oldPwd' }],
+    [{ type: 'password', required: true, title: '新密码', field: 'newPwd' }],
+    [{ type: 'password', required: true, title: '确认密码', field: 'newPwd1' }]
+  ]
+})
 const userInfo = reactive({
-  headImageUrl: "",
-  createDate: "--",
-  userName: "--",
-  userTrueName: "",
-  remark: "",
-  email: "",
-  phoneNo: "",
-});
+  headImageUrl: '',
+  createDate: '--',
+  userName: '--',
+  userTrueName: '',
+  remark: '',
+  email: '',
+  phoneNo: ''
+})
 const editFormOptions = reactive([
-  [{ columnType: "string", title: "账号", field: "userName", disabled: true }],
-  [{ columnType: "string", title: "姓名", field: "userTrueName", required: true }],
-  [{ dataKey: "gender", title: "性别", field: "gender", data: [], type: "select" }],
-  [{ columnType: "string", title: "备注", field: "remark", type: "textarea" }],
-]);
+  [{ columnType: 'string', title: '账号', field: 'userName', disabled: true }],
+  [
+    {
+      columnType: 'string',
+      title: '姓名',
+      field: 'userTrueName',
+      required: true
+    }
+  ],
+  [
+    {
+      dataKey: 'gender',
+      title: '性别',
+      field: 'gender',
+      data: [],
+      type: 'select'
+    }
+  ],
+  [{ columnType: 'string', title: '备注', field: 'remark', type: 'textarea' }]
+])
 const modifyPwd = () => {
-  modifyOptions.model = true;
-};
+  modifyOptions.model = true
+}
 
-const pwdFormRef = ref();
+const pwdFormRef = ref()
 const savePwd = () => {
-  if (!pwdFormRef.value.validate()) return;
+  if (!pwdFormRef.value.validate()) return
   if (modifyOptions.fields.newPwd != modifyOptions.fields.newPwd1) {
-    return proxy.$message.error("两次密码不一致");
+    return proxy.$message.error('两次密码不一致')
   }
-  let url = "api/user/modifyPwd";
+  let url = 'api/user/modifyPwd'
   const params = {
     newPwd: modifyOptions.fields.newPwd,
-    oldPwd: modifyOptions.fields.oldPwd,
-  };
+    oldPwd: modifyOptions.fields.oldPwd
+  }
   proxy.http.post(url, params, true).then((x) => {
     if (!x.status) {
-      return proxy.$message.error(x.message);
+      return proxy.$message.error(x.message)
     }
-    modifyOptions.model = false;
-    proxy.$message.success(x.message);
-    pwdFormRef.value.reset();
-  });
-};
+    modifyOptions.model = false
+    proxy.$message.success(x.message)
+    pwdFormRef.value.reset()
+  })
+}
 
-const formRef = ref();
+const formRef = ref()
 const modifyInfo = () => {
   formRef.value.validate(() => {
-    proxy.http.post("api/user/updateUserInfo", userInfo).then((result) => {
-      proxy.$message.success(proxy.$ts(result));
-      let user = proxy.$store.getters.getUserInfo();
-      user.img = userInfo.headImageUrl;
-      user.userName = userInfo.userTrueName;
-      proxy.$store.commit("setUserInfo", user);
-    });
-  });
-};
-const inputRef = ref();
+    proxy.http.post('api/user/updateUserInfo', userInfo).then((result) => {
+      proxy.$message.success(proxy.$ts(result))
+      let user = proxy.$store.getters.getUserInfo()
+      user.img = userInfo.headImageUrl
+      user.userName = userInfo.userTrueName
+      proxy.$store.commit('setUserInfo', user)
+    })
+  })
+}
+const inputRef = ref()
 const showUpload = () => {
-  inputRef.value.click();
-};
+  inputRef.value.click()
+}
 
 const handleChange = (e) => {
-  var forms = new FormData();
-  let file = e.target.files[0];
-  forms.append("fileInput", file, file.name);
-  const url = "api/sys_user/upload";
+  var forms = new FormData()
+  let file = e.target.files[0]
+  forms.append('fileInput', file, file.name)
+  const url = 'api/sys_user/upload'
   proxy.http
     .post(url, forms, true, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: { 'Content-Type': 'multipart/form-data' }
     })
     .then((x) => {
-      userInfo.headImageUrl = x.data + file.name;
-      modifyInfo();
-    });
-};
-proxy.http.post("/api/user/getCurrentUserInfo", {}, true).then((x) => {
+      userInfo.headImageUrl = x.data + file.name
+      modifyInfo()
+    })
+}
+proxy.http.post('/api/user/getCurrentUserInfo', {}, true).then((x) => {
   if (!x.status) {
-    return proxy.$message.error(x.message);
+    return proxy.$message.error(x.message)
   }
-  x.data.createDate = (x.data.createDate || "").replace("T", " ");
-  x.data.gender = x.data.gender + "";
+  x.data.createDate = (x.data.createDate || '').replace('T', ' ')
+  x.data.gender = x.data.gender + ''
   nextTick(() => {
-    formRef.value.reset(x.data);
-  });
-  userInfo.img = proxy.base.getImgSrc(x.data.headImageUrl, proxy.http.ipAddress);
-  Object.assign(userInfo, x.data);
-});
+    formRef.value.reset(x.data)
+  })
+  userInfo.img = proxy.base.getImgSrc(x.data.headImageUrl, proxy.http.ipAddress)
+  Object.assign(userInfo, x.data)
+})
 </script>
 <style lang="less" scoped>
-img[src=""],
+img[src=''],
 img:not([src]) {
   opacity: 0;
 }
@@ -225,5 +238,24 @@ img:not([src]) {
 }
 .center {
   text-align: center;
+}
+
+.password-tip {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+
+  .tip-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .tip-item {
+    margin-bottom: 2px;
+  }
 }
 </style>

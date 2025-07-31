@@ -1,3 +1,4 @@
+
 export const resetPage = (paginations) => {
   // 重置查询分页
   // this.paginations.rows = 30;
@@ -31,17 +32,21 @@ export const loadData = async (
   let status = true
   // 合并查询信息(包查询分页、排序、查询条件等)
   if (query) {
-    param = Object.assign(param, query)
+    if (Array.isArray(query)) {
+      param.wheres = query;
+    } else {
+      param = Object.assign(param, query)
+    }
   }
   if (!(await props.loadBeforeAsync(param))) {
     return
   }
-  const eventName = 'loadBefore'
-  const onEventName = `on${eventName[0].toUpperCase() + eventName.slice(1)}`
+  let eventName = 'loadBefore'
+  let onEventName = `on${eventName[0].toUpperCase() + eventName.slice(1)}`
   if (vnode.props && onEventName in vnode.props) {
     // console.log('参数长度',vnode.props[onEventName].length);
     //兼容自定义页面早期写法问题
-    if (vnode.props[onEventName].length <= 1) {
+    if (vnode.props[onEventName]?.length <= 1) {
       emit(eventName, param);
     } else {
       const loadBefore = () => {
@@ -78,15 +83,25 @@ export const loadData = async (
     tableData.splice(0)
   }
   loading.value = false
-  emit(
-    'loadAfter',
-    data.rows,
-    (result) => {
-      status = result
-    },
-    data
-  )
-  if (!status) return
+
+  eventName = 'loadAfter'
+  onEventName = `on${eventName[0].toUpperCase() + eventName.slice(1)}`
+  if (vnode.props && onEventName in vnode.props) {
+    // console.log('参数长度',vnode.props[onEventName].length);
+    //兼容自定义页面早期写法问题
+    if (vnode.props[onEventName]?.length <= 1) {
+      emit(eventName, param);
+    } else {
+      const loadAfter = () => {
+        return new Promise((resolve) => {
+          emit(eventName, data.rows, resolve, data)
+        })
+      }
+      status = await loadAfter()
+    }
+  }
+
+  //if (!status) return
   // this.GetTableDictionary(data.rows)
   let rows = data.rows || []
   if (props.rowParentField) {

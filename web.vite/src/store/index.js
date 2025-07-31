@@ -75,6 +75,13 @@ export default createStore({
       }
       return '未获取到登陆信息'
     },
+    getLoginName: (state) => () => {
+      getUserInfo(state)
+      if (state.userInfo) {
+        return state.userInfo.loginName || ''
+      }
+      return ''
+    },
     getToken: (state) => () => {
       getUserInfo(state)
       if (state.userInfo) {

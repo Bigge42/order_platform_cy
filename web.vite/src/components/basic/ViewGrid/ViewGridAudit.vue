@@ -16,6 +16,7 @@
     </template>
 
     <div
+      ref="auditContentRef"
       class="audit-model-content"
       style="max-height: 600px"
       :style="{
@@ -98,10 +99,21 @@
         </table>
       </div>
       <slot name="auditContent"></slot>
-      <el-radio-group v-show="hasFlow" style="padding-left: 15px" v-model="activeName" class="ml-4">
-        <el-radio label="audit" value="audit" size="large">{{ $ts('审核') }}</el-radio>
-        <el-radio label="log" value="log" size="large">{{ $ts('审核记录') }}</el-radio>
-      </el-radio-group>
+      <div class="audit-btn" v-show="hasFlow">
+        <el-radio-group style="padding-left: 15px" v-model="activeName" class="ml-4">
+          <el-radio label="audit" value="audit" size="large">{{ $ts('审核') }}</el-radio>
+          <el-radio label="log" value="log" size="large">{{ $ts('审核记录') }}</el-radio>
+        </el-radio-group>
+        <el-button
+          type="primary"
+          v-show="activeName == 'log'"
+          @click="exportPDF"
+          style="margin-left: 30px; font-size: 15px"
+          link
+          icon="Sort"
+          >{{ $ts('导出PDF') }}</el-button
+        >
+      </div>
       <div v-show="activeName == 'audit' || !hasFlow" class="audit-content">
         <div class="fx-left" v-if="hasFlow">
           <div class="v-steps">
@@ -241,6 +253,7 @@
             </div>
 
             <div class="rd" v-else>{{ $ts('审批意见') }}</div>
+
             <el-input
               style="padding-top: 3px"
               v-model="auditParam.reason"
@@ -248,6 +261,9 @@
               :autosize="{ minRows: 4, maxRows: 10 }"
               :placeholder="$ts('审批意见') + '...'"
             ></el-input>
+            <div v-if="attachInfo && attachInfo.allowUpload">
+              <audit-attach ref="attachRef"></audit-attach>
+            </div>
             <div class="btn">
               <el-button type="primary" @click="auditClick" icon="Check">{{
                 $ts(isAnti ? '反审' : '审核')
@@ -323,16 +339,20 @@ import VolBox from '@/components/basic/VolBox.vue'
 import VolImageViewer from '@/components/basic/VolImageViewer.vue'
 import ViewGridAuditEditForm from './ViewGridAuditEditForm.vue'
 import ViewGridAuditSign from './ViewGridAuditSign.vue'
-import { defineComponent, ref, reactive, getCurrentInstance, computed } from 'vue'
+import ViewGridAuditAttach from './ViewGridAuditAttach.vue'
+import { defineComponent, ref, reactive, getCurrentInstance, computed, nextTick } from 'vue'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 export default defineComponent({
   components: {
     VolTable,
     VolBox,
     'vol-image-viewer': VolImageViewer,
     'audit-edit-form': ViewGridAuditEditForm,
-    'audit-sign': ViewGridAuditSign
+    'audit-sign': ViewGridAuditSign,
+    'audit-attach': ViewGridAuditAttach
   },
-  emits: ['auditClick', 'signAfter', 'parentCall', 'flowLoadAfter'],
+  emits: ['auditClick','auditAfter', 'signAfter', 'parentCall', 'flowLoadAfter'],
   props: {
     option: {
       //生成vue文件的table参数
@@ -346,6 +366,14 @@ export default defineComponent({
     }
   },
   setup(props, { emit }) {
+    const auditContentRef = ref(null)
+
+    const attachInfo = ref({
+      allowUpload: null,
+      attachQty: null,
+      attachType: null
+    })
+
     const height = ref(500)
     const width = ref(920)
     const model = ref(false)
@@ -372,7 +400,15 @@ export default defineComponent({
     const columns = reactive([
       { title: '节点', field: 'stepName', width: 100 },
       { title: '审批人', field: 'auditor', width: 70 },
-      { title: '审批结果', field: 'auditStatus', width: 70, bind: { data: [] } },
+      {
+        title: '审批结果',
+        field: 'auditStatus',
+        width: 70,
+        bind: { data: [] },
+        normal: true
+      },
+      { title: '审批附件', field: 'attachFile', width: 80, type: 'file' },
+      // <td>{{ data.attachFile }}</td>
       { title: '审批时间', field: 'auditDate', width: 140 },
       { title: '审批意见', field: 'remark', width: 150 }
     ])
@@ -392,6 +428,8 @@ export default defineComponent({
     const rowLen = ref(0)
     const logs = ref([])
     let currentRows = []
+
+    const attachRef = ref()
 
     let _option
     let tableKey
@@ -462,9 +500,10 @@ export default defineComponent({
           result.form.data = {}
         }
 
-        // if (isAnti) {
-
-        // }
+        attachInfo.value = result.attachInfo
+        nextTick(() => {
+          attachRef.value?.show(attachInfo.value)
+        })
 
         formData.value = result.form.data
 
@@ -494,7 +533,9 @@ export default defineComponent({
       }
 
       if (!isFlow.value && !isAnti.value) {
-        emit('auditClick', auditParam, currentRows, (result) => {
+        const attachFile = attachRef.value?.getFile()
+
+        emit('auditClick', auditParam, currentRows, attachFile, (result) => {
           if (result.status) {
             model.value = false
             tableData.length = 0
@@ -524,8 +565,15 @@ export default defineComponent({
         url = `api/${currentOption.table}/${mh}?auditReason=${auditParam.reason}&auditStatus=${
           auditParam.value < 0 ? 0 : auditParam.value
         }`
+
+        const attachFile = attachRef.value?.getFile()
+        if (attachFile) {
+          url += '&attach=' + attachFile
+        }
         params = keys
       }
+      // console.log(url);
+      // return;
 
       proxy.http.post(url, params, '审核中....').then((x) => {
         if (!x.status) {
@@ -535,6 +583,7 @@ export default defineComponent({
         model.value = false
         proxy.$parent.search ? proxy.$parent.search() : proxy.$parent.$parent.search()
         proxy.$message.success(x.message)
+        emit('auditAfter', auditParam, currentRows, attachFile)
       })
     }
     const isFlow = ref(false)
@@ -678,6 +727,19 @@ export default defineComponent({
     const getTable = () => {
       return currentTable || props.option.url.replaceAll('/', '')
     }
+
+    const exportPDF = async () => {
+      const canvas = await html2canvas(auditContentRef.value)
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF()
+      const imgProps = pdf.getImageProperties(imgData)
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      pdf.save(proxy.$ts('审核信息') + '.pdf')
+    }
+
     return {
       columns,
       height,
@@ -715,7 +777,11 @@ export default defineComponent({
       signClick,
       signRef,
       signAfter,
-      getTable
+      getTable,
+      exportPDF,
+      auditContentRef,
+      attachInfo,
+      attachRef
     }
   }
 })
@@ -933,6 +999,7 @@ export default defineComponent({
 .anti-table {
   width: 100%;
   margin-top: 10px;
+
   td {
     padding: 9px 7px;
     font-size: 14px;
@@ -946,11 +1013,13 @@ export default defineComponent({
     width: 100px;
   }
 }
+
 thead td {
   color: #000 !important;
   font-weight: bold;
   font-size: 13px !important;
 }
+
 .form-img img,
 .form-file a {
   color: #0101ee;
@@ -987,5 +1056,9 @@ thead td {
 
 .item-require {
   color: #b70404;
+}
+
+.audit-btn {
+  display: flex;
 }
 </style>

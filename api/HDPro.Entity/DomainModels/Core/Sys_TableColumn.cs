@@ -239,7 +239,12 @@ namespace HDPro.Entity.DomainModels
         [Editable(true)]
         public int? IsColumnData { get; set; }
 
-   
+        /// <summary>
+        ///
+        /// <summary>
+        [Display(Name = "比较符号集")]
+        [Editable(true)]
+        public string ComparationList { get; set; }
 
     }
 }

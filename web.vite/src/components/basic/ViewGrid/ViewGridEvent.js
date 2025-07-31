@@ -200,8 +200,8 @@ export default (proxy, props, ctx, dataConfig) => {
     audit(rows, true)
   }
   //保存审批
-  const saveAudit = async (params, rows, callback) => {
-    saveAuditClick(proxy, props, params, rows, callback)
+  const saveAudit = async (params, rows,attachFile, callback) => {
+    saveAuditClick(proxy, props, params, rows,attachFile, callback)
   }
   //打印
   const printClick = async (rows) => {

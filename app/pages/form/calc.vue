@@ -32,8 +32,7 @@
 		defineExpose,
 		getCurrentInstance,
 		watch,
-		onMounted,
-		reactive
+		onMounted
 	} from 'vue'
 
 	const {

@@ -88,7 +88,7 @@ namespace HDPro.Core.BaseProvider
         ///         };
         /// </param>
         /// <returns></returns>
-        IQueryable<TEntity> FindAsIQueryable(Expression<Func<TEntity, bool>> predicate, Expression<Func<TEntity, Dictionary<object, QueryOrderBy>>> orderBy = null);
+        IQueryable<TEntity> FindAsIQueryable(Expression<Func<TEntity, bool>> predicate, Expression<Func<TEntity, Dictionary<object, QueryOrderBy>>> orderBy = null, bool filterDeleted = true);
         /// <summary>
         /// 通过条件查询数据
         /// </summary>

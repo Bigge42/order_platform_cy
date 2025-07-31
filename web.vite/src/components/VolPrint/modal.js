@@ -1,13 +1,5 @@
 import { createApp } from "vue";
 
-/*
- * @Description: 封装的一个 Modal, 使用 Api 形式调用
- * @Author: CcSimple
- * @Github: https://github.com/CcSimple
- * @Date: 2023-02-09 16:12:54
- * @LastEditors: CcSimple
- * @LastEditTime: 2023-02-09 23:25:36
- */
 const Modal = {
   props: { 
     title: {

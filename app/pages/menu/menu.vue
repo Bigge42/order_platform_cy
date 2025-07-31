@@ -1,11 +1,11 @@
 <template>
 	<view class="menu-container">
-		<view class="demo-pd-30 menu-item">
+		<!-- <view class="demo-pd-30 menu-item">
 			<vol-alert type="primary">
 				<view class="text-item">1.页面自动生成，支持菜单、按钮、数据、字段权限</view>
 				<view class="text-item">2.页面支持零代码自动生成增删改查功能；支持主从表、一对多自动生成；支持组件扩展实现复杂操作; 支持扫码、定位、拍照等常用基础功能</view>
 			</vol-alert>
-		</view>
+		</view> -->
 		<view class="menu-item menu-item-data" v-for="(item,index) in menuList" :key="index">
 			<vol-title :border="true" :title="item.name"></vol-title>
 			<view class="menu-item-grid">

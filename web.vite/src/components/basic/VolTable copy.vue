@@ -1,4 +1,5 @@
 <template>
+  <!-- 2021.11.18移除voltable方法@cell-mouse-leave="rowEndEdit" -->
   <div
     class="vol-table"
     ref="refTable"
@@ -582,7 +583,7 @@
       :padding="15"
       lazy
     >
-      <!-- 上传图片、excel或其他文件、文件数量、大小限制都可以，参照upload组件api -->
+      <!-- 上传图片、excel或其他文件、文件数量、大小限制都可以，参照volupload组件api -->
       <div class="vol-table-upload">
         <VolUpload
           style="text-align: center"
@@ -883,7 +884,8 @@ export default defineComponent({
       fxRight: false, //是否有右边固定表头
       selectRows: [], //当前选中的行
       isChrome: false,
-      //able带数据源的单元格是否启用tag标签(下拉框等单元格以tag标签显示)
+      //vol-table带数据源的单元格是否启用tag标签(下拉框等单元格以tag标签显示)
+      //2023.04.02更新voltable与main.js
       useTag: true,
       currentRow: {},
       currentColumn: [],
@@ -1531,7 +1533,7 @@ export default defineComponent({
       let data = this.url ? this.rowData : this.tableData;
       let indexArr = this.getSelectedIndex();
       if (indexArr.length == 0) {
-        return this.$Message.error("删除操作必须设置Table的属性index='true'");
+        return this.$Message.error("删除操作必须设置VolTable的属性index='true'");
       }
       // if (indexArr.length == 0 || !this.key) {
       //   return this.$message.error(

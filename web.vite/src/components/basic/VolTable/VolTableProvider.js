@@ -56,10 +56,13 @@ export const initColumnDisabled = (row, column) => {
   return column.getDisabled && column.getDisabled(row, column)
 }
 
+
+
 export const initDrag = (props, dragRef, tableRef, showDragMask, realHeight) => {
   if (!props.dragPosition) {
     return
   }
+
   let disY = 0
   // console.log('11111')
   dragRef.onmousedown = (ev) => {
@@ -86,6 +89,7 @@ export const initDrag = (props, dragRef, tableRef, showDragMask, realHeight) => 
       document.onmousemove = null
       document.onmouseup = null
     }
+      ev?.preventDefault()
   }
 }
 

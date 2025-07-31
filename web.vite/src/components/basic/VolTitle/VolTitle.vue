@@ -23,18 +23,18 @@
 const props = defineProps({
   title: {
     type: String,
-    default: "",
+    default: ''
   },
   size: {
     type: Number,
-    default: 14,
+    default: 14
   },
   border: {
     type: Boolean,
-    default: false,
+    default: false
   },
-  icon: "",
-});
+  icon: ''
+})
 </script>
 
 <style lang="less" scoped>

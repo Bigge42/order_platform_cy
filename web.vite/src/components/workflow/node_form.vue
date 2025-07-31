@@ -26,8 +26,7 @@
           </VolForm>
         </div>
         <div>
-          <node-filter :filters="node.filters" :tableName="tableName" ref="filter">
-          </node-filter>
+          <node-filter :filters="node.filters" :tableName="tableName" ref="filter"> </node-filter>
         </div>
       </div>
       <!--            <div class="el-node-form-tag"></div>-->
@@ -37,12 +36,12 @@
 
 <script lang="jsx">
 // import { cloneDeep } from 'lodash'
-import VolForm from "@/components/basic/VolForm.vue";
-import nodeFilter from "./node_filter.vue";
+import VolForm from '@/components/basic/VolForm.vue'
+import nodeFilter from './node_filter.vue'
 export default {
   components: {
     VolForm,
-    "node-filter": nodeFilter,
+    'node-filter': nodeFilter
   },
   props: {
     // node: {
@@ -72,46 +71,46 @@ export default {
     ) {
       this.formRules.forEach((options) => {
         options.forEach((option) => {
-          if (option.field == "auditType") {
-            option.data.push(...this.$global.audit.auditType);
+          if (option.field == 'auditType') {
+            option.data.push(...this.$global.audit.auditType)
           }
-        });
-      });
+        })
+      })
     }
 
-    this.http.get("api/Sys_WorkFlow/getNodeDic").then((result) => {
+    this.http.get('api/Sys_WorkFlow/getNodeDic').then((result) => {
       this.formRules.forEach((options) => {
         options.forEach((option) => {
           if (option.dataKey && !option.data.length) {
-            let data = result[option.dataKey] || [];
+            let data = result[option.dataKey] || []
             if (data.length > 1000) {
               data = data.map((c) => {
                 return {
                   key: c.key,
                   label: c.value,
-                  value: c.key,
-                };
-              });
+                  value: c.key
+                }
+              })
             }
-            option.data = data;
+            option.data = data
           }
-        });
-      });
-    });
+        })
+      })
+    })
   },
   data() {
     return {
-      tableName: "",
+      tableName: '',
       index: 1,
       visible: true,
       // node 或 line
-      type: "node",
+      type: 'node',
       //   node: {},
       line: {},
       data: {},
 
       node: {
-        name: "",
+        name: '',
         auditType: 1, //审核类型
         userId: [],
         roleId: [],
@@ -122,116 +121,149 @@ export default {
         //  nodeValue: null,
         sendMail: 0,
         filters: [],
+        AllowUpload: 0,
+        AttachType: null,
+        AttachQty: null
       },
       formRules: [
         [
           {
-            title: "节点名称",
-            field: "name",
+            title: '节点名称',
+            field: 'name',
             required: true,
-            colSize: 12,
-          },
+            colSize: 12
+          }
         ],
         [
           {
-            dataKey: "",
-            title: "审批类型",
+            dataKey: '',
+            title: '审批类型',
             required: true,
             hidden: false,
-            field: "auditType",
+            field: 'auditType',
             data: [
-              { key: 1, value: "按用户审批" },
-              { key: 2, value: "按角色审批" },
-              { key: 3, value: "按部门审批" },
-              { key: 4, value: "提交人上级部门审批" },
-              { key: 5, value: "提交人上级角色审批" },
+              { key: 1, value: '按用户审批' },
+              { key: 2, value: '按角色审批' },
+              { key: 3, value: '按部门审批' },
+              { key: 4, value: '提交人上级部门审批' },
+              { key: 5, value: '提交人上级角色审批' },
+              { key: 6, value: '提交人自己' }
             ],
-            type: "select",
-            onChange: this.nodeTypeChange,
+            type: 'select',
+            onChange: this.nodeTypeChange
           },
           {
-            dataKey: "users",
+            dataKey: 'users',
             hidden: false,
-            title: "审批用户",
+            title: '审批用户',
             required: true,
-            field: "userId",
+            field: 'userId',
             data: [],
-            type: "selectList",
+            type: 'selectList'
           },
           {
-            dataKey: "roles",
+            dataKey: 'roles',
             hidden: true,
-            title: "角色信息",
+            title: '角色信息',
             required: true,
-            field: "roleId",
+            field: 'roleId',
 
             data: [],
-            type: "selectList",
+            type: 'selectList'
           },
           {
-            dataKey: "dept",
+            dataKey: 'dept',
             hidden: true,
-            title: "部门信息",
+            title: '部门信息',
             required: true,
-            field: "deptId",
+            field: 'deptId',
             data: [],
-            type: "selectList",
-          },
+            type: 'selectList'
+          }
         ],
         [
           {
-            dataKey: "",
-            title: "审批未通过",
+            dataKey: '',
+            title: '审批未通过',
             required: false,
-            field: "auditRefuse",
+            field: 'auditRefuse',
             hidden: false,
             data: [
-              { key: 1, value: "返回上一节点" },
-              { key: 2, value: "流程重新开始" },
-              { key: 0, value: "流程结束" },
+              { key: 1, value: '返回上一节点' },
+              { key: 2, value: '流程重新开始' },
+              { key: 0, value: '流程结束' }
             ],
-            type: "select",
-            colSize: 6,
+            type: 'select',
+            colSize: 6
           },
           {
-            dataKey: "",
-            title: "审批驳回",
+            dataKey: '',
+            title: '审批驳回',
             required: false,
             hidden: false,
-            field: "auditBack",
+            field: 'auditBack',
             data: [
-              { key: 1, value: "返回上一节点" },
-              { key: 2, value: "流程重新开始" },
-              { key: 0, value: "流程结束" },
+              { key: 1, value: '返回上一节点' },
+              { key: 2, value: '流程重新开始' },
+              { key: 0, value: '流程结束' }
             ],
-            type: "select",
-            colSize: 6,
-          },
+            type: 'select',
+            colSize: 6
+          }
         ],
         [
           {
-            dataKey: "",
-            title: "审核后发送邮件通知",
+            dataKey: '',
+            title: '是否可上传附件',
             required: false,
             hidden: false,
-            field: "sendMail",
+            field: 'AllowUpload',
             data: [
-              { key: 1, value: "是" },
-              { key: 0, value: "否" },
+              { key: 1, value: '是' },
+              { key: 0, value: '否' }
             ],
-            type: "switch",
+            type: 'switch'
           },
           {
-            dataKey: "",
-            title: "启用并签(或签)",
+            title: '上传附件数量',
             required: false,
             hidden: false,
-            field: "auditMethod", //审批方式
+            field: 'AttachQty',
+            type: 'number'
+          }
+          // {
+          //   dataKey: "",
+          //   title: "上传附件类型",
+          //   required: false,
+          //   hidden: false,
+          //   field: "AttachType",
+          //   type: "select",data:[]
+          // },
+        ],
+        [
+          {
+            dataKey: '',
+            title: '审核后发送邮件通知',
+            required: false,
+            hidden: false,
+            field: 'sendMail',
             data: [
-              { key: 1, value: "是" },
-              { key: 0, value: "否" },
+              { key: 1, value: '是' },
+              { key: 0, value: '否' }
             ],
-            type: "radio",
+            type: 'switch'
+          },
+          {
+            dataKey: '',
+            title: '启用并签(或签)',
+            required: false,
+            hidden: false,
+            field: 'auditMethod', //审批方式
+            data: [
+              { key: 1, value: '是' },
+              { key: 0, value: '否' }
+            ],
+            type: 'radio',
             extra: {
               render: (h) => {
                 return (
@@ -248,27 +280,27 @@ export default {
                           <i
                             style="color: #3F51B5;font-size: 12px;position: absolute; top: -15px;width: 42px;right: -4px;"
                             onClick={() => {
-                              this.popover();
+                              this.popover()
                             }}
                             class="el-icon-warning-outline"
                           >
                             说明
                           </i>
-                        );
-                      },
+                        )
+                      }
                     }}
                   </el-popover>
-                );
-              },
-            },
-          },
-        ],
-      ],
-    };
+                )
+              }
+            }
+          }
+        ]
+      ]
+    }
   },
   methods: {
     nameClick(index) {
-      this.index = index;
+      this.index = index
     },
     /**
      * 表单修改，这里可以根据传入的ID进行业务信息获取
@@ -276,55 +308,55 @@ export default {
      * @param id
      */
     nodeInit(data, id, tableName) {
-      this.tableName = tableName;
-      this.type = "node";
-      this.data = data;
+      this.tableName = tableName
+      this.type = 'node'
+      this.data = data
       // this.tableName=data.
       data.nodeList.filter((node) => {
         if (node.id === id) {
           this.formRules.forEach((options) => {
             options.forEach((c) => {
-              if (c.field != "name") {
-                c.hidden = node.type == "start" || node.type == "end";
+              if (c.field != 'name') {
+                c.hidden = node.type == 'start' || node.type == 'end'
               }
-            });
-          });
+            })
+          })
           if (!node.filters) {
-            node.filters = [];
+            node.filters = []
           }
           if (!Array.isArray(node.userId)) {
-            node.userId = [node.userId || ""]
+            node.userId = [node.userId || '']
               .filter((x) => {
-                return x;
+                return x
               })
               .map((x) => {
-                return x * 1;
-              });
+                return x * 1
+              })
           }
           if (!Array.isArray(node.roleId)) {
-            node.roleId = [node.roleId || ""]
+            node.roleId = [node.roleId || '']
               .filter((x) => {
-                return x;
+                return x
               })
               .map((x) => {
-                return x * 1;
-              });
+                return x * 1
+              })
           }
           if (!Array.isArray(node.deptId)) {
-            node.deptId = [node.deptId || ""]
+            node.deptId = [node.deptId || '']
               .filter((x) => {
-                return x;
+                return x
               })
               .map((x) => {
-                return x;
-              });
+                return x
+              })
           }
-          this.node = node; // cloneDeep(node)
-          if (node.type != "start" && node.type != "end") {
-            this.nodeTypeChange(node.auditType);
+          this.node = node // cloneDeep(node)
+          if (node.type != 'start' && node.type != 'end') {
+            this.nodeTypeChange(node.auditType)
           }
         }
-      });
+      })
       // data.nodeList.filter((node) => {
       //     if (node.id === id) {
       //         let _node = cloneDeep(node);
@@ -347,52 +379,52 @@ export default {
       this.formRules.forEach((options) => {
         options.forEach((option) => {
           if (
-            (value == 4 || value == 5) &&
-            ["userId", "roleId", "deptId"].indexOf(option.field) != -1
+            (value == 4 || value == 5 || value == 6) &&
+            ['userId', 'roleId', 'deptId'].indexOf(option.field) != -1
           ) {
-            option.required = false;
-            option.hidden = true;
-            return;
+            option.required = false
+            option.hidden = true
+            return
           }
-          option.required = true;
-          if (option.field == "userId") {
-            option.hidden = value != 1;
-          } else if (option.field == "roleId") {
-            option.hidden = value != 2;
-          } else if (option.field == "deptId") {
-            option.hidden = value != 3;
+          option.required = true
+          if (option.field == 'userId') {
+            option.hidden = value != 1
+          } else if (option.field == 'roleId') {
+            option.hidden = value != 2
+          } else if (option.field == 'deptId') {
+            option.hidden = value != 3
           }
-        });
-      });
+        })
+      })
     },
     lineInit(line) {
-      this.type = "line";
-      this.line = line;
+      this.type = 'line'
+      this.line = line
     },
     // 修改连线
     saveLine() {
-      this.$emit("setLineLabel", this.line.from, this.line.to, this.line.label);
+      this.$emit('setLineLabel', this.line.from, this.line.to, this.line.label)
     },
     save() {
       this.data.nodeList.filter((node) => {
         if (node.id === this.node.id) {
-          node.name = this.node.name;
-          node.left = this.node.left;
-          node.top = this.node.top;
-          node.ico = this.node.ico;
-          node.state = this.node.state;
-          node.stepValue = this.node.stepValue;
-          this.$emit("repaintEverything", this.node);
+          node.name = this.node.name
+          node.left = this.node.left
+          node.top = this.node.top
+          node.ico = this.node.ico
+          node.state = this.node.state
+          node.stepValue = this.node.stepValue
+          this.$emit('repaintEverything', this.node)
         }
-      });
-      this.$message.success("保存成功");
-    },
-  },
-};
+      })
+      this.$message.success('保存成功')
+    }
+  }
+}
 </script>
 
 <style lang="less" scoped>
-@import "./index.css";
+@import './index.css';
 .el-node-form-tag {
   position: absolute;
   top: 50%;

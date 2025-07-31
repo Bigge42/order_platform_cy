@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.Extensions.Primitives;
 using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 using System;
 using System.Collections.Generic;
@@ -16,10 +17,11 @@ using HDPro.Core.Extensions;
 using HDPro.Core.Infrastructure;
 using HDPro.Core.ManageUser;
 using HDPro.Core.Services;
+using HDPro.Core.SignalR;
 using HDPro.Core.UserManager;
 using HDPro.Core.Utilities;
 using HDPro.Entity.DomainModels;
-using static Npgsql.PostgresTypes.PostgresCompositeType;
+
 
 namespace HDPro.Core.WorkFlow
 {
@@ -105,7 +107,9 @@ namespace HDPro.Core.WorkFlow
             if (flowFormDetails != null)
             {
                 var detailCondition = keyName.CreateExpression<Detail>(tableKey, Enums.LinqExpressionType.Equal);
-                var detailData = await DBServerProvider.GetEFDbContext<Detail>().Set<Detail>().Where(detailCondition).ToListAsync();
+                var detailData = await DBServerProvider.GetEFDbContext<Detail>().Set<Detail>().Where(detailCondition)
+                    .FlowQuery<Detail>()
+                    .ToListAsync();
 
                 var detailObj = typeof(WorkFlowManager).GetMethod("GetFormData")
                                        .MakeGenericMethod(new Type[] { typeof(Detail) })
@@ -472,6 +476,8 @@ namespace HDPro.Core.WorkFlow
                 CreateDate = DateTime.Now,
                 Creator = userInfo.UserTrueName
             };
+            //生成标题模板
+            WorkFlowGeneric.CreateTitleTemplate(entity, workFlowTable, workFlow);
             //生成流程的下一步
             var steps = workFlow.FilterList.Where(x => x.StepAttrType == StepType.start.ToString()).Select(s => new Sys_WorkFlowTableStep()
             {
@@ -661,6 +667,27 @@ namespace HDPro.Core.WorkFlow
                     }
                 }
             }
+            //2025.05.25增加提交人自己审批
+            if (steps.Exists(x => x.StepType == (int)AuditType.提交人自己))
+            {
+                string parentDeptIds = GetStepValueWithParentDeptId(entity);
+                var property = typeof(T).GetProperties().Where(x => x.Name == AppSetting.CreateMember.UserIdField).FirstOrDefault();
+                int userId = 0;
+                if (property != null)
+                {
+                    userId = property.GetValue(entity).GetInt();
+                }
+                foreach (var item in steps)
+                {
+                    if (item.StepType == (int)AuditType.提交人自己)
+                    {
+                        item.StepType = (int)AuditType.用户审批;
+                        item.StepValue = userId.ToString();
+                        item.Remark = stepMsg;
+                    }
+                }
+            }
+
 
             //设置进入流程后的第一个审核节点,(开始节点的下一个节点)
             var nodeInfo = steps.Where(x => x.ParentId == steps[0].StepId).Select(s => new
@@ -800,8 +827,7 @@ namespace HDPro.Core.WorkFlow
 
             var keyProperty = typeof(T).GetKeyProperty();
             string key = keyProperty.GetValue(entity).ToString();
-            string workTable = workFlowTableName ?? typeof(T).GetEntityTableName(false);
-
+            string workTable = workFlowTableName;
             Sys_WorkFlowTable workFlow = dbContext.Set<Sys_WorkFlowTable>()
                        .Where(x => x.WorkTable == workTable && x.WorkTableKey == key)
                         .Include(x => x.Sys_WorkFlowTableStep)
@@ -809,7 +835,21 @@ namespace HDPro.Core.WorkFlow
 
             if (workFlow == null)
             {
-                return webResponse.Error("未查到流程信息,请检查数据是否被删除");
+                string entityName = typeof(T).GetEntityTableName(false);
+                if (entityName != workFlowTableName)
+                {
+                    workFlow = dbContext.Set<Sys_WorkFlowTable>()
+                      .Where(x => x.WorkTable == entityName && x.WorkTableKey == key)
+                       .Include(x => x.Sys_WorkFlowTableStep)
+                      .ToList().FirstOrDefault();
+
+                }
+                if (workFlow == null)
+                {
+                    return webResponse.Error("未查到流程信息,请检查数据是否被删除");
+                }
+                workFlowTableName = entityName;
+                workTable = entityName;
             }
             if (flowWriteState == FlowWriteState.重新开始)
             {
@@ -911,6 +951,11 @@ namespace HDPro.Core.WorkFlow
                 CreateDate = DateTime.Now,
                 StepName = currentStep.StepName
             };
+
+            if (HttpContext.Current.Request.Query.TryGetValue("attach", out StringValues attach))
+            {
+                log.AttachFile = attach;
+            }
 
             if (filterOptions != null)
             {
@@ -1386,15 +1431,16 @@ namespace HDPro.Core.WorkFlow
 
         private static void SendMail(Sys_WorkFlowTable workFlow, FilterOptions filterOptions, Sys_WorkFlowTableStep nextStep, BaseDbContext dbContext, List<int> userIds = null, string title = null)
         {
-            if (filterOptions == null || filterOptions.SendMail != 1)
+            if (!string.IsNullOrEmpty(workFlow.TitleTemplate))
             {
-                return;
+                title = workFlow.TitleTemplate;
             }
-            if (nextStep == null)
+            else if (title == null)
             {
-                nextStep = new Sys_WorkFlowTableStep() { };
+                title = $"有新的任务待审批：流程【{workFlow.WorkName}】,任务【{nextStep.StepName}】";
             }
-            if (userIds == null)
+
+            if (userIds == null && nextStep != null)
             {
                 //审核发送邮件通知待完
                 userIds = GetAuditUserIds(nextStep.StepType ?? 0, nextStep.StepValue);
@@ -1403,6 +1449,32 @@ namespace HDPro.Core.WorkFlow
                     return;
                 }
             }
+            HttpContext.Current.GetService<IMessageService>()
+                 .SendMessage(new MessageChannelData()
+                 {
+                     Code = "",
+                     UserIds = userIds,
+                     Status = true,
+                     MessageNotification = new MessageNotification()
+                     {
+                         NotificationType = Enums.NotificationType.审批,
+                         Title = "审批提醒",
+                         Content = title,
+                         TableKey = workFlow.WorkTableKey,
+                         TableName = workFlow.WorkTable,
+                         Creator = workFlow.Creator,
+                         CreateID = workFlow.CreateID
+                     }
+                 });
+            if (filterOptions == null || filterOptions.SendMail != 1)
+            {
+                return;
+            }
+            if (nextStep == null)
+            {
+                nextStep = new Sys_WorkFlowTableStep() { };
+            }
+
             if (userIds == null)
             {
                 return;
@@ -1415,10 +1487,7 @@ namespace HDPro.Core.WorkFlow
                 string msg = "";
                 try
                 {
-                    if (title == null)
-                    {
-                        title = $"有新的任务待审批：流程【{workFlow.WorkName}】,任务【{nextStep.StepName}】";
-                    }
+
                     MailHelper.Send(title, title, attachmentPath: null, emails);
                     msg = $"审批流程发送邮件,流程名称：{workFlow.WorkName},流程id:{workFlow.WorkFlow_Id},步骤:{nextStep.StepName},步骤Id:{nextStep.StepId},收件人:{string.Join(";", emails)}";
                     Logger.AddAsync(msg);

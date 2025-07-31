@@ -32,6 +32,11 @@ const routes = [
         component: () => import('@/views/builder/coder.vue')
       },
       {
+        path: '/fastCodeGenerator',
+        name: 'fastCodeGenerator',
+        component: () => import('@/views/builder/fastCodeGenerator.vue')
+      },
+      {
         path: '/formDraggable',  //表单设计
         name: 'formDraggable',
         component: () => import('@/views/formDraggable/formDraggable.vue')
@@ -168,6 +173,14 @@ const routes = [
     path: '/login',
     name: 'login',
     component: () => import('@/views/Login.vue'),
+    meta:{
+        anonymous:true
+      }
+  },
+  {
+    path: '/sso-login',
+    name: 'ssoLogin',
+    component: () => import('@/views/SsoLogin.vue'),
     meta:{
         anonymous:true
       }

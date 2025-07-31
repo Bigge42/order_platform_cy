@@ -632,8 +632,8 @@ export default {
     //初始化行内编辑
     ViewGridEditTable(proxy, props, ctx, dataConfig).initEditTable();
     //初始化字典配置
-    const initDicKeys = () => {
-      initDicData(proxy, props, ctx, dataConfig); //初始下框数据源
+    const initDicKeys = (reset) => {
+      initDicData(proxy, props, ctx, dataConfig,reset); //初始下框数据源
     };
     const gridEvent = ViewGridEvent(proxy, props, ctx, dataConfig);
     //const { loadTableBefore, loadTableAfter } = gridEvent;

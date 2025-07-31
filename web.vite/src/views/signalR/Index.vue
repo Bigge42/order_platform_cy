@@ -80,6 +80,14 @@ export default {
   mounted() {
     //获取当前登陆的用户信息
     this.http.post('api/user/GetCurrentUserInfo').then((result) => {
+      
+      // 确保store中有loginName字段
+      let user = this.$store.getters.getUserInfo();
+      if (user && !user.loginName) {
+        user.loginName = result.data.userName;  // 设置真正的登录账号
+        this.$store.commit("setUserInfo", user);
+      }
+      
       connection = new signalR.HubConnectionBuilder()
         .withAutomaticReconnect()
         .withUrl(

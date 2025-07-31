@@ -4,42 +4,42 @@ import * as echarts from "echarts";
 import { VueDraggableNext } from "vue-draggable-next";
 const base = {
   getDate: function(e) {
-    let A = /* @__PURE__ */ new Date(), l = A.getFullYear(), i = A.getMonth() + 1, a = A.getDate(), r = l + "-" + (i < 10 ? "0" + i : i) + "-" + (a < 10 ? "0" + a : a);
+    let A = /* @__PURE__ */ new Date(), l = A.getFullYear(), a = A.getMonth() + 1, n = A.getDate(), r = l + "-" + (a < 10 ? "0" + a : a) + "-" + (n < 10 ? "0" + n : n);
     if (!e)
       return r;
-    let E = A.getHours(), t = A.getMinutes(), C = A.getSeconds();
-    return r + " " + (E < 10 ? "0" + E : E) + ":" + (t < 10 ? "0" + t : t) + ":" + (C < 10 ? "0" + C : C);
+    let B = A.getHours(), t = A.getMinutes(), E = A.getSeconds();
+    return r + " " + (B < 10 ? "0" + B : B) + ":" + (t < 10 ? "0" + t : t) + ":" + (E < 10 ? "0" + E : E);
   },
   addDays: function(e, A) {
     if (!A)
       return e;
     let l = e.split(" ");
     e = new Date(new Date(e).setDate(new Date(e).getDate() + A));
-    var i = e.getFullYear(), a = e.getMonth() + 1;
-    a < 10 && (a = "0" + a);
+    var a = e.getFullYear(), n = e.getMonth() + 1;
+    n < 10 && (n = "0" + n);
     var r = e.getDate();
-    return r < 10 && (r = "0" + r), e = i + "-" + a + "-" + r, l.length == 1 ? e : e + " " + l[1];
+    return r < 10 && (r = "0" + r), e = a + "-" + n + "-" + r, l.length == 1 ? e : e + " " + l[1];
   }
 }, tableData = () => new Array(6).fill(0).map((A, l) => {
-  let i = base.getDate();
+  let a = base.getDate();
   return {
-    日期: base.addDays(i, l * -1).replaceAll("-", "."),
+    日期: base.addDays(a, l * -1).replaceAll("-", "."),
     部门: "公共事业部",
     收入: ~~(Math.random() * 1e3),
     支出: ~~(Math.random() * 1e3)
   };
 }), noticeData = () => new Array(6).fill(0).map((A, l) => {
-  let i = base.getDate();
+  let a = base.getDate();
   return {
     id: l + 1,
     name: "功能更新",
     title: "平台功能流程优化,新功能发布...",
-    date: base.addDays(i, l * -1).replaceAll("-", ".")
+    date: base.addDays(a, l * -1).replaceAll("-", ".")
   };
 }), stepData = () => {
-  let e = new Array(5).fill(0).map((i, a) => {
+  let e = new Array(5).fill(0).map((a, n) => {
     let r = base.getDate();
-    return base.addDays(r, a * -1);
+    return base.addDays(r, n * -1);
   }), A = ["提交订单", "订单配货", "厂家发货", "物流运输", "客户签收", "订单完成"], l = [
     "厂家已接到订单,预计20分钟将分配订单...",
     "厂家正在拣货...",
@@ -48,11 +48,11 @@ const base = {
     "客户已签收",
     "订单完成"
   ];
-  return e.map((i, a) => ({
-    title: A[a],
-    date: i,
-    current: a == 1,
-    content: l[a]
+  return e.map((a, n) => ({
+    title: A[n],
+    date: a,
+    current: n == 1,
+    content: l[n]
   }));
 }, form = (e) => {
   let A = [
@@ -247,11 +247,11 @@ function series() {
     }
   ];
 }
-function initLegend(e, A, l, i) {
+function initLegend(e, A, l, a) {
   if (l.legend == "-1")
     e.legend = null;
   else
-    switch (e.legend.data = i || [], e.legend.icon = l.legendShape, e.legend.itemWidth = l.legendSize, e.legend.itemHeight = l.legendSize, i && (e.xAxis.splitLine || (e.xAxis.splitLine = {}), e.yAxis.splitLine || (e.yAxis.splitLine = {}), e.xAxis.splitLine.show = !!l.xLine, e.yAxis.splitLine.show = !!l.yLine), Object.assign(e.grid, l.grid || {}), l.legend) {
+    switch (e.legend.data = a || [], e.legend.icon = l.legendShape, e.legend.itemWidth = l.legendSize, e.legend.itemHeight = l.legendSize, a && (e.xAxis.splitLine || (e.xAxis.splitLine = {}), e.yAxis.splitLine || (e.yAxis.splitLine = {}), e.xAxis.splitLine.show = !!l.xLine, e.yAxis.splitLine.show = !!l.yLine), Object.assign(e.grid, l.grid || {}), l.legend) {
       case "left":
         e.legend.left = "left", e.legend.orient = "horizontal", delete e.legend.top, delete e.legend.right, delete e.legend.bottom;
         break;
@@ -278,11 +278,11 @@ function init$2(e, A) {
   let l = line();
   if (l.title.text = e.title, !A || !Array.isArray(A) || A.length == 0)
     return l;
-  const i = series();
-  let a = Object.keys(A[0]), r = [], E = [];
-  E = new Array(a.length - 1).fill({}).map((C, g) => {
-    let d = i[g];
-    return d ? (d.name = a[g + 1], d.label.show = !!e.showLabel, d.showSymbol = !!e.showLabel, d.stack = e.stack ? "total" : "", e.stack ? (d.type = "bar", d.itemStyle.borderRadius = [0]) : d.itemStyle.borderRadius = [e.radius], d) : {
+  const a = series();
+  let n = Object.keys(A[0]), r = [], B = [];
+  B = new Array(n.length - 1).fill({}).map((E, g) => {
+    let d = a[g];
+    return d ? (d.name = n[g + 1], d.label.show = !!e.showLabel, d.showSymbol = !!e.showLabel, d.stack = e.stack ? "total" : "", e.stack ? (d.type = "bar", d.itemStyle.borderRadius = [0]) : d.itemStyle.borderRadius = [e.radius], d) : {
       name: "名称",
       type: "line",
       smooth: !0,
@@ -317,22 +317,22 @@ function init$2(e, A) {
       data: []
     };
   });
-  let t = a.slice(1);
-  for (let C = 0; C < A.length; C++) {
-    const g = A[C];
-    r.push(g[a[0]]);
-    for (let d = 1; d < a.length; d++) {
-      let c = E[d - 1];
-      c.data.push(g[a[d]]), c.name = a[d];
+  let t = n.slice(1);
+  for (let E = 0; E < A.length; E++) {
+    const g = A[E];
+    r.push(g[n[0]]);
+    for (let d = 1; d < n.length; d++) {
+      let c = B[d - 1];
+      c.data.push(g[n[d]]), c.name = n[d];
     }
   }
-  return E.forEach((C) => {
-    C.barMaxWidth = e.barMaxWidth;
-  }), l.series = E, e.showXData ? (l.xAxis.data = r, l.xAxis.type = "category", l.yAxis.data = null) : (l.xAxis.data = null, l.xAxis.type = null, l.yAxis.type = "", l.yAxis.data = r), initLegend(l, A, e, t), l;
+  return B.forEach((E) => {
+    E.barMaxWidth = e.barMaxWidth;
+  }), l.series = B, e.showXData ? (l.xAxis.data = r, l.xAxis.type = "category", l.yAxis.data = null) : (l.xAxis.data = null, l.xAxis.type = null, l.yAxis.type = "", l.yAxis.data = r), initLegend(l, A, e, t), l;
 }
 const BarLineChartOptionn = { init: init$2, initLegend };
 function init$1(e, A) {
-  A.reduce((i, a) => i + a.value, 0);
+  A.reduce((a, n) => a + n.value, 0);
   let l = {
     color,
     // ['#7020ff', '#2EC7C9', '#c3a4ff', '#00d4f9', '#3281ff', '#a4dafe', '#B6A2DE', '#5AB1EF', '#FFB980', '#8D98B3', '#48B3C2', '#F7A35C', '#A2D4E6', '#B5C334', '#29dbea'],
@@ -444,7 +444,7 @@ function init$1(e, A) {
     position: "outside"
   }, l.series[0].labelLine = {
     show: !0
-  }), e.legend == "buttom" && (l.series[0].center = ["50%", "45%"]), l.legend.data = null, console.log(JSON.stringify(l)), l;
+  }), e.legend == "buttom" && (l.series[0].center = ["50%", "45%"]), l.legend.data = null, l;
 }
 const pie = { init: init$1 };
 function init(e, A) {
@@ -534,14 +534,14 @@ function addDays(e, A) {
     return e;
   let l = e.split(" ");
   e = new Date(new Date(e).setDate(new Date(e).getDate() + A));
-  var i = e.getFullYear(), a = e.getMonth() + 1;
-  a < 10 && (a = "0" + a);
+  var a = e.getFullYear(), n = e.getMonth() + 1;
+  n < 10 && (n = "0" + n);
   var r = e.getDate();
-  return r < 10 && (r = "0" + r), e = i + "-" + a + "-" + r, l.length == 1 ? e : e + " " + l[1];
+  return r < 10 && (r = "0" + r), e = a + "-" + n + "-" + r, l.length == 1 ? e : e + " " + l[1];
 }
 function getDate(e) {
-  let A = /* @__PURE__ */ new Date(), l = A.getFullYear(), i = A.getMonth() + 1, a = A.getDate();
-  return l + "-" + (i < 10 ? "0" + i : i) + "-" + (a < 10 ? "0" + a : a);
+  let A = /* @__PURE__ */ new Date(), l = A.getFullYear(), a = A.getMonth() + 1, n = A.getDate();
+  return l + "-" + (a < 10 ? "0" + a : a) + "-" + (n < 10 ? "0" + n : n);
 }
 function gridLine() {
   return {
@@ -621,8 +621,8 @@ function gridLine() {
 }
 const options = { gridLine }, _export_sfc = (e, A) => {
   const l = e.__vccOpts || e;
-  for (const [i, a] of A)
-    l[i] = a;
+  for (const [a, n] of A)
+    l[a] = n;
   return l;
 }, _sfc_main$d = {
   props: {
@@ -640,7 +640,7 @@ const options = { gridLine }, _export_sfc = (e, A) => {
     }
   }
 }, _hoisted_1$d = { class: "v-header" }, _hoisted_2$c = { class: "v-left-text" }, _hoisted_3$c = { class: "content" }, _hoisted_4$9 = { class: "v-right-content" };
-function _sfc_render$1(e, A, l, i, a, r) {
+function _sfc_render$1(e, A, l, a, n, r) {
   return openBlock(), createElementBlock("div", _hoisted_1$d, [
     createElementVNode("div", _hoisted_2$c, [
       createElementVNode("i", {
@@ -662,7 +662,7 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
   emits: ["end"],
   setup(e, { emit: A }) {
     getCurrentInstance();
-    const l = (g) => new URL((/* @__PURE__ */ Object.assign({ "./imgs/bar.png": __vite_glob_0_0$1, "./imgs/calendar.png": __vite_glob_0_1$1, "./imgs/card.png": __vite_glob_0_2$1, "./imgs/form.png": __vite_glob_0_3$1, "./imgs/gauge.png": __vite_glob_0_4$1, "./imgs/grid01.png": __vite_glob_0_5$1, "./imgs/grid02.png": __vite_glob_0_6$1, "./imgs/grid03.png": __vite_glob_0_7$1, "./imgs/grid04.png": __vite_glob_0_8$1, "./imgs/grid05.png": __vite_glob_0_9$1, "./imgs/line.png": __vite_glob_0_10$1, "./imgs/notice.png": __vite_glob_0_11$1, "./imgs/pie1.png": __vite_glob_0_12$1, "./imgs/rankinglist02.png": __vite_glob_0_13$1, "./imgs/rankinglist03.png": __vite_glob_0_14$1, "./imgs/step.png": __vite_glob_0_15$1, "./imgs/table.png": __vite_glob_0_16$1 }))[`./imgs/${g}`], import.meta.url).href, i = ref([
+    const l = (g) => new URL((/* @__PURE__ */ Object.assign({ "./imgs/bar.png": __vite_glob_0_0$1, "./imgs/calendar.png": __vite_glob_0_1$1, "./imgs/card.png": __vite_glob_0_2$1, "./imgs/form.png": __vite_glob_0_3$1, "./imgs/gauge.png": __vite_glob_0_4$1, "./imgs/grid01.png": __vite_glob_0_5$1, "./imgs/grid02.png": __vite_glob_0_6$1, "./imgs/grid03.png": __vite_glob_0_7$1, "./imgs/grid04.png": __vite_glob_0_8$1, "./imgs/grid05.png": __vite_glob_0_9$1, "./imgs/line.png": __vite_glob_0_10$1, "./imgs/notice.png": __vite_glob_0_11$1, "./imgs/pie1.png": __vite_glob_0_12$1, "./imgs/rankinglist02.png": __vite_glob_0_13$1, "./imgs/rankinglist03.png": __vite_glob_0_14$1, "./imgs/step.png": __vite_glob_0_15$1, "./imgs/table.png": __vite_glob_0_16$1 }))[`./imgs/${g}`], import.meta.url).href, a = ref([
       {
         title: "折线图",
         type: "line",
@@ -886,7 +886,8 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
         w: 12,
         valueType: "array",
         data: tableData,
-        img: "table.png"
+        img: "table.png",
+        format: ""
       },
       {
         title: "表单",
@@ -963,9 +964,10 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
         h: 14,
         w: 12,
         img: "notice.png",
+        format: "11",
         data: noticeData
       }
-    ]), a = [...i.value], r = {
+    ]), n = [...a.value], r = {
       preventOnFilter: !1,
       sort: !1,
       disabled: !1,
@@ -974,21 +976,21 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
       forceFallback: !0
       // 拖拽的时候样式
       // fallbackClass: 'flow-node-draggable'
-    }, E = (g, d, c, m) => {
-    }, t = A, C = (g, d) => {
-      i.value = [...a], t("end", i.value[g.oldIndex]);
+    }, B = (g, d, c, S) => {
+    }, t = A, E = (g, d) => {
+      a.value = [...n], t("end", a.value[g.oldIndex]);
     };
     return (g, d) => (openBlock(), createElementBlock("div", _hoisted_1$c, [
       createVNode(unref(VueDraggableNext), {
-        onEnd: C,
-        onStart: E,
-        modelValue: i.value,
-        "onUpdate:modelValue": d[0] || (d[0] = (c) => i.value = c),
+        onEnd: E,
+        onStart: B,
+        modelValue: a.value,
+        "onUpdate:modelValue": d[0] || (d[0] = (c) => a.value = c),
         options: r
       }, {
         default: withCtx(() => [
-          (openBlock(!0), createElementBlock(Fragment, null, renderList(i.value, (c, m) => (openBlock(), createElementBlock("li", {
-            key: m,
+          (openBlock(!0), createElementBlock(Fragment, null, renderList(a.value, (c, S) => (openBlock(), createElementBlock("li", {
+            key: S,
             class: "com-item"
           }, [
             createElementVNode("div", _hoisted_2$b, toDisplayString(c.title), 1),
@@ -1001,7 +1003,7 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
       }, 8, ["modelValue"])
     ]));
   }
-}, VolComponent = /* @__PURE__ */ _export_sfc(_sfc_main$c, [["__scopeId", "data-v-6f38ba2e"]]), _sfc_main$b = {
+}, VolComponent = /* @__PURE__ */ _export_sfc(_sfc_main$c, [["__scopeId", "data-v-b39132c6"]]), _sfc_main$b = {
   props: {
     icon: {
       type: String,
@@ -1021,7 +1023,7 @@ const VolHeader = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_rend
     }
   }
 }, _withScopeId$4 = (e) => (pushScopeId("data-v-eac0b45f"), e = e(), popScopeId(), e), _hoisted_1$b = /* @__PURE__ */ _withScopeId$4(() => /* @__PURE__ */ createElementVNode("div", { class: "header-border" }, null, -1)), _hoisted_2$a = { class: "v-left-text" }, _hoisted_3$a = { class: "content" }, _hoisted_4$8 = { class: "v-right-content" };
-function _sfc_render(e, A, l, i, a, r) {
+function _sfc_render(e, A, l, a, n, r) {
   return openBlock(), createElementBlock("div", {
     class: normalizeClass(["v-header", { "header-boder": l.border }])
   }, [
@@ -1040,10 +1042,10 @@ function _sfc_render(e, A, l, i, a, r) {
 const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_render], ["__scopeId", "data-v-eac0b45f"]]), _hoisted_1$a = { class: "vol-data-table" }, _hoisted_2$9 = { class: "vol-da-table" }, _hoisted_3$9 = {
   key: 0,
   style: { width: "20px" }
-}, _hoisted_4$7 = {
+}, _hoisted_4$7 = ["onClick"], _hoisted_5$7 = {
   key: 0,
   style: { width: "20px" }
-}, _sfc_main$a = {
+}, _hoisted_6$6 = ["innerHTML"], _sfc_main$a = {
   __name: "VolDataTable",
   props: {
     index: {
@@ -1057,29 +1059,50 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     data: {
       type: Array,
       default: () => []
+    },
+    format: {
+      type: Object,
+      default: null
     }
   },
-  setup(e) {
-    getCurrentInstance();
-    const A = e, l = computed(() => A.data.length ? Object.keys(A.data[0]) : []);
-    return (i, a) => {
-      const r = resolveComponent("el-scrollbar");
+  emits: ["componentItemClick"],
+  setup(__props, { emit: __emit }) {
+    const { proxy } = getCurrentInstance(), props = __props, columns = computed(() => props.data.length ? Object.keys(props.data[0]) : []), getValueLabel = (row, name) => {
+      if (props.format)
+        try {
+          const func = eval(`(${props.format})`);
+          return func(row[name], name, row, props.data);
+        } catch (e) {
+          console.log("格式化异常:", e);
+        }
+      return proxy.$ts(row[name]);
+    }, emit = __emit, rowClick = (e, A) => {
+      emit("componentItemClick", e, { index: props.data, rows: props.data });
+    };
+    return (e, A) => {
+      const l = resolveComponent("el-scrollbar");
       return openBlock(), createElementBlock("div", _hoisted_1$a, [
         createVNode(VolTitle, {
           icon: "el-icon-menu",
-          title: i.$ts(e.title)
+          title: e.$ts(__props.title)
         }, null, 8, ["title"]),
-        createVNode(r, { style: { flex: "1", height: "0", padding: "0 10px" } }, {
+        createVNode(l, { style: { flex: "1", height: "0", padding: "0 10px" } }, {
           default: withCtx(() => [
             createElementVNode("table", _hoisted_2$9, [
               createElementVNode("thead", null, [
-                e.index ? (openBlock(), createElementBlock("td", _hoisted_3$9, "#")) : createCommentVNode("", !0),
-                (openBlock(!0), createElementBlock(Fragment, null, renderList(l.value, (E, t) => (openBlock(), createElementBlock("td", { key: t }, toDisplayString(i.$ts(E)), 1))), 128))
+                __props.index ? (openBlock(), createElementBlock("td", _hoisted_3$9, "#")) : createCommentVNode("", !0),
+                (openBlock(!0), createElementBlock(Fragment, null, renderList(columns.value, (a, n) => (openBlock(), createElementBlock("td", { key: n }, toDisplayString(e.$ts(a)), 1))), 128))
               ]),
-              (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (E, t) => (openBlock(), createElementBlock("tr", { key: t }, [
-                e.index ? (openBlock(), createElementBlock("td", _hoisted_4$7, toDisplayString(t + 1) + ".", 1)) : createCommentVNode("", !0),
-                (openBlock(!0), createElementBlock(Fragment, null, renderList(l.value, (C, g) => (openBlock(), createElementBlock("td", { key: g }, toDisplayString(i.$ts(E[C])), 1))), 128))
-              ]))), 128))
+              (openBlock(!0), createElementBlock(Fragment, null, renderList(__props.data, (a, n) => (openBlock(), createElementBlock("tr", {
+                key: n,
+                onClick: (r) => rowClick(a)
+              }, [
+                __props.index ? (openBlock(), createElementBlock("td", _hoisted_5$7, toDisplayString(n + 1) + ".", 1)) : createCommentVNode("", !0),
+                (openBlock(!0), createElementBlock(Fragment, null, renderList(columns.value, (r, B) => (openBlock(), createElementBlock("td", {
+                  key: B,
+                  innerHTML: getValueLabel(a, r)
+                }, null, 8, _hoisted_6$6))), 128))
+              ], 8, _hoisted_4$7))), 128))
             ])
           ]),
           _: 1
@@ -1087,7 +1110,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ]);
     };
   }
-}, VolDataTable = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-f673e7a9"]]), _hoisted_1$9 = { class: "cell-item" }, _hoisted_2$8 = { key: 0 }, _hoisted_3$8 = { key: 1 }, _sfc_main$9 = {
+}, VolDataTable = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["__scopeId", "data-v-a815ba94"]]), _hoisted_1$9 = { class: "cell-item" }, _hoisted_2$8 = { key: 0 }, _hoisted_3$8 = { key: 1 }, _sfc_main$9 = {
   __name: "VolDataForm",
   props: {
     title: {
@@ -1114,7 +1137,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   },
   setup(e) {
     return getCurrentInstance(), (A, l) => {
-      const i = resolveComponent("el-progress"), a = resolveComponent("el-descriptions-item"), r = resolveComponent("el-descriptions"), E = resolveComponent("el-scrollbar");
+      const a = resolveComponent("el-progress"), n = resolveComponent("el-descriptions-item"), r = resolveComponent("el-descriptions"), B = resolveComponent("el-scrollbar");
       return openBlock(), createElementBlock("div", {
         class: normalizeClass(["vol-data-table", { "vol-data-table-card": !e.border }])
       }, [
@@ -1122,7 +1145,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           icon: "el-icon-menu",
           title: A.$ts(e.title)
         }, null, 8, ["title"]),
-        createVNode(E, { style: { flex: "1", height: "0", padding: "0 10px" } }, {
+        createVNode(B, { style: { flex: "1", height: "0", padding: "0 10px" } }, {
           default: withCtx(() => [
             createVNode(r, {
               class: "desc-top",
@@ -1131,8 +1154,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
               border: e.border
             }, {
               default: withCtx(() => [
-                (openBlock(!0), createElementBlock(Fragment, null, renderList(e.form, (t, C) => (openBlock(), createBlock(a, {
-                  key: C,
+                (openBlock(!0), createElementBlock(Fragment, null, renderList(e.form, (t, E) => (openBlock(), createBlock(n, {
+                  key: E,
                   "min-width": 60,
                   "label-align": "left",
                   span: t.span,
@@ -1140,7 +1163,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                 }, {
                   label: withCtx(() => [
                     createElementVNode("label", _hoisted_1$9, toDisplayString(A.$ts(t.title)), 1),
-                    t.rate && e.data[t.title] ? (openBlock(), createBlock(i, {
+                    t.rate && e.data[t.title] ? (openBlock(), createBlock(a, {
                       key: 0,
                       percentage: e.data[t.title]
                     }, null, 8, ["percentage"])) : createCommentVNode("", !0)
@@ -1176,7 +1199,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   },
   setup(e) {
     return getCurrentInstance(), (A, l) => {
-      const i = resolveComponent("el-scrollbar");
+      const a = resolveComponent("el-scrollbar");
       return openBlock(), createElementBlock("div", _hoisted_1$8, [
         createElementVNode("div", _hoisted_2$7, [
           createVNode(VolTitle, {
@@ -1184,18 +1207,18 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             title: e.title
           }, null, 8, ["title"])
         ]),
-        createVNode(i, { style: { flex: "1", height: "1" } }, {
+        createVNode(a, { style: { flex: "1", height: "1" } }, {
           default: withCtx(() => [
             createElementVNode("div", _hoisted_3$7, [
-              (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (a, r) => (openBlock(), createElementBlock("div", {
-                class: normalizeClass(["step-item", { "step-item-current": a.current }]),
+              (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (n, r) => (openBlock(), createElementBlock("div", {
+                class: normalizeClass(["step-item", { "step-item-current": n.current }]),
                 key: r
               }, [
                 _hoisted_4$6,
                 _hoisted_5$6,
-                createElementVNode("div", _hoisted_6$5, toDisplayString(a.title), 1),
-                a.date ? (openBlock(), createElementBlock("div", _hoisted_7$3, "时间：" + toDisplayString(a.date), 1)) : createCommentVNode("", !0),
-                createElementVNode("div", _hoisted_8$2, toDisplayString(a.content), 1)
+                createElementVNode("div", _hoisted_6$5, toDisplayString(n.title), 1),
+                n.date ? (openBlock(), createElementBlock("div", _hoisted_7$3, "时间：" + toDisplayString(n.date), 1)) : createCommentVNode("", !0),
+                createElementVNode("div", _hoisted_8$2, toDisplayString(n.content), 1)
               ], 2))), 128))
             ])
           ]),
@@ -1252,12 +1275,12 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   },
   setup(e) {
     getCurrentInstance();
-    const A = e, l = (a) => {
-      let r = Math.max(...A.data.map((E) => E.value));
-      return r > 100 ? a.value / r * 100 : a.value;
-    }, i = computed(() => A.data);
-    return (a, r) => {
-      const E = resolveComponent("el-progress"), t = resolveComponent("el-scrollbar");
+    const A = e, l = (n) => {
+      let r = Math.max(...A.data.map((B) => B.value));
+      return r > 100 ? n.value / r * 100 : n.value;
+    }, a = computed(() => A.data);
+    return (n, r) => {
+      const B = resolveComponent("el-progress"), t = resolveComponent("el-scrollbar");
       return openBlock(), createElementBlock("div", _hoisted_1$7, [
         createVNode(VolTitle, {
           icon: "el-icon-menu",
@@ -1268,23 +1291,23 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             createElementVNode("div", {
               class: normalizeClass({ "ranking-top": e.lalelPosition == "top" })
             }, [
-              (openBlock(!0), createElementBlock(Fragment, null, renderList(i.value, (C, g) => (openBlock(), createElementBlock("div", {
+              (openBlock(!0), createElementBlock(Fragment, null, renderList(a.value, (E, g) => (openBlock(), createElementBlock("div", {
                 class: "fx",
                 key: g
               }, [
-                createElementVNode("div", _hoisted_2$6, toDisplayString(C.name), 1),
+                createElementVNode("div", _hoisted_2$6, toDisplayString(E.name), 1),
                 createElementVNode("div", _hoisted_3$6, [
-                  createVNode(E, {
+                  createVNode(B, {
                     "stroke-width": e.strokeWidth,
                     "text-inside": !1,
-                    percentage: l(C),
-                    color: C.bgColor || e.titleColor[g]
+                    percentage: l(E),
+                    color: E.bgColor || e.titleColor[g]
                   }, {
                     default: withCtx(() => [
                       createElementVNode("span", {
                         class: "rk-txt",
-                        style: normalizeStyle({ color: C.fontColor || e.fontColor[g] })
-                      }, toDisplayString(C.value) + toDisplayString(e.unit), 5)
+                        style: normalizeStyle({ color: E.fontColor || e.fontColor[g] })
+                      }, toDisplayString(E.value) + toDisplayString(e.unit), 5)
                     ]),
                     _: 2
                   }, 1032, ["stroke-width", "percentage", "color"])
@@ -1320,10 +1343,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   emits: ["componentItemClick"],
   setup(e, { emit: A }) {
     getCurrentInstance();
-    const l = e, i = A, a = (r, E) => {
-      i("componentItemClick", r, l.data);
+    const l = e, a = A, n = (r, B) => {
+      a("componentItemClick", r, l.data);
     };
-    return (r, E) => (openBlock(), createElementBlock("div", _hoisted_1$6, [
+    return (r, B) => (openBlock(), createElementBlock("div", _hoisted_1$6, [
       createElementVNode("div", _hoisted_2$5, [
         createElementVNode("div", _hoisted_3$5, toDisplayString(r.$ts(e.title)), 1),
         createElementVNode("div", {
@@ -1332,10 +1355,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             "grid-template-columns": " repeat(" + e.data.length + ", auto)"
           })
         }, [
-          (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (t, C) => (openBlock(), createElementBlock("div", {
-            class: normalizeClass(["item", "item" + (C + 1)]),
-            key: C,
-            onClick: (g) => a(t)
+          (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (t, E) => (openBlock(), createElementBlock("div", {
+            class: normalizeClass(["item", "item" + (E + 1)]),
+            key: E,
+            onClick: (g) => n(t)
           }, [
             createElementVNode("div", _hoisted_5$5, toDisplayString(t.name), 1),
             createElementVNode("div", _hoisted_6$4, toDisplayString((t.value + "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")), 1)
@@ -1395,14 +1418,14 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       // }
     ]), onMounted(() => {
     }), getCurrentInstance();
-    const i = (E) => new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${E}`], import.meta.url).href, a = A, r = (E) => {
-      a("componentItemClick", E, l.data);
+    const a = (B) => new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${B}`], import.meta.url).href, n = A, r = (B) => {
+      n("componentItemClick", B, l.data);
     };
-    return (E, t) => (openBlock(), createElementBlock("div", _hoisted_1$5, [
-      (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (C, g) => (openBlock(), createElementBlock("div", {
+    return (B, t) => (openBlock(), createElementBlock("div", _hoisted_1$5, [
+      (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (E, g) => (openBlock(), createElementBlock("div", {
         class: normalizeClass(["list-item", { "grid-text-title": !e.showNumber }]),
         style: normalizeStyle({ background: e.bgColor || "#fff" }),
-        onClick: (d) => r(C),
+        onClick: (d) => r(E),
         key: g
       }, [
         createElementVNode("div", _hoisted_3$4, [
@@ -1410,11 +1433,11 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             createElementVNode("div", {
               class: "vol-grid-item-title",
               style: normalizeStyle({ color: e.titleColor || "#767676" })
-            }, toDisplayString(C.name || C.title), 5),
+            }, toDisplayString(E.name || E.title), 5),
             createElementVNode("div", {
               class: "vol-grid-item-value",
               style: normalizeStyle({ color: e.fontColor || "#505050" })
-            }, toDisplayString(((C.value || 0) + "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")), 5),
+            }, toDisplayString(((E.value || 0) + "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")), 5),
             createElementVNode("div", _hoisted_5$4, [
               e.font ? (openBlock(), createElementBlock("i", {
                 key: 0,
@@ -1423,7 +1446,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
               }, null, 6)) : (openBlock(), createElementBlock("img", {
                 key: 1,
                 style: normalizeStyle({ width: e.size + "px" }),
-                src: i(e.icon[0] || "27.png")
+                src: a(e.icon[0] || "27.png")
               }, null, 12, _hoisted_6$3))
             ])
           ]),
@@ -1731,25 +1754,25 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     }
   },
   setup(e) {
-    const A = e, l = iconInfo.iconFont, i = ref([]);
-    i.value = new Array(35).fill(0).map((t, C) => ({
-      img: new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${C + 1}.png`], import.meta.url).href,
+    const A = e, l = iconInfo.iconFont, a = ref([]);
+    a.value = new Array(35).fill(0).map((t, E) => ({
+      img: new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${E + 1}.png`], import.meta.url).href,
       //   img: new URL("./icon/" + (i + 1) + ".png", import.meta.url),
-      name: C + 1 + ".png"
+      name: E + 1 + ".png"
     }));
-    const a = ref(-1), r = (t, C) => {
-      a.value = C;
+    const n = ref(-1), r = (t, E) => {
+      n.value = E;
       let g = A.data.indexOf(t);
       g == -1 ? A.data.push(t) : A.data.splice(g, 1);
-    }, E = (t) => A.data.indexOf(t) > -1;
-    return (t, C) => (openBlock(), createElementBlock("div", _hoisted_1$4, [
+    }, B = (t) => A.data.indexOf(t) > -1;
+    return (t, E) => (openBlock(), createElementBlock("div", _hoisted_1$4, [
       (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(l), (g, d) => withDirectives((openBlock(), createElementBlock("div", {
         onClick: (c) => r(g, d),
         key: d,
         class: "icons-item"
       }, [
         createElementVNode("i", {
-          class: normalizeClass([g, E(g) ? "active" : ""]),
+          class: normalizeClass([g, B(g) ? "active" : ""]),
           style: { "font-size": "32px" }
         }, null, 2),
         createElementVNode("p", null, toDisplayString(g), 1)
@@ -1757,8 +1780,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         [vShow, e.font]
       ])), 128)),
       withDirectives(createElementVNode("div", _hoisted_3$3, [
-        (openBlock(!0), createElementBlock(Fragment, null, renderList(i.value, (g, d) => (openBlock(), createElementBlock("div", {
-          class: normalizeClass(["icon-item", [g, E(g.name) ? "active-img" : ""]]),
+        (openBlock(!0), createElementBlock(Fragment, null, renderList(a.value, (g, d) => (openBlock(), createElementBlock("div", {
+          class: normalizeClass(["icon-item", [g, B(g.name) ? "active-img" : ""]]),
           onClick: (c) => r(g.name, d),
           key: d
         }, [
@@ -1771,7 +1794,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ])
     ]));
   }
-}, VolIcon = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-59f22700"]]), filter = ["全部", "今天", "近7天", "本月", "近1月", "近半年", "近一年"], _withScopeId$1 = (e) => (pushScopeId("data-v-3c8c49e5"), e = e(), popScopeId(), e), _hoisted_1$3 = { style: { "text-align": "left", display: "flex" } }, _hoisted_2$2 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("label", { style: { "font-size": "14px" } }, "已选图标：", -1)), _hoisted_3$2 = { key: 0 }, _hoisted_4$2 = ["onClick"], _hoisted_5$2 = { key: 1 }, _hoisted_6$2 = ["src", "onClick"], _hoisted_7$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("span", { style: { "font-size": "13px", color: "darkgrey" } }, "点击图标可删除", -1)), _hoisted_8$1 = {
+}, VolIcon = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-59f22700"]]), filter = ["全部", "今天", "近7天", "本月", "近1月", "近半年", "近一年"], _withScopeId$1 = (e) => (pushScopeId("data-v-42b46ea8"), e = e(), popScopeId(), e), _hoisted_1$3 = { style: { "text-align": "left", display: "flex" } }, _hoisted_2$2 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("label", { style: { "font-size": "14px" } }, "已选图标：", -1)), _hoisted_3$2 = { key: 0 }, _hoisted_4$2 = ["onClick"], _hoisted_5$2 = { key: 1 }, _hoisted_6$2 = ["src", "onClick"], _hoisted_7$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("span", { style: { "font-size": "13px", color: "darkgrey" } }, "点击图标可删除", -1)), _hoisted_8$1 = {
   class: "dia-footer",
   style: { "text-align": "center" }
 }, _hoisted_9$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("i", { class: "el-icon-close" }, null, -1)), _hoisted_10$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("i", { class: "el-icon-plus" }, null, -1)), _hoisted_11$1 = { class: "custom-tabs-label" }, _hoisted_12$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("span", null, "基础设置", -1)), _hoisted_13$1 = { class: "params-group" }, _hoisted_14$1 = { class: "filter-line" }, _hoisted_15$1 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createElementVNode("div", null, [
@@ -1809,7 +1832,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   },
   emits: ["change", "apiSearchClick", "sqlChange"],
   setup(e, { emit: A }) {
-    const l = e, i = ref("基础设置"), a = filter, r = [
+    const l = e, a = ref("基础设置"), n = filter, r = [
       { value: "-1", name: "隐藏图例" },
       { value: "left", name: "靠左" },
       { value: "leftVertical", name: "垂直靠左" },
@@ -1819,29 +1842,29 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       { value: "rightVertical", name: "垂直靠右" },
       { value: "rightVerticalCenter", name: "垂直靠右居中" },
       { value: "buttom", name: "底部" }
-    ], E = [
+    ], B = [
       { value: "circle", name: "圆形" },
       { value: "rect", name: "矩形" },
       { value: "roundRect", name: "圆角矩形" },
       { value: "triangle", name: "三角形" },
       { value: "diamond", name: "菱形" },
       { value: "none", name: "不显示" }
-    ], t = A, C = () => {
+    ], t = A, E = () => {
       t("apiSearchClick");
     }, g = () => {
       t("sqlChange");
     }, d = () => {
       console.log("filterChange"), t("change", 1);
-    }, c = (k, n) => {
+    }, c = (m, i) => {
       t("change");
-    }, m = ref(!1), v = () => {
-      m.value = !0;
-    }, h = () => {
-      c(), m.value = !1;
-    }, V = (k) => {
-      l.currentItem.icon.splice(k, 1);
-    }, J = (k) => new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${k}`], import.meta.url).href, b = (k, n) => {
-      console.log(k), console.log(l.currentItem), l.currentItem[n] = l.currentItem[n] ? 1 : 0;
+    }, S = ref(!1), h = () => {
+      S.value = !0;
+    }, J = () => {
+      c(), S.value = !1;
+    }, V = (m) => {
+      l.currentItem.icon.splice(m, 1);
+    }, v = (m) => new URL((/* @__PURE__ */ Object.assign({ "./icon/1.png": __vite_glob_0_0, "./icon/10.png": __vite_glob_0_1, "./icon/11.png": __vite_glob_0_2, "./icon/12.png": __vite_glob_0_3, "./icon/13.png": __vite_glob_0_4, "./icon/14.png": __vite_glob_0_5, "./icon/15.png": __vite_glob_0_6, "./icon/16.png": __vite_glob_0_7, "./icon/17.png": __vite_glob_0_8, "./icon/18.png": __vite_glob_0_9, "./icon/19.png": __vite_glob_0_10, "./icon/2.png": __vite_glob_0_11, "./icon/20.png": __vite_glob_0_12, "./icon/21.png": __vite_glob_0_13, "./icon/22.png": __vite_glob_0_14, "./icon/23.png": __vite_glob_0_15, "./icon/24.png": __vite_glob_0_16, "./icon/25.png": __vite_glob_0_17, "./icon/26.png": __vite_glob_0_18, "./icon/27.png": __vite_glob_0_19, "./icon/28.png": __vite_glob_0_20, "./icon/29.png": __vite_glob_0_21, "./icon/3.png": __vite_glob_0_22, "./icon/30.png": __vite_glob_0_23, "./icon/31.png": __vite_glob_0_24, "./icon/32.png": __vite_glob_0_25, "./icon/33.png": __vite_glob_0_26, "./icon/34.png": __vite_glob_0_27, "./icon/35.png": __vite_glob_0_28, "./icon/4.png": __vite_glob_0_29, "./icon/5.png": __vite_glob_0_30, "./icon/6.png": __vite_glob_0_31, "./icon/7.png": __vite_glob_0_32, "./icon/8.png": __vite_glob_0_33, "./icon/9.png": __vite_glob_0_34 }))[`./icon/${m}`], import.meta.url).href, b = (m, i) => {
+      console.log(m), console.log(l.currentItem), l.currentItem[i] = l.currentItem[i] ? 1 : 0;
     }, K = ref([
       "#ff4500",
       "#ff8c00",
@@ -1857,15 +1880,15 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       "hsl(181, 100%, 37%)",
       "hsla(209, 100%, 56%, 0.73)",
       "#c7158577"
-    ]), x = ref([]), { proxy: y } = getCurrentInstance();
-    return y.http.post("api/Sys_Dictionary/GetVueDictionary", ["dbServer"]).then((k) => {
-      x.value = k[0].data;
-    }), (k, n) => {
-      const q = resolveComponent("el-scrollbar"), D = resolveComponent("el-button"), M = resolveComponent("el-dialog"), L = resolveComponent("Setting"), f = resolveComponent("el-icon"), S = resolveComponent("el-input"), s = resolveComponent("el-descriptions-item"), B = resolveComponent("el-descriptions"), u = resolveComponent("el-option"), Q = resolveComponent("el-select"), p = resolveComponent("el-input-number"), F = resolveComponent("el-tab-pane"), N = resolveComponent("Monitor"), Y = resolveComponent("FolderOpened"), R = resolveComponent("el-color-picker"), U = resolveComponent("Plus"), W = resolveComponent("Sort"), G = resolveComponent("el-tabs");
+    ]), R = ref([]), { proxy: U } = getCurrentInstance();
+    return U.http.post("api/Sys_Dictionary/GetVueDictionary", ["dbServer"]).then((m) => {
+      R.value = m[0].data;
+    }), (m, i) => {
+      const q = resolveComponent("el-scrollbar"), D = resolveComponent("el-button"), M = resolveComponent("el-dialog"), L = resolveComponent("Setting"), w = resolveComponent("el-icon"), k = resolveComponent("el-input"), s = resolveComponent("el-descriptions-item"), C = resolveComponent("el-descriptions"), u = resolveComponent("el-option"), Q = resolveComponent("el-select"), p = resolveComponent("el-input-number"), F = resolveComponent("el-tab-pane"), N = resolveComponent("Monitor"), Y = resolveComponent("FolderOpened"), x = resolveComponent("el-color-picker"), y = resolveComponent("Plus"), W = resolveComponent("Sort"), G = resolveComponent("el-tabs");
       return openBlock(), createElementBlock(Fragment, null, [
         createVNode(M, {
-          modelValue: m.value,
-          "onUpdate:modelValue": n[1] || (n[1] = (o) => m.value = o),
+          modelValue: S.value,
+          "onUpdate:modelValue": i[1] || (i[1] = (o) => S.value = o),
           "close-on-click-modal": !1,
           "close-on-press-escape": !1,
           width: 900,
@@ -1873,7 +1896,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           style: { margin: "auto", top: "50px" }
         }, {
           header: withCtx(() => [
-            createTextVNode(toDisplayString(k.$ts("图标")), 1)
+            createTextVNode(toDisplayString(m.$ts("图标")), 1)
           ]),
           footer: withCtx(() => [
             createElementVNode("div", _hoisted_1$3, [
@@ -1883,35 +1906,35 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   style: { "font-size": "20px", padding: "6px", cursor: "pointer" },
                   class: normalizeClass(o),
                   key: I,
-                  onClick: (w) => V(I)
+                  onClick: (f) => V(I)
                 }, null, 10, _hoisted_4$2))), 128))
               ])) : (openBlock(), createElementBlock("div", _hoisted_5$2, [
                 (openBlock(!0), createElementBlock(Fragment, null, renderList(e.currentItem.icon, (o, I) => (openBlock(), createElementBlock("img", {
                   style: { height: "20px", "margin-right": "5px", cursor: "pointer" },
-                  src: J(o.name || o),
+                  src: v(o.name || o),
                   key: I,
-                  onClick: (w) => V(I)
+                  onClick: (f) => V(I)
                 }, null, 8, _hoisted_6$2))), 128))
               ])),
               _hoisted_7$1
             ]),
             createElementVNode("div", _hoisted_8$1, [
               createVNode(D, {
-                onClick: n[0] || (n[0] = (o) => m.value = !1)
+                onClick: i[0] || (i[0] = (o) => S.value = !1)
               }, {
                 default: withCtx(() => [
                   _hoisted_9$1,
-                  createTextVNode(toDisplayString(k.$ts("关闭")), 1)
+                  createTextVNode(toDisplayString(m.$ts("关闭")), 1)
                 ]),
                 _: 1
               }),
               createVNode(D, {
                 type: "primary",
-                onClick: h
+                onClick: J
               }, {
                 default: withCtx(() => [
                   _hoisted_10$1,
-                  createTextVNode(toDisplayString(k.$ts("确定")), 1)
+                  createTextVNode(toDisplayString(m.$ts("确定")), 1)
                 ]),
                 _: 1
               })
@@ -1936,15 +1959,15 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           _: 1
         }, 8, ["modelValue"]),
         createVNode(G, {
-          modelValue: i.value,
-          "onUpdate:modelValue": n[51] || (n[51] = (o) => i.value = o),
+          modelValue: a.value,
+          "onUpdate:modelValue": i[52] || (i[52] = (o) => a.value = o),
           class: "demo-tabs"
         }, {
           default: withCtx(() => [
             createVNode(F, { name: "基础设置" }, {
               label: withCtx(() => [
                 createElementVNode("span", _hoisted_11$1, [
-                  createVNode(f, null, {
+                  createVNode(w, null, {
                     default: withCtx(() => [
                       createVNode(L)
                     ]),
@@ -1955,7 +1978,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
               ]),
               default: withCtx(() => [
                 createElementVNode("div", _hoisted_13$1, [
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -1968,9 +1991,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "标题"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             modelValue: e.currentItem.title,
-                            "onUpdate:modelValue": n[2] || (n[2] = (o) => e.currentItem.title = o),
+                            "onUpdate:modelValue": i[2] || (i[2] = (o) => e.currentItem.title = o),
                             onBlur: c,
                             placeholder: "请输入标题"
                           }, null, 8, ["modelValue"])
@@ -1980,7 +2003,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -1996,8 +2019,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           createVNode(Q, {
                             teleported: !1,
                             modelValue: e.currentItem.showFilter,
-                            "onUpdate:modelValue": n[3] || (n[3] = (o) => e.currentItem.showFilter = o),
-                            onChange: n[4] || (n[4] = (o) => {
+                            "onUpdate:modelValue": i[3] || (i[3] = (o) => e.currentItem.showFilter = o),
+                            onChange: i[4] || (i[4] = (o) => {
                               b(o, "isProc");
                             })
                           }, {
@@ -2029,7 +2052,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  e.currentItem.showFilter ? (openBlock(), createBlock(B, {
+                  e.currentItem.showFilter ? (openBlock(), createBlock(C, {
                     key: 0,
                     class: "desc-top",
                     column: 1,
@@ -2046,7 +2069,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           createVNode(Q, {
                             teleported: !1,
                             modelValue: e.currentItem.filterType,
-                            "onUpdate:modelValue": n[5] || (n[5] = (o) => e.currentItem.filterType = o)
+                            "onUpdate:modelValue": i[5] || (i[5] = (o) => e.currentItem.filterType = o)
                           }, {
                             default: withCtx(() => [
                               createVNode(u, { value: "纵向显示" }, {
@@ -2071,10 +2094,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               placeholder: "请选择",
                               onChange: d,
                               modelValue: e.currentItem.filterValue,
-                              "onUpdate:modelValue": n[6] || (n[6] = (o) => e.currentItem.filterValue = o)
+                              "onUpdate:modelValue": i[6] || (i[6] = (o) => e.currentItem.filterValue = o)
                             }, {
                               default: withCtx(() => [
-                                (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(a), (o, I) => (openBlock(), createBlock(u, {
+                                (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(n), (o, I) => (openBlock(), createBlock(u, {
                                   key: I,
                                   label: o,
                                   value: o
@@ -2091,7 +2114,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   })) : createCommentVNode("", !0),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2104,15 +2127,15 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "接口地址"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             modelValue: e.currentItem.url,
-                            "onUpdate:modelValue": n[7] || (n[7] = (o) => e.currentItem.url = o),
+                            "onUpdate:modelValue": i[7] || (i[7] = (o) => e.currentItem.url = o),
                             placeholder: "api/xx/xx"
                           }, {
                             append: withCtx(() => [
                               createVNode(D, {
                                 icon: "Search",
-                                onClick: C
+                                onClick: E
                               })
                             ]),
                             _: 1
@@ -2123,7 +2146,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2136,13 +2159,13 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "sql"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             type: "textarea",
                             onBlur: g,
                             style: { "font-size": "12px" },
                             autosize: { minRows: 3, maxRows: 10 },
                             modelValue: e.currentItem.sql,
-                            "onUpdate:modelValue": n[8] || (n[8] = (o) => e.currentItem.sql = o),
+                            "onUpdate:modelValue": i[8] || (i[8] = (o) => e.currentItem.sql = o),
                             placeholder: "日期固定参数名@date12如：select xx from table where 日期字段 BETWEEN @date1 and @date2"
                           }, null, 8, ["modelValue"])
                         ]),
@@ -2151,7 +2174,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2167,7 +2190,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           createVNode(Q, {
                             teleported: !1,
                             modelValue: e.currentItem.isProc,
-                            "onUpdate:modelValue": n[9] || (n[9] = (o) => e.currentItem.isProc = o)
+                            "onUpdate:modelValue": i[9] || (i[9] = (o) => e.currentItem.isProc = o)
                           }, {
                             default: withCtx(() => [
                               createVNode(u, {
@@ -2197,7 +2220,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2214,10 +2237,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             teleported: !1,
                             placeholder: "请选择",
                             modelValue: e.currentItem.db,
-                            "onUpdate:modelValue": n[10] || (n[10] = (o) => e.currentItem.db = o)
+                            "onUpdate:modelValue": i[10] || (i[10] = (o) => e.currentItem.db = o)
                           }, {
                             default: withCtx(() => [
-                              (openBlock(!0), createElementBlock(Fragment, null, renderList(x.value, (o, I) => (openBlock(), createBlock(u, {
+                              (openBlock(!0), createElementBlock(Fragment, null, renderList(R.value, (o, I) => (openBlock(), createBlock(u, {
                                 key: I,
                                 label: o.value,
                                 value: o.key
@@ -2231,7 +2254,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2244,13 +2267,13 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "数据过滤"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             type: "textarea",
                             style: { "font-size": "12px" },
                             onBlur: c,
                             autosize: { minRows: 4, maxRows: 10 },
                             modelValue: e.currentItem.filterFunc,
-                            "onUpdate:modelValue": n[11] || (n[11] = (o) => e.currentItem.filterFunc = o)
+                            "onUpdate:modelValue": i[11] || (i[11] = (o) => e.currentItem.filterFunc = o)
                           }, null, 8, ["modelValue"])
                         ]),
                         _: 1
@@ -2258,8 +2281,40 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  e.currentItem.type == "form" || e.currentItem.type == "card" ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-                    createVNode(B, {
+                  e.currentItem.type == "table" || e.currentItem.type == "notice" ? (openBlock(), createBlock(C, {
+                    key: 1,
+                    class: "desc-top",
+                    column: 1,
+                    size: "default",
+                    border: !0
+                  }, {
+                    default: withCtx(() => [
+                      createVNode(s, {
+                        "label-align": "left",
+                        span: 1,
+                        label: "格式化"
+                      }, {
+                        default: withCtx(() => [
+                          createVNode(k, {
+                            type: "textarea",
+                            style: { "font-size": "12px" },
+                            onBlur: c,
+                            autosize: { minRows: 4, maxRows: 10 },
+                            placeholder: `function(value,name,row,options){   \r
+            //返回html标签自定义显示\r
+           return value;\r
+           }`,
+                            modelValue: e.currentItem.format,
+                            "onUpdate:modelValue": i[12] || (i[12] = (o) => e.currentItem.format = o)
+                          }, null, 8, ["modelValue"])
+                        ]),
+                        _: 1
+                      })
+                    ]),
+                    _: 1
+                  })) : createCommentVNode("", !0),
+                  e.currentItem.type == "form" || e.currentItem.type == "card" ? (openBlock(), createElementBlock(Fragment, { key: 2 }, [
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -2277,7 +2332,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               min: 1,
                               onChange: c,
                               modelValue: e.currentItem.column,
-                              "onUpdate:modelValue": n[12] || (n[12] = (o) => e.currentItem.column = o)
+                              "onUpdate:modelValue": i[13] || (i[13] = (o) => e.currentItem.column = o)
                             }, null, 8, ["modelValue"])
                           ]),
                           _: 1
@@ -2285,7 +2340,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -2298,13 +2353,13 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           label: "表单参数"
                         }, {
                           default: withCtx(() => [
-                            createVNode(S, {
+                            createVNode(k, {
                               type: "textarea",
                               style: { "font-size": "12px" },
                               onBlur: c,
                               autosize: { minRows: 4, maxRows: 10 },
                               modelValue: e.currentItem.formText,
-                              "onUpdate:modelValue": n[13] || (n[13] = (o) => e.currentItem.formText = o)
+                              "onUpdate:modelValue": i[14] || (i[14] = (o) => e.currentItem.formText = o)
                             }, null, 8, ["modelValue"])
                           ]),
                           _: 1
@@ -2313,7 +2368,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       _: 1
                     })
                   ], 64)) : createCommentVNode("", !0),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2326,13 +2381,13 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "数据格式"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             type: "textarea",
                             style: { "font-size": "12px" },
                             onBlur: c,
                             autosize: { minRows: 6, maxRows: 10 },
                             modelValue: e.currentItem.dataText,
-                            "onUpdate:modelValue": n[14] || (n[14] = (o) => e.currentItem.dataText = o)
+                            "onUpdate:modelValue": i[15] || (i[15] = (o) => e.currentItem.dataText = o)
                           }, null, 8, ["modelValue"])
                         ]),
                         _: 1
@@ -2347,7 +2402,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             createVNode(F, { name: "属性设置" }, {
               label: withCtx(() => [
                 createElementVNode("span", _hoisted_16$1, [
-                  createVNode(f, null, {
+                  createVNode(w, null, {
                     default: withCtx(() => [
                       createVNode(N)
                     ]),
@@ -2358,7 +2413,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
               ]),
               default: withCtx(() => [
                 e.currentItem.icon && e.currentItem.type == "gridText" || e.currentItem.type == "ranking" ? (openBlock(), createElementBlock("div", _hoisted_18$1, [
-                  e.currentItem.type == "gridText" ? (openBlock(), createBlock(B, {
+                  e.currentItem.type == "gridText" ? (openBlock(), createBlock(C, {
                     key: 0,
                     class: "desc-top",
                     column: 1,
@@ -2374,7 +2429,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         default: withCtx(() => [
                           createElementVNode("div", {
                             class: "img-icon",
-                            onClick: v,
+                            onClick: h,
                             style: { display: "flex" }
                           }, [
                             e.currentItem.isFont ? (openBlock(), createElementBlock("div", _hoisted_19$1, [
@@ -2386,12 +2441,12 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             ])) : (openBlock(), createElementBlock("div", _hoisted_20$1, [
                               (openBlock(!0), createElementBlock(Fragment, null, renderList(e.currentItem.icon, (o, I) => (openBlock(), createElementBlock("img", {
                                 style: { height: "20px", "margin-right": "5px", cursor: "pointer" },
-                                src: J(o.name || o),
+                                src: v(o.name || o),
                                 key: I,
-                                onClick: n[15] || (n[15] = (w) => V(k.index))
+                                onClick: i[16] || (i[16] = (f) => V(m.index))
                               }, null, 8, _hoisted_21$1))), 128))
                             ])),
-                            createVNode(f, {
+                            createVNode(w, {
                               size: "20",
                               color: "#928f8f",
                               style: { position: "relative", top: "3px" }
@@ -2409,7 +2464,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     _: 1
                   })) : createCommentVNode("", !0)
                 ])) : createCommentVNode("", !0),
-                e.currentItem.type == "gridText" ? (openBlock(), createBlock(B, {
+                e.currentItem.type == "gridText" ? (openBlock(), createBlock(C, {
                   key: 1,
                   class: "desc-top",
                   column: 1,
@@ -2428,26 +2483,26 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             class: "color-item",
                             key: I
                           }, [
-                            createVNode(R, {
+                            createVNode(x, {
                               teleported: !1,
                               "show-alpha": "",
                               predefine: K.value,
                               modelValue: e.currentItem.bgColor[I],
-                              "onUpdate:modelValue": (w) => e.currentItem.bgColor[I] = w
+                              "onUpdate:modelValue": (f) => e.currentItem.bgColor[I] = f
                             }, null, 8, ["predefine", "modelValue", "onUpdate:modelValue"]),
                             createElementVNode("span", {
                               class: "color-item-del el-icon-delete",
-                              onClick: (w) => e.currentItem.bgColor.splice(I, 1)
+                              onClick: (f) => e.currentItem.bgColor.splice(I, 1)
                             }, null, 8, _hoisted_23$1)
                           ]))), 128)),
-                          createVNode(f, {
-                            onClick: n[16] || (n[16] = (o) => e.currentItem.bgColor.push("")),
+                          createVNode(w, {
+                            onClick: i[17] || (i[17] = (o) => e.currentItem.bgColor.push("")),
                             size: "20",
                             color: "#928f8f",
                             style: { position: "relative", top: "3px" }
                           }, {
                             default: withCtx(() => [
-                              createVNode(U)
+                              createVNode(y)
                             ]),
                             _: 1
                           })
@@ -2458,7 +2513,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   ]),
                   _: 1
                 })) : createCommentVNode("", !0),
-                e.currentItem.type != "pie" ? (openBlock(), createBlock(B, {
+                e.currentItem.type != "pie" ? (openBlock(), createBlock(C, {
                   key: 2,
                   class: "desc-top",
                   column: 1,
@@ -2477,25 +2532,25 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             class: "color-item",
                             key: I
                           }, [
-                            createVNode(R, {
+                            createVNode(x, {
                               "show-alpha": "",
                               predefine: K.value,
                               modelValue: e.currentItem.titleColor[I],
-                              "onUpdate:modelValue": (w) => e.currentItem.titleColor[I] = w
+                              "onUpdate:modelValue": (f) => e.currentItem.titleColor[I] = f
                             }, null, 8, ["predefine", "modelValue", "onUpdate:modelValue"]),
                             createElementVNode("span", {
                               class: "color-item-del el-icon-delete",
-                              onClick: (w) => e.currentItem.titleColor.splice(I, 1)
+                              onClick: (f) => e.currentItem.titleColor.splice(I, 1)
                             }, null, 8, _hoisted_25)
                           ]))), 128)),
-                          createVNode(f, {
-                            onClick: n[17] || (n[17] = (o) => e.currentItem.titleColor.push("")),
+                          createVNode(w, {
+                            onClick: i[18] || (i[18] = (o) => e.currentItem.titleColor.push("")),
                             size: "20",
                             color: "#928f8f",
                             style: { position: "relative", top: "3px" }
                           }, {
                             default: withCtx(() => [
-                              createVNode(U)
+                              createVNode(y)
                             ]),
                             _: 1
                           })
@@ -2506,7 +2561,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   ]),
                   _: 1
                 })) : createCommentVNode("", !0),
-                e.currentItem.type == "gridText" ? (openBlock(), createBlock(B, {
+                e.currentItem.type == "gridText" ? (openBlock(), createBlock(C, {
                   key: 3,
                   class: "desc-top",
                   column: 1,
@@ -2525,25 +2580,25 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             class: "color-item",
                             key: I
                           }, [
-                            createVNode(R, {
+                            createVNode(x, {
                               "show-alpha": "",
                               predefine: K.value,
                               modelValue: e.currentItem.fontColor[I],
-                              "onUpdate:modelValue": (w) => e.currentItem.fontColor[I] = w
+                              "onUpdate:modelValue": (f) => e.currentItem.fontColor[I] = f
                             }, null, 8, ["predefine", "modelValue", "onUpdate:modelValue"]),
                             createElementVNode("span", {
                               class: "color-item-del el-icon-delete",
-                              onClick: (w) => e.currentItem.fontColor.splice(I, 1)
+                              onClick: (f) => e.currentItem.fontColor.splice(I, 1)
                             }, null, 8, _hoisted_27)
                           ]))), 128)),
-                          createVNode(f, {
-                            onClick: n[18] || (n[18] = (o) => e.currentItem.fontColor.push("")),
+                          createVNode(w, {
+                            onClick: i[19] || (i[19] = (o) => e.currentItem.fontColor.push("")),
                             size: "20",
                             color: "#928f8f",
                             style: { position: "relative", top: "3px" }
                           }, {
                             default: withCtx(() => [
-                              createVNode(U)
+                              createVNode(y)
                             ]),
                             _: 1
                           })
@@ -2554,7 +2609,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   ]),
                   _: 1
                 })) : createCommentVNode("", !0),
-                e.currentItem.type == "gridText" ? (openBlock(), createBlock(B, {
+                e.currentItem.type == "gridText" ? (openBlock(), createBlock(C, {
                   key: 4,
                   class: "desc-top",
                   column: 1,
@@ -2571,7 +2626,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         createVNode(Q, {
                           teleported: !1,
                           modelValue: e.currentItem.showNumber,
-                          "onUpdate:modelValue": n[19] || (n[19] = (o) => e.currentItem.showNumber = o),
+                          "onUpdate:modelValue": i[20] || (i[20] = (o) => e.currentItem.showNumber = o),
                           onChange: c
                         }, {
                           default: withCtx(() => [
@@ -2603,7 +2658,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   _: 1
                 })) : createCommentVNode("", !0),
                 e.currentItem.type == "ranking" ? (openBlock(), createElementBlock("div", _hoisted_28, [
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2620,7 +2675,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             min: 0,
                             style: { width: "100%" },
                             modelValue: e.currentItem.strokeWidth,
-                            "onUpdate:modelValue": n[20] || (n[20] = (o) => e.currentItem.strokeWidth = o),
+                            "onUpdate:modelValue": i[21] || (i[21] = (o) => e.currentItem.strokeWidth = o),
                             onChange: c
                           }, null, 8, ["modelValue"])
                         ]),
@@ -2629,7 +2684,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2642,10 +2697,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         label: "数字单位后缀"
                       }, {
                         default: withCtx(() => [
-                          createVNode(S, {
+                          createVNode(k, {
                             style: { width: "100%" },
                             modelValue: e.currentItem.unit,
-                            "onUpdate:modelValue": n[21] || (n[21] = (o) => e.currentItem.unit = o),
+                            "onUpdate:modelValue": i[22] || (i[22] = (o) => e.currentItem.unit = o),
                             onBlur: c
                           }, null, 8, ["modelValue"])
                         ]),
@@ -2656,7 +2711,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   })
                 ])) : createCommentVNode("", !0),
                 e.currentItem.typ == "gridText" ? (openBlock(), createElementBlock("div", _hoisted_29, [
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2673,7 +2728,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             min: 0,
                             style: { width: "100%" },
                             modelValue: e.currentItem.imgSize,
-                            "onUpdate:modelValue": n[22] || (n[22] = (o) => e.currentItem.imgSize = o),
+                            "onUpdate:modelValue": i[23] || (i[23] = (o) => e.currentItem.imgSize = o),
                             onChange: c
                           }, null, 8, ["modelValue"])
                         ]),
@@ -2684,7 +2739,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   })
                 ])) : createCommentVNode("", !0),
                 withDirectives(createElementVNode("div", _hoisted_30, [
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2702,7 +2757,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.grid.left,
-                            "onUpdate:modelValue": n[23] || (n[23] = (o) => e.currentItem.grid.left = o),
+                            "onUpdate:modelValue": i[24] || (i[24] = (o) => e.currentItem.grid.left = o),
                             placeholder: "图间距(左)",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2712,7 +2767,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2730,7 +2785,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.grid.top,
-                            "onUpdate:modelValue": n[24] || (n[24] = (o) => e.currentItem.grid.top = o),
+                            "onUpdate:modelValue": i[25] || (i[25] = (o) => e.currentItem.grid.top = o),
                             placeholder: "图间距(上)",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2740,7 +2795,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2758,7 +2813,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.grid.right,
-                            "onUpdate:modelValue": n[25] || (n[25] = (o) => e.currentItem.grid.right = o),
+                            "onUpdate:modelValue": i[26] || (i[26] = (o) => e.currentItem.grid.right = o),
                             placeholder: "图间距(右)",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2768,7 +2823,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2786,7 +2841,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.grid.bottom,
-                            "onUpdate:modelValue": n[26] || (n[26] = (o) => e.currentItem.grid.bottom = o),
+                            "onUpdate:modelValue": i[27] || (i[27] = (o) => e.currentItem.grid.bottom = o),
                             placeholder: "图间距(下)",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2800,7 +2855,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   [vShow, e.currentItem.type == "bar" || e.currentItem.type == "line"]
                 ]),
                 withDirectives(createElementVNode("div", _hoisted_31, [
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2818,7 +2873,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.left,
-                            "onUpdate:modelValue": n[27] || (n[27] = (o) => e.currentItem.left = o),
+                            "onUpdate:modelValue": i[28] || (i[28] = (o) => e.currentItem.left = o),
                             placeholder: "图间距左右",
                             step: 1
                           }, null, 8, ["modelValue"])
@@ -2828,7 +2883,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2846,7 +2901,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.top,
-                            "onUpdate:modelValue": n[28] || (n[28] = (o) => e.currentItem.top = o),
+                            "onUpdate:modelValue": i[29] || (i[29] = (o) => e.currentItem.top = o),
                             placeholder: "图间距上下",
                             step: 2
                           }, null, 8, ["modelValue"])
@@ -2856,7 +2911,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2874,7 +2929,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.size1,
-                            "onUpdate:modelValue": n[29] || (n[29] = (o) => e.currentItem.size1 = o),
+                            "onUpdate:modelValue": i[30] || (i[30] = (o) => e.currentItem.size1 = o),
                             placeholder: "饼图大小内",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2884,7 +2939,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2902,7 +2957,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.size2,
-                            "onUpdate:modelValue": n[30] || (n[30] = (o) => e.currentItem.size2 = o),
+                            "onUpdate:modelValue": i[31] || (i[31] = (o) => e.currentItem.size2 = o),
                             placeholder: "饼图大小外",
                             step: 5
                           }, null, 8, ["modelValue"])
@@ -2916,7 +2971,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   [vShow, e.currentItem.type == "pie"]
                 ]),
                 withDirectives(createElementVNode("div", _hoisted_32, [
-                  withDirectives(createVNode(B, {
+                  withDirectives(createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2934,7 +2989,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             placeholder: "请选择",
                             modelValue: e.currentItem.legend,
-                            "onUpdate:modelValue": n[31] || (n[31] = (o) => e.currentItem.legend = o)
+                            "onUpdate:modelValue": i[32] || (i[32] = (o) => e.currentItem.legend = o)
                           }, {
                             default: withCtx(() => [
                               (openBlock(), createElementBlock(Fragment, null, renderList(r, (o, I) => createVNode(u, {
@@ -2956,7 +3011,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       e.currentItem.type == "bar" || e.currentItem.type == "line" || e.currentItem.type == "pie"
                     ]
                   ]),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -2974,10 +3029,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             placeholder: "请选择",
                             modelValue: e.currentItem.legendShape,
-                            "onUpdate:modelValue": n[32] || (n[32] = (o) => e.currentItem.legendShape = o)
+                            "onUpdate:modelValue": i[33] || (i[33] = (o) => e.currentItem.legendShape = o)
                           }, {
                             default: withCtx(() => [
-                              (openBlock(), createElementBlock(Fragment, null, renderList(E, (o, I) => createVNode(u, {
+                              (openBlock(), createElementBlock(Fragment, null, renderList(B, (o, I) => createVNode(u, {
                                 key: I,
                                 value: o.value,
                                 label: o.name
@@ -2991,7 +3046,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -3009,7 +3064,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             onChange: c,
                             style: { width: "100%" },
                             modelValue: e.currentItem.legendSize,
-                            "onUpdate:modelValue": n[33] || (n[33] = (o) => e.currentItem.legendSize = o),
+                            "onUpdate:modelValue": i[34] || (i[34] = (o) => e.currentItem.legendSize = o),
                             placeholder: "图例大小"
                           }, null, 8, ["modelValue"])
                         ]),
@@ -3019,7 +3074,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     _: 1
                   }),
                   withDirectives(createElementVNode("div", _hoisted_33, [
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3036,7 +3091,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               placeholder: "请选择",
                               teleported: !1,
                               modelValue: e.currentItem.showLegendValue,
-                              "onUpdate:modelValue": n[34] || (n[34] = (o) => e.currentItem.showLegendValue = o),
+                              "onUpdate:modelValue": i[35] || (i[35] = (o) => e.currentItem.showLegendValue = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3060,9 +3115,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           label: "图例单位"
                         }, {
                           default: withCtx(() => [
-                            createVNode(S, {
+                            createVNode(k, {
                               modelValue: e.currentItem.showLegendUnit,
-                              "onUpdate:modelValue": n[35] || (n[35] = (o) => e.currentItem.showLegendUnit = o),
+                              "onUpdate:modelValue": i[36] || (i[36] = (o) => e.currentItem.showLegendUnit = o),
                               onBlur: c,
                               placeholder: "请输入图例单位"
                             }, null, 8, ["modelValue"])
@@ -3080,7 +3135,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                                 placeholder: "请选择",
                                 teleported: !1,
                                 modelValue: e.currentItem.showLegendRate,
-                                "onUpdate:modelValue": n[36] || (n[36] = (o) => e.currentItem.showLegendRate = o),
+                                "onUpdate:modelValue": i[37] || (i[37] = (o) => e.currentItem.showLegendRate = o),
                                 onChange: c
                               }, {
                                 default: withCtx(() => [
@@ -3096,9 +3151,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                                 _: 1
                               }, 8, ["modelValue"]),
                               _hoisted_35,
-                              createVNode(S, {
+                              createVNode(k, {
                                 modelValue: e.currentItem.numLen,
-                                "onUpdate:modelValue": n[37] || (n[37] = (o) => e.currentItem.numLen = o),
+                                "onUpdate:modelValue": i[38] || (i[38] = (o) => e.currentItem.numLen = o),
                                 placeholder: "小数位数"
                               }, null, 8, ["modelValue"])
                             ])
@@ -3115,7 +3170,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               placeholder: "请选择",
                               teleported: !1,
                               modelValue: e.currentItem.showTotal,
-                              "onUpdate:modelValue": n[38] || (n[38] = (o) => e.currentItem.showTotal = o),
+                              "onUpdate:modelValue": i[39] || (i[39] = (o) => e.currentItem.showTotal = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3141,7 +3196,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3154,9 +3209,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           label: "汇总标题"
                         }, {
                           default: withCtx(() => [
-                            createVNode(S, {
+                            createVNode(k, {
                               modelValue: e.currentItem.subTitle,
-                              "onUpdate:modelValue": n[39] || (n[39] = (o) => e.currentItem.subTitle = o),
+                              "onUpdate:modelValue": i[40] || (i[40] = (o) => e.currentItem.subTitle = o),
                               onBlur: c,
                               placeholder: "请输入标题"
                             }, null, 8, ["modelValue"])
@@ -3174,7 +3229,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               onChange: c,
                               style: { width: "100%" },
                               modelValue: e.currentItem.totalSize,
-                              "onUpdate:modelValue": n[40] || (n[40] = (o) => e.currentItem.totalSize = o),
+                              "onUpdate:modelValue": i[41] || (i[41] = (o) => e.currentItem.totalSize = o),
                               placeholder: "汇总字体大小"
                             }, null, 8, ["modelValue"])
                           ]),
@@ -3183,7 +3238,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3201,7 +3256,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               onChange: c,
                               style: { width: "100%" },
                               modelValue: e.currentItem.subTitleSize,
-                              "onUpdate:modelValue": n[41] || (n[41] = (o) => e.currentItem.subTitleSize = o),
+                              "onUpdate:modelValue": i[42] || (i[42] = (o) => e.currentItem.subTitleSize = o),
                               placeholder: "标题字体大小"
                             }, null, 8, ["modelValue"])
                           ]),
@@ -3213,7 +3268,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   ], 512), [
                     [vShow, e.currentItem.type == "pie"]
                   ]),
-                  createVNode(B, {
+                  createVNode(C, {
                     class: "desc-top",
                     column: 1,
                     size: "default",
@@ -3229,7 +3284,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           createVNode(Q, {
                             teleported: !1,
                             modelValue: e.currentItem.showLabel,
-                            "onUpdate:modelValue": n[42] || (n[42] = (o) => e.currentItem.showLabel = o),
+                            "onUpdate:modelValue": i[43] || (i[43] = (o) => e.currentItem.showLabel = o),
                             onChange: c
                           }, {
                             default: withCtx(() => [
@@ -3256,7 +3311,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     _: 1
                   }),
                   withDirectives(createElementVNode("div", null, [
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3274,7 +3329,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               onChange: c,
                               style: { width: "100%" },
                               modelValue: e.currentItem.radius,
-                              "onUpdate:modelValue": n[43] || (n[43] = (o) => e.currentItem.radius = o),
+                              "onUpdate:modelValue": i[44] || (i[44] = (o) => e.currentItem.radius = o),
                               step: 2,
                               placeholder: "圆角"
                             }, null, 8, ["modelValue"])
@@ -3284,7 +3339,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    e.currentItem.type == "bar" ? (openBlock(), createBlock(B, {
+                    e.currentItem.type == "bar" ? (openBlock(), createBlock(C, {
                       key: 0,
                       class: "desc-top",
                       column: 1,
@@ -3303,7 +3358,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               onChange: c,
                               style: { width: "100%" },
                               modelValue: e.currentItem.barMaxWidth,
-                              "onUpdate:modelValue": n[44] || (n[44] = (o) => e.currentItem.barMaxWidth = o),
+                              "onUpdate:modelValue": i[45] || (i[45] = (o) => e.currentItem.barMaxWidth = o),
                               step: 2,
                               placeholder: "宽度"
                             }, null, 8, ["modelValue"])
@@ -3313,7 +3368,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     })) : createCommentVNode("", !0),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3329,7 +3384,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             createVNode(Q, {
                               teleported: !1,
                               modelValue: e.currentItem.xLine,
-                              "onUpdate:modelValue": n[45] || (n[45] = (o) => e.currentItem.xLine = o),
+                              "onUpdate:modelValue": i[46] || (i[46] = (o) => e.currentItem.xLine = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3355,7 +3410,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3371,7 +3426,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             createVNode(Q, {
                               teleported: !1,
                               modelValue: e.currentItem.yLine,
-                              "onUpdate:modelValue": n[46] || (n[46] = (o) => e.currentItem.yLine = o),
+                              "onUpdate:modelValue": i[47] || (i[47] = (o) => e.currentItem.yLine = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3397,7 +3452,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3413,7 +3468,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             createVNode(Q, {
                               teleported: !1,
                               modelValue: e.currentItem.stack,
-                              "onUpdate:modelValue": n[47] || (n[47] = (o) => e.currentItem.stack = o),
+                              "onUpdate:modelValue": i[48] || (i[48] = (o) => e.currentItem.stack = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3444,7 +3499,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       ]),
                       _: 1
                     }),
-                    createVNode(B, {
+                    createVNode(C, {
                       class: "desc-top",
                       column: 1,
                       size: "default",
@@ -3460,7 +3515,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                             createVNode(Q, {
                               teleported: !1,
                               modelValue: e.currentItem.showXData,
-                              "onUpdate:modelValue": n[48] || (n[48] = (o) => e.currentItem.showXData = o),
+                              "onUpdate:modelValue": i[49] || (i[49] = (o) => e.currentItem.showXData = o),
                               onChange: c
                             }, {
                               default: withCtx(() => [
@@ -3503,9 +3558,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             createVNode(F, { name: "事件处理" }, {
               label: withCtx(() => [
                 createElementVNode("span", _hoisted_36, [
-                  createVNode(f, null, {
+                  createVNode(w, null, {
                     default: withCtx(() => [
-                      createVNode(f, null, {
+                      createVNode(w, null, {
                         default: withCtx(() => [
                           createVNode(W)
                         ]),
@@ -3518,7 +3573,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                 ])
               ]),
               default: withCtx(() => [
-                createVNode(B, {
+                createVNode(C, {
                   class: "desc-top",
                   column: 1,
                   size: "default",
@@ -3531,10 +3586,10 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       label: "跳转地址"
                     }, {
                       default: withCtx(() => [
-                        createVNode(S, {
+                        createVNode(k, {
                           placeholder: "页面路由地址,如：/xx?id=123",
                           modelValue: e.currentItem.openUrl,
-                          "onUpdate:modelValue": n[49] || (n[49] = (o) => e.currentItem.openUrl = o)
+                          "onUpdate:modelValue": i[50] || (i[50] = (o) => e.currentItem.openUrl = o)
                         }, null, 8, ["modelValue"])
                       ]),
                       _: 1
@@ -3542,7 +3597,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   ]),
                   _: 1
                 }),
-                createVNode(B, {
+                createVNode(C, {
                   class: "desc-top",
                   column: 1,
                   size: "default",
@@ -3555,12 +3610,12 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                       label: "点击事件"
                     }, {
                       default: withCtx(() => [
-                        createVNode(S, {
+                        createVNode(k, {
                           type: "textarea",
                           style: { "font-size": "12px" },
                           autosize: { minRows: 10, maxRows: 15 },
                           modelValue: e.currentItem.eventClick,
-                          "onUpdate:modelValue": n[50] || (n[50] = (o) => e.currentItem.eventClick = o),
+                          "onUpdate:modelValue": i[51] || (i[51] = (o) => e.currentItem.eventClick = o),
                           placeholder: "funtion(data){ }"
                         }, null, 8, ["modelValue"])
                       ]),
@@ -3578,7 +3633,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ], 64);
     };
   }
-}, VolDataParams = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-3c8c49e5"]]), _hoisted_1$2 = ["onClick"], _sfc_main$2 = {
+}, VolDataParams = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-42b46ea8"]]), _hoisted_1$2 = ["onClick"], _sfc_main$2 = {
   __name: "VolDataFilter",
   props: {
     //value: "全部",
@@ -3595,27 +3650,27 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
   setup(e, { emit: A }) {
     const l = e;
     ref(), getCurrentInstance();
-    const i = ref("");
-    i.value = l.value || "全部", i.value = l.modelValue || "全部";
-    const a = A, r = (t) => {
-      i.value = t, a("update:modelValue", t), a("filter-change", t);
-    }, E = (t) => {
+    const a = ref("");
+    a.value = l.value || "全部", a.value = l.modelValue || "全部";
+    const n = A, r = (t) => {
+      a.value = t, n("update:modelValue", t), n("filter-change", t);
+    }, B = (t) => {
       r(t);
     };
     return watch(
       () => l.modelValue,
-      (t, C) => {
-        i.value = t;
+      (t, E) => {
+        a.value = t;
       }
-    ), (t, C) => {
-      const g = resolveComponent("arrow-down"), d = resolveComponent("el-icon"), c = resolveComponent("el-button"), m = resolveComponent("el-dropdown-item"), v = resolveComponent("el-dropdown-menu"), h = resolveComponent("el-dropdown");
-      return e.filterType == "纵向显示" ? (openBlock(), createBlock(h, { key: 0 }, {
+    ), (t, E) => {
+      const g = resolveComponent("arrow-down"), d = resolveComponent("el-icon"), c = resolveComponent("el-button"), S = resolveComponent("el-dropdown-item"), h = resolveComponent("el-dropdown-menu"), J = resolveComponent("el-dropdown");
+      return e.filterType == "纵向显示" ? (openBlock(), createBlock(J, { key: 0 }, {
         dropdown: withCtx(() => [
-          createVNode(v, null, {
+          createVNode(h, null, {
             default: withCtx(() => [
-              (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(filter), (V, J) => (openBlock(), createBlock(m, {
+              (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(filter), (V, v) => (openBlock(), createBlock(S, {
                 style: { padding: "0", "line-height": "0" },
-                key: J
+                key: v
               }, {
                 default: withCtx(() => [
                   createElementVNode("div", {
@@ -3636,7 +3691,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             class: "el-dropdown-link"
           }, {
             default: withCtx(() => [
-              createTextVNode(toDisplayString(i.value), 1),
+              createTextVNode(toDisplayString(a.value), 1),
               createVNode(d, { class: "el-icon--right" }, {
                 default: withCtx(() => [
                   createVNode(g)
@@ -3653,12 +3708,12 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         class: "btn-group",
         onChange: r
       }, [
-        (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(filter), (V, J) => (openBlock(), createBlock(c, {
-          onClick: (b) => E(V),
-          plain: V != i.value,
+        (openBlock(!0), createElementBlock(Fragment, null, renderList(unref(filter), (V, v) => (openBlock(), createBlock(c, {
+          onClick: (b) => B(V),
+          plain: V != a.value,
           size: "small",
-          type: V === i.value ? "primary" : "",
-          key: J
+          type: V === a.value ? "primary" : "",
+          key: v
         }, {
           default: withCtx(() => [
             createTextVNode(toDisplayString(V), 1)
@@ -3668,7 +3723,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ], 32));
     };
   }
-}, VolDataFilter = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-b9feb598"]]), _hoisted_1$1 = { class: "vol-data-table" }, _hoisted_2$1 = { class: "vol-da-table" }, _hoisted_3$1 = ["onClick"], _hoisted_4$1 = { key: 0 }, _hoisted_5$1 = { key: 1 }, _hoisted_6$1 = { style: { width: "40px", "min-width": "40px" } }, _sfc_main$1 = {
+}, VolDataFilter = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-b9feb598"]]), _hoisted_1$1 = { class: "vol-data-table" }, _hoisted_2$1 = { class: "vol-da-table" }, _hoisted_3$1 = ["onClick"], _hoisted_4$1 = { key: 0 }, _hoisted_5$1 = ["innerHTML"], _hoisted_6$1 = { style: { width: "40px", "min-width": "40px" } }, _sfc_main$1 = {
   __name: "VolDataNotice",
   props: {
     index: {
@@ -3682,35 +3737,50 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     data: {
       type: Array,
       default: () => []
+    },
+    format: {
+      type: Object,
+      default: null
     }
   },
   emits: ["componentItemClick"],
-  setup(e, { emit: A }) {
-    getCurrentInstance();
-    const l = e, i = computed(() => l.data.length ? Object.keys(l.data[0]).filter((E) => E != "id") : []), a = A, r = (E) => {
-      a("componentItemClick", E, l.data);
+  setup(__props, { emit: __emit }) {
+    const { proxy } = getCurrentInstance(), props = __props, columns = computed(() => props.data.length ? Object.keys(props.data[0]).filter((e) => e != "id") : []), emit = __emit, componentItemClick = (e) => {
+      emit("componentItemClick", e, props.data);
+    }, getValueLabel = (row, name) => {
+      if (props.format)
+        try {
+          const func = eval(`(${props.format})`);
+          return func(row[name], name, row, props.data);
+        } catch (e) {
+          console.log("格式化异常:", JSON.stringify(e));
+        }
+      return proxy.$ts(row[name]);
     };
-    return (E, t) => {
-      const C = resolveComponent("ArrowRight"), g = resolveComponent("el-icon"), d = resolveComponent("el-scrollbar");
+    return (e, A) => {
+      const l = resolveComponent("ArrowRight"), a = resolveComponent("el-icon"), n = resolveComponent("el-scrollbar");
       return openBlock(), createElementBlock("div", _hoisted_1$1, [
         createVNode(VolTitle, {
           icon: "el-icon-menu",
-          title: E.$ts(e.title)
+          title: e.$ts(__props.title)
         }, null, 8, ["title"]),
-        createVNode(d, { style: { flex: "1", height: "0", padding: "0 10px 10px 10px" } }, {
+        createVNode(n, { style: { flex: "1", height: "0", padding: "0 10px 10px 10px" } }, {
           default: withCtx(() => [
             createElementVNode("table", _hoisted_2$1, [
-              (openBlock(!0), createElementBlock(Fragment, null, renderList(e.data, (c, m) => (openBlock(), createElementBlock("tr", {
-                onClick: withModifiers((v) => r(c), ["stop"]),
-                key: m
+              (openBlock(!0), createElementBlock(Fragment, null, renderList(__props.data, (r, B) => (openBlock(), createElementBlock("tr", {
+                onClick: withModifiers((t) => componentItemClick(r), ["stop"]),
+                key: B
               }, [
-                (openBlock(!0), createElementBlock(Fragment, null, renderList(i.value, (v, h) => (openBlock(), createElementBlock("td", { key: h }, [
-                  h === 0 ? (openBlock(), createElementBlock("span", _hoisted_4$1, " 【" + toDisplayString(c[v]) + "】 ", 1)) : (openBlock(), createElementBlock("span", _hoisted_5$1, toDisplayString(c[v]), 1))
+                (openBlock(!0), createElementBlock(Fragment, null, renderList(columns.value, (t, E) => (openBlock(), createElementBlock("td", { key: E }, [
+                  E === 0 ? (openBlock(), createElementBlock("span", _hoisted_4$1, " 【" + toDisplayString(r[t]) + "】 ", 1)) : (openBlock(), createElementBlock("span", {
+                    key: 1,
+                    innerHTML: getValueLabel(r, t)
+                  }, null, 8, _hoisted_5$1))
                 ]))), 128)),
                 createElementVNode("td", _hoisted_6$1, [
-                  createVNode(g, null, {
+                  createVNode(a, null, {
                     default: withCtx(() => [
-                      createVNode(C)
+                      createVNode(l)
                     ]),
                     _: 1
                   })
@@ -3723,7 +3793,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ]);
     };
   }
-}, VolDataNotice = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-15b40fbf"]]), _withScopeId = (e) => (pushScopeId("data-v-76ccde06"), e = e(), popScopeId(), e), _hoisted_1 = { class: "grid-box" }, _hoisted_2 = {
+}, VolDataNotice = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-6371e343"]]), _withScopeId = (e) => (pushScopeId("data-v-7452264f"), e = e(), popScopeId(), e), _hoisted_1 = { class: "grid-box" }, _hoisted_2 = {
   key: 0,
   class: "grid-layout-component grid-layout-item"
 }, _hoisted_3 = { class: "header-txt" }, _hoisted_4 = { class: "grid-layout-content grid-layout-item" }, _hoisted_5 = {
@@ -3741,8 +3811,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     id: {
       type: String,
       //  default: null, //"ac491adc-f6a9-43c4-b3bf-8eaafeb5bf74", // null,
-      default: "b421aebf-be78-48d2-803e-a573f40ffa06"
-      // "f7cce37d-f0d9-428c-a1ed-494bc12419cf", // "c54e753e-1781-4253-a9eb-1d196da30253", // null,
+      default: "d3f48bb9-a385-4608-ba81-e81b28adfd07"
+      // "d3f48bb9-a385-4608-ba81-e81b28adfd07", // "f7cce37d-f0d9-428c-a1ed-494bc12419cf", // "c54e753e-1781-4253-a9eb-1d196da30253", // null,
     },
     readonly: {
       type: Boolean,
@@ -3754,7 +3824,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     }
   },
   emits: ["preview"],
-  setup(__props, { emit: __emit }) {
+  setup(__props, { expose: __expose, emit: __emit }) {
     const props = __props, { proxy } = getCurrentInstance(), colWidth = ref(100), defaulCurrentItem = () => ({
       x: 0,
       y: 0,
@@ -3864,7 +3934,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         document.createEventObject && window.fireEvent("onresize");
     }, dtNow = "2024-01-01", setItemRef = (e, A) => {
       if (e) {
-        const l = layout.value.find((i) => i.i == A.i);
+        const l = layout.value.find((a) => a.i == A.i);
         l.ref = e, setTimeout(
           () => {
             initCharts(l);
@@ -3875,14 +3945,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     }, end = (e) => {
       let A = defaulCurrentItem();
       if (e.type == "pie" && (A.legend = "rightVerticalCenter"), A.title = e.title, A.w = e.w || A.w, A.h = e.h || A.h, A.icon = (e.icon || []).map((l) => l), Object.assign(A, e), ["table", "form", "card"].includes(e.type) ? e.type == "form" || e.type == "card" ? (A.form = e.form(e.type == "card"), A.data = e.data(e.type == "card")) : A.data = e.data() : (["step", "gridText"].includes(e.type) || e.data && typeof e.data == "function") && (A.data = e.data()), layout.value.length) {
-        let l = layout.value.reduce(
-          (a, r) => Math.max(a, r.x),
-          layout.value[0].x
-        ), i = layout.value.reduce(
-          (a, r) => Math.max(a, r.y),
-          layout.value[0].y
-        );
-        A.x = l + 1, A.y = i + 1;
+        let l = layout.value.reduce((n, r) => Math.max(n, r.x), layout.value[0].x), a = layout.value.reduce((n, r) => Math.max(n, r.y), layout.value[0].y);
+        A.x = l + 1, A.y = a + 1;
       }
       e = Object.assign({}, e, A), layout.value.push(e), currentItem.value = e, e.data && (typeof e.data == "array" || typeof e.data == "object") && (currentItem.value.dataText = JSON.stringify(e.data)), e.form && (currentItem.value.formText = JSON.stringify(e.form));
     }, currentId = ref(null), initCharts = (e, A) => {
@@ -3901,20 +3965,27 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         }, 100);
         return;
       }
-      let l = echarts.init(e.ref), i;
-      e.type == "pie" ? i = pie.init(e, e.data) : e.type == "gauge" ? i = gauge.init(e, e.data) : e.type == "gridLine" || e.type == "gridBar" ? (i = options.gridLine(), e.data && (i.series[0].data = e.data.data || []), e.type == "gridBar" && (i.series[0].type = "bar")) : ["line", "bar"].includes(e.type) && (i = BarLineChartOptionn.init(e, e.data), i.series.forEach((r) => {
+      let l = echarts.init(e.ref), a;
+      e.type == "pie" ? a = pie.init(e, e.data) : e.type == "gauge" ? a = gauge.init(e, e.data) : e.type == "gridLine" || e.type == "gridBar" ? (a = options.gridLine(), e.data && (a.series[0].data = e.data.data || []), e.type == "gridBar" && (a.series[0].type = "bar")) : ["line", "bar"].includes(e.type) && (a = BarLineChartOptionn.init(e, e.data), a.series.forEach((r) => {
         r.type = e.type;
       }));
-      let a = filterData(e, i);
-      a && (i = a), l.setOption(i, !!A), e.$chart = l;
+      let n = filterData(e, a);
+      if (n && (a = n), a.legend && Array.isArray(a.legend.data))
+        for (let r = 0; r < a.legend.data.length; r++)
+          a.legend.data[r] = proxy.$ts(a.legend.data[r]);
+      a.series && Array.isArray(a.series) && a.series.forEach((r) => {
+        r.type == "pie" && Array.isArray(r.data) ? r.data.forEach((B) => {
+          B.name && (B.name = proxy.$ts(B.name));
+        }) : r.name && (r.name = proxy.$ts(r.name));
+      }), a.title && a.title.text && (a.title.text = proxy.$ts(a.title.text)), console.log(a), l.setOption(a, !!A), e.$chart = l;
     }, filterData = (lyData, ops) => {
       if (lyData.type == "pie") {
         let e = ops.series[0].data.reduce((A, l) => A + l.value, 0) || 1;
-        (lyData.showLegendValue * 1 == 1 || lyData.showLegendRate * 1 == 1) && (ops.legend.formatter = function(A) {
-          let l = ops.series[0].data.find((a) => a.name == A).value;
-          for (var i = 0; i < ops.series[0].data.length; i++) {
-            let a = "";
-            return lyData.showLegendRate * 1 == 1 && (a = (l / e * 100).toFixed(lyData.numLen || 2).replace(".00", ""), a = "    " + a + "%"), A + " " + l + " " + (lyData.showLegendUnit || "") + a;
+        e = e.toFixed(lyData.numLen || 2) * 1, (lyData.showLegendValue * 1 == 1 || lyData.showLegendRate * 1 == 1) && (ops.legend.formatter = function(A) {
+          let l = ops.series[0].data.find((n) => n.name == A).value;
+          for (var a = 0; a < ops.series[0].data.length; a++) {
+            let n = "";
+            return lyData.showLegendRate * 1 == 1 && (n = (l / e * 100).toFixed(lyData.numLen || 2) * 1, n = "    " + n + "%"), A + " " + l + " " + (lyData.showLegendUnit || "") + n;
           }
         }), lyData.showTotal * 1 == 1 ? (lyData.chartTitle = lyData.title, ops.title = {
           show: !0,
@@ -3998,9 +4069,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             return;
           }
           if (currentItem.value.sql) {
-            let A = "api/Sys_Dashboard/getItemData?id=" + (props.id || layout.value.dashboardId) + "&itemId=" + (currentItem.value.i + "") + "&date1=null&date2=null&filterType=" + currentItem.value.filterValue;
+            let A = "api/Sys_Dashboard/getItemData?id=" + (dashboardId.value || layout.value.dashboardId) + "&itemId=" + (currentItem.value.i + "") + "&date1=null&date2=null&filterType=" + currentItem.value.filterValue;
             getApiUrlItemData(
-              props.id || layout.value.dashboardId,
+              dashboardId.value || layout.value.dashboardId,
               currentItem.value,
               A
             );
@@ -4012,9 +4083,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           currentItem.value.dataText && !currentItem.value.url && !currentItem.value.sql
         )
           try {
-            currentItem.value.dataText && currentItem.value.dataText != "[]" && (currentItem.value.data = JSON.parse(
-              currentItem.value.dataText || "[]"
-            ));
+            currentItem.value.dataText && currentItem.value.dataText != "[]" && (currentItem.value.data = JSON.parse(currentItem.value.dataText || "[]"));
           } catch {
             console.log("数据格式不正确:" + currentItem.value.dataText);
           }
@@ -4022,10 +4091,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           initCharts(currentItem.value, !0);
           return;
         }
-        currentItem.value.formText && (currentItem.value.form = JSON.parse(currentItem.value.formText)), currentItem.value.data = filterData(
-          currentItem.value,
-          currentItem.value.data
-        );
+        currentItem.value.formText && (currentItem.value.form = JSON.parse(currentItem.value.formText)), currentItem.value.data = filterData(currentItem.value, currentItem.value.data);
       } catch (A) {
         console.error(A.message), ElMessage({
           message: "参数格式不正确",
@@ -4035,9 +4101,9 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       }
     }, setItemResultValue = (e, A) => {
       (!A || !Array.isArray(A) || !A.length) && (A && e.valueType == "json" ? A = [A] : A = []), e.valueType == "array" ? Array.isArray(A) ? e.data = A : e.data = [A] : Array.isArray(A) ? e.data = A[0] : e.data = A;
-    }, getApiUrlItemData = (e, A, l, i) => {
-      proxy.http.post(l, {}, !1).then((a) => {
-        setItemResultValue(A, a), A.isLoad = !0, initCharts(A || currentItem.value, !0), i && ElMessage({
+    }, getApiUrlItemData = (e, A, l, a) => {
+      proxy.http.post(l, {}, !1).then((n) => {
+        setItemResultValue(A, n), A.isLoad = !0, initCharts(A || currentItem.value, !0), a && ElMessage({
           message: "查询成功",
           type: "success",
           plain: !0
@@ -4048,7 +4114,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         return;
       currentItem.value.sql.trim();
       let e = "api/Sys_Dashboard/execSql", A = {
-        id: props.id,
+        id: dashboardId.value,
         sql: currentItem.value.sql,
         db: currentItem.value.db,
         isProc: currentItem.value.isProc,
@@ -4068,15 +4134,15 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
     }, loadItemData = (e, A, l) => {
       if (!e.type && A.value && (e.type = A.value.type), !e.url)
         return;
-      let i = e.url + (e.url.indexOf("?") != -1 ? "&" : "?") + "id=" + props.id + "&itemId=" + (e.i + "") + "&date1=null&date2=null&filterType=" + e.filterValue;
-      getApiUrlItemData(A.dashboardId, e, i, l);
+      let a = e.url + (e.url.indexOf("?") != -1 ? "&" : "?") + "id=" + dashboardId.value + "&itemId=" + (e.i + "") + "&date1=null&date2=null&filterType=" + e.filterValue;
+      getApiUrlItemData(A.dashboardId, e, a, l);
     };
     let resultData;
-    const getData = (e) => {
-      if (!props.id)
+    const dashboardId = ref(props.id), getData = (e) => {
+      if (e && (dashboardId.value = e), !dashboardId.value)
         return;
-      currentId.value = props.id;
-      let A = "api/Sys_Dashboard/getLayoutData?id=" + props.id + "&view=" + proxy.readonly;
+      currentId.value = dashboardId.value;
+      let A = "api/Sys_Dashboard/getLayoutData?id=" + dashboardId.value + "&view=" + proxy.readonly;
       proxy.http.post(A, {}, !0).then((l) => {
         if (!l) {
           ElMessage({
@@ -4087,17 +4153,17 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
           return;
         }
         resultData = l;
-        let i = [];
+        let a = [];
         if (l.options)
           try {
-            i = JSON.parse(l.options);
-          } catch (a) {
-            console.log("加载配置异常：" + l.options), console.log(a);
+            a = JSON.parse(l.options);
+          } catch (n) {
+            console.log("加载配置异常：" + l.options), console.log(n);
           }
-        layout.value = i, i.forEach((a, r) => {
-          a.data = getDefaultData(a), a.dataText = JSON.stringify(a.data), a.sql || a.url ? (typeof a.data == "function" && (a.data = a.data()), Array.isArray(a.data) ? a.data = [] : a.data = {}, a.isLoad = !isChart(a)) : a.isLoad = !0, a.url ? loadItemData(layout.value[r], l) : a.sql && (A = "api/Sys_Dashboard/getItemData?id=" + l.dashboardId + "&itemId=" + (a.i + "") + "&date1=null&date2=null&filterType=" + a.filterValue, getApiUrlItemData(l.dashboardId, layout.value[r], A));
-        }), props.readonly && i.forEach((a) => {
-          a.isDraggable = !0;
+        layout.value = a, a.forEach((n, r) => {
+          n.data = getDefaultData(n), n.dataText = JSON.stringify(n.data), n.sql || n.url ? (typeof n.data == "function" && (n.data = n.data()), Array.isArray(n.data) ? n.data = [] : n.data = {}, n.isLoad = !isChart(n)) : n.isLoad = !0, n.url ? loadItemData(layout.value[r], l) : n.sql && (A = "api/Sys_Dashboard/getItemData?id=" + l.dashboardId + "&itemId=" + (n.i + "") + "&date1=null&date2=null&filterType=" + n.filterValue, getApiUrlItemData(l.dashboardId, layout.value[r], A));
+        }), props.readonly && a.forEach((n) => {
+          n.isDraggable = !0;
         });
       });
     };
@@ -4151,25 +4217,25 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         });
         return;
       }
-      let e = layout.value.map((i) => {
-        let a = {};
-        return Object.keys(i).forEach((r) => {
-          r != "$chart" && r != "dataText" && r != "data" && (a[r] = i[r]), r == "type" && (a.data = getDefaultData(i));
-        }), a;
+      let e = layout.value.map((a) => {
+        let n = {};
+        return Object.keys(a).forEach((r) => {
+          r != "$chart" && r != "dataText" && r != "data" && (n[r] = a[r]), r == "type" && (n.data = getDefaultData(a));
+        }), n;
       }), A = {
         mainData: {
-          DashboardId: props.id,
+          DashboardId: dashboardId.value,
           Options: JSON.stringify(e)
         }
       };
-      props.id || (A.mainData.DashboardName = (/* @__PURE__ */ new Date()).valueOf() + ""), props.saveBefore && props.saveBefore(A);
-      let l = "api/Sys_Dashboard/" + (props.id ? "update" : "add");
-      proxy.http.post(l, A, !0).then((i) => {
+      dashboardId.value || (A.mainData.DashboardName = (/* @__PURE__ */ new Date()).valueOf() + ""), props.saveBefore && props.saveBefore(A);
+      let l = "api/Sys_Dashboard/" + (dashboardId.value ? "update" : "add");
+      proxy.http.post(l, A, !0).then((a) => {
         ElMessage({
-          message: i.message,
-          type: i.status ? "success" : "error",
+          message: a.message,
+          type: a.status ? "success" : "error",
           plain: !0
-        }), i.status;
+        }), a.status;
       });
     }, checkEmpty = (e, A) => {
       if (e.type == "calendar")
@@ -4188,8 +4254,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
         return !0;
       return !1;
     };
-    return (e, A) => {
-      const l = resolveComponent("el-scrollbar"), i = resolveComponent("el-button"), a = resolveComponent("el-calendar"), r = resolveComponent("grid-item"), E = resolveComponent("grid-layout");
+    return __expose({ getData }), (e, A) => {
+      const l = resolveComponent("el-scrollbar"), a = resolveComponent("el-button"), n = resolveComponent("el-calendar"), r = resolveComponent("grid-item"), B = resolveComponent("grid-layout");
       return openBlock(), createElementBlock("div", _hoisted_1, [
         __props.readonly ? createCommentVNode("", !0) : (openBlock(), createElementBlock("div", _hoisted_2, [
           createElementVNode("div", _hoisted_3, [
@@ -4217,7 +4283,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
             }, {
               default: withCtx(() => [
                 createElementVNode("div", _hoisted_6, [
-                  createVNode(i, {
+                  createVNode(a, {
                     size: "small",
                     plain: "",
                     icon: "Sort",
@@ -4228,7 +4294,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(i, {
+                  createVNode(a, {
                     type: "primary",
                     size: "small",
                     plain: "",
@@ -4240,7 +4306,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                     ]),
                     _: 1
                   }),
-                  createVNode(i, {
+                  createVNode(a, {
                     type: "success",
                     size: "small",
                     plain: "",
@@ -4262,7 +4328,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
               createElementVNode("div", {
                 style: normalizeStyle({ transform: "scale(" + colWidth.value / 100 + ")" })
               }, [
-                createVNode(E, {
+                createVNode(B, {
                   ref: "gridLayout",
                   layout: layout.value,
                   "onUpdate:layout": A[1] || (A[1] = (t) => layout.value = t),
@@ -4276,7 +4342,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                   "use-css-transforms": !1
                 }, {
                   default: withCtx(() => [
-                    (openBlock(!0), createElementBlock(Fragment, null, renderList(layout.value, (t, C) => (openBlock(), createBlock(r, {
+                    (openBlock(!0), createElementBlock(Fragment, null, renderList(layout.value, (t, E) => (openBlock(), createBlock(r, {
                       class: normalizeClass(["grid-item", {
                         "grid-item-acitve": !__props.readonly && currentItem.value.i == t.i,
                         "grid-item-normal": t.type == "gridText"
@@ -4327,16 +4393,21 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           key: 3,
                           onClick: (g) => itemClick(t),
                           title: t.title,
-                          data: t.data
-                        }, null, 8, ["onClick", "title", "data"])) : t.type == "notice" ? (openBlock(), createBlock(VolDataNotice, {
+                          data: t.data,
+                          format: t.format,
+                          onComponentItemClick: (g, d) => {
+                            componentItemClick(g, d, t);
+                          }
+                        }, null, 8, ["onClick", "title", "data", "format", "onComponentItemClick"])) : t.type == "notice" ? (openBlock(), createBlock(VolDataNotice, {
                           key: 4,
                           onClick: (g) => itemClick(t),
                           title: t.title,
                           data: t.data,
+                          format: t.format,
                           onComponentItemClick: (g, d) => {
                             componentItemClick(g, d, t);
                           }
-                        }, null, 8, ["onClick", "title", "data", "onComponentItemClick"])) : t.type == "form" ? (openBlock(), createBlock(VolDataForm, {
+                        }, null, 8, ["onClick", "title", "data", "format", "onComponentItemClick"])) : t.type == "form" ? (openBlock(), createBlock(VolDataForm, {
                           key: 5,
                           onClick: (g) => itemClick(t),
                           title: t.title,
@@ -4351,16 +4422,13 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                           title: t.title,
                           data: t.data,
                           form: t.form
-                        }, null, 8, ["onClick", "column", "title", "data", "form"])) : t.type == "calendar" ? (openBlock(), createBlock(a, {
+                        }, null, 8, ["onClick", "column", "title", "data", "form"])) : t.type == "calendar" ? (openBlock(), createBlock(n, {
                           key: 7,
                           onClick: (g) => itemClick(t)
                         }, {
                           "date-cell": withCtx(({ data: g }) => [
                             createElementVNode("div", {
-                              class: normalizeClass([
-                                g.isSelected || dtNow == g.day ? "is-selected" : "",
-                                "date-cell"
-                              ])
+                              class: normalizeClass([g.isSelected || dtNow == g.day ? "is-selected" : "", "date-cell"])
                             }, toDisplayString(g.day.split("-").slice(1)[1]), 3)
                           ]),
                           _: 2
@@ -4404,8 +4472,8 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                               t.icon[d] || (t.isFont ? "el-icon-receiving" : "32.png")
                             ],
                             onClick: (c) => itemClick(t),
-                            onComponentItemClick: (c, m) => {
-                              componentItemClick(c, m, t);
+                            onComponentItemClick: (c, S) => {
+                              componentItemClick(c, S, t);
                             },
                             size: t.imgSize
                           }, null, 8, ["data", "font", "showNumber", "font-color", "bg-color", "title-color", "icon", "onClick", "onComponentItemClick", "size"]))), 128))
@@ -4416,10 +4484,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
                         }, [
                           createElementVNode("div", _hoisted_14, toDisplayString(t.title), 1),
                           createElementVNode("div", _hoisted_15, [
-                            createTextVNode(toDisplayString(((t.data.value || 0) + "").replace(
-                              /\B(?=(\d{3})+(?!\d))/g,
-                              ","
-                            )) + " ", 1),
+                            createTextVNode(toDisplayString(((t.data.value || 0) + "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")) + " ", 1),
                             createElementVNode("span", _hoisted_16, toDisplayString(t.data.unit), 1)
                           ]),
                           t.isLoad ? (openBlock(), createElementBlock("div", {
@@ -4484,7 +4549,7 @@ const VolTitle = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_rende
       ]);
     };
   }
-}), VolDashboard = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-76ccde06"]]);
+}), VolDashboard = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-7452264f"]]);
 VolDashboard.install = (e) => {
   e.component(VolDashboard.name, VolDashboard);
 };

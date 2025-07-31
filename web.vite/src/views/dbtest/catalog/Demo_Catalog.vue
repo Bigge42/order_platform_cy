@@ -38,6 +38,7 @@
     const onInit = async ($vm) => {
         gridRef = $vm;
         //与jsx中的this.xx使用一样，只需将this.xx改为gridRef.xx
+        gridRef.setFixedSearchForm(true);
     }
     //生成对象属性初始化后,操作明细表配置用到
     const onInited = async () => {

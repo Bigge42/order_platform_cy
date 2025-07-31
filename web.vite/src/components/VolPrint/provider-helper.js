@@ -1,12 +1,3 @@
-/*
- * @Description: 动态创建 provider
- * @Author: CcSimple
- * @Github: https://github.com/CcSimple
- * @Date: 2023-04-02 14:11:51
- * @LastEditors: CcSimple
- * @LastEditTime: 2023-04-02 16:10:18
- */
-
 // import { hiprint } from "vue-plugin-hiprint";
 import hiprintPackage from "./vue-plugin-hiprint.js" // "vue-plugin-hiprint";
 var hiprint=hiprintPackage.hiprint;

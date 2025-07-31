@@ -17,7 +17,7 @@ export default function (proxy, dataConfig, router,onSelect) {
     const selectId = dataConfig.selectId
     const menuData = dataConfig.menuData
 
-    let data = (result?.menu || [])
+    let data = result.menu
     let dataItem = data.find((x) => {
       return x.linkType == 3 && (!x.enable || x.enable == 1)
     })
@@ -165,8 +165,11 @@ const initQueryParams = (data) => {
       d.path = d.url
     }
     d.to = d.url
-    if (!d.icon) {
-      d.icon = 'el-icon-menu'
-    }
+    // if (d.name=='消息记录') {
+    //   var aa=1;
+    // }
+    // if (!d.icon) {
+    //   d.icon = 'el-icon-menu'
+    // }
   }
 }

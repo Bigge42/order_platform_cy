@@ -26,8 +26,8 @@ let dataDefault = {
       //   paintStyle: {strokeWidth: 1, stroke: '#827f7f'}
     }
   ]
-};
+}
 
 export function getDataDefault() {
-  return dataDefault;
+  return dataDefault
 }

@@ -39,9 +39,9 @@ let dataType = [
 let searchDataType = [
   { key: '=', value: '等于' },
   { key: '!=', value: '不等于' },
-  { key: 'like', value: '%模糊查询%' },
-  { key: 'likeStart', value: '模糊查询%' },
-  { key: 'likeEnd', value: '%模糊查询' },
+  { key: 'like', value: '模糊查询(包含)' },
+  { key: 'likeStart', value: '模糊查询(左包含)' },
+  { key: 'likeEnd', value: '模糊查询(右包含)' },
   { key: 'textarea', value: 'textarea' },
   { key: 'switch', value: 'switch' },
   { key: 'select', value: 'select' },
@@ -59,7 +59,8 @@ let searchDataType = [
   { key: 'range', value: '区间查询' },
   { key: 'mail', value: 'mail' },
   { key: 'number', value: 'number' },
-  { key: 'decimal', value: 'decimal' }
+  { key: 'decimal', value: 'decimal' },
+  { key: 'multipleInput', value: '批量查询' }
   // { key: 'phone', value: 'phone' }
 ]
 

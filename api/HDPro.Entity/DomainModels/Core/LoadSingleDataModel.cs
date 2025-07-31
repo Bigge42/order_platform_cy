@@ -27,7 +27,7 @@ namespace HDPro.Entity.DomainModels
         public bool Export { get; set; }
         public object Value { get; set; }
 
-
+        public Dictionary<string,object> CustomerParams{ get; set; }
         /// <summary>
         /// 查询条件
         /// </summary>

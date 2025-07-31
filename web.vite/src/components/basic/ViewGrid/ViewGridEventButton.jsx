@@ -313,6 +313,7 @@ const convertDetailSubmitData = (detailData, columns) => {
 }
 //打印
 export const onPrintClick = async (proxy, props, dataConfig, rows) => {
+  console.log('132213')
   if (rows) {
     if (!Array.isArray(rows)) {
       rows = [rows]
@@ -325,14 +326,15 @@ export const onPrintClick = async (proxy, props, dataConfig, rows) => {
     return x[props.table.key]
   })
 
-  if (!(await props.printBefore(rows))) {
+  const param={};
+  if (!(await props.printBefore(rows,param))) {
     return
   }
-  if (!(await proxy.printBefore.call(proxy, rows))) {
+  if (!(await proxy.printBefore.call(proxy, rows,param))) {
     return
   }
   const table = props.table.url.replaceAll('/', '')
-  proxy.$refs.print.open({ ids, table, rows })
+  proxy.$refs.print.open({ ids, table, rows,options:param })
 }
 //导入
 export const importData = async (proxy, props, dataConfig, isDetail) => {

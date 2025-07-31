@@ -2,6 +2,11 @@
 
 import { getGridTableRef, getDetailTableRef } from './ViewGridRef.js'
 import action from './Action.js'
+
+const checkRowsFalse = (rows) => {
+  return rows === false
+}
+
 export const initDetailOptions = (proxy, props, dataConfig) => {
   //明细表排序
   const detailOnSortEnd = (rows, newIndex, oldIndex, table) => {
@@ -11,6 +16,9 @@ export const initDetailOptions = (proxy, props, dataConfig) => {
   const detailAddRowBefore = (table, item) => {
     const rows = []
     let row = proxy.detailAddRowBefore.call(table, item)
+    if (checkRowsFalse(row)) {
+      return
+    }
     if (row) {
       if (Array.isArray(row)) {
         rows.push(...row)
@@ -19,6 +27,9 @@ export const initDetailOptions = (proxy, props, dataConfig) => {
       }
     }
     row = props.detailAddRowBefore(table, item)
+    if (checkRowsFalse(row)) {
+      return
+    }
     if (row) {
       if (Array.isArray(row)) {
         rows.push(...row)
@@ -42,6 +53,9 @@ export const initDetailOptions = (proxy, props, dataConfig) => {
   //二级明细表添加行
   const addSecondRow = (table, item, index) => {
     const rows = detailAddRowBefore(table, item)
+    if (checkRowsFalse(rows)) {
+      return
+    }
     if (rows.length) {
       proxy.getTable(table).addRow(rows)
       return
@@ -64,6 +78,9 @@ export const initDetailOptions = (proxy, props, dataConfig) => {
       return
     }
     const subRows = detailAddRowBefore(table, item)
+    if (checkRowsFalse(subRows)) {
+      return
+    }
     if (subRows.length) {
       newRows = subRows
     }
@@ -220,7 +237,7 @@ export const initDetailOptions = (proxy, props, dataConfig) => {
     }
     //明细查询前
     //新建时禁止加载明细
-    if (dataConfig.currentAction.value == action.ADD&&!param.isCopyClick) {
+    if (dataConfig.currentAction.value == action.ADD && !param.isCopyClick) {
       await callBack(false)
       return false
     }
@@ -373,7 +390,7 @@ export const resetDetailTable = (proxy, props, dataConfig, row, isAdd, table) =>
   if (table) {
     const tableRef = getDetailTableRef(proxy, props, table)
     tableRef.reset()
-    detailTableLoad(props, dataConfig, row, detailRef)
+    detailTableLoad(props, dataConfig, row, tableRef)
     return
   }
 
@@ -412,24 +429,24 @@ export const resetDetailTable = (proxy, props, dataConfig, row, isAdd, table) =>
   }
   //let key = table.key;
   // let query = { value: row ? row[key] : currentRow[key] };
-  const isCopyClick=dataConfig.isCopyClick.value;
+  const isCopyClick = dataConfig.isCopyClick.value
   proxy.$nextTick(() => {
     const detailRef = getDetailTableRef(proxy, props)
     if (detailRef) {
       detailRef.reset()
       //$refs.detail.load(query);
-      detailTableLoad(props, dataConfig, row, detailRef,null,isCopyClick)
+      detailTableLoad(props, dataConfig, row, detailRef, null, isCopyClick)
     }
   })
 }
 
-const detailTableLoad = (props, dataConfig, row, refTable, table,isCopyClick) => {
+const detailTableLoad = (props, dataConfig, row, refTable, table, isCopyClick) => {
   //一对多明细表加载数据
   if (refTable) {
     let query = {
       value: row ? row[props.table.key] : dataConfig.currentRow.value[props.table.key],
       tableName: table,
-      isCopyClick:isCopyClick
+      isCopyClick: isCopyClick
     }
     refTable.load(query)
   }

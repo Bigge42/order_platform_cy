@@ -1,0 +1,7 @@
+Cannot access destination table 'Sys_Log'.   at System.Data.SqlClient.SqlBulkCopy.WriteToServerInternalRestAsync(CancellationToken cts, TaskCompletionSource`1 source)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServerInternalAsync(CancellationToken ctoken)
+   at System.Data.SqlClient.SqlBulkCopy.WriteRowSourceToServerAsync(Int32 columnCount, CancellationToken ctoken)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServer(DataTable table, DataRowState rowState)
+   at HDPro.Core.Dapper.SqlDapper.MSSqlBulkInsert(DataTable table, String tableName, SqlBulkCopyOptions sqlBulkCopyOptions, String dbKeyName) in D:\WorkSpace\Web\Vol.Pro\Haodee.CY.Order.OCP\api\HDPro.Core\Dapper\SqlDapper.cs:line 751
+   at HDPro.Core.Dapper.SqlDapper.BulkInsert(DataTable table, String tableName, Nullable`1 sqlBulkCopyOptions, String fileName, String tmpPath) in D:\WorkSpace\Web\Vol.Pro\Haodee.CY.Order.OCP\api\HDPro.Core\Dapper\SqlDapper.cs:line 785
+   at HDPro.Core.Services.Logger.Start() in D:\WorkSpace\Web\Vol.Pro\Haodee.CY.Order.OCP\api\HDPro.Core\Services\Logger.cs:line 179System.Data.SqlClient

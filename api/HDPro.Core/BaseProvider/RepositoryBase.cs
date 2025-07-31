@@ -22,6 +22,7 @@ using HDPro.Core.Extensions;
 using HDPro.Core.Utilities;
 using HDPro.Entity;
 using HDPro.Entity.SystemModels;
+using HDPro.Utilities.Extensions;
 
 namespace HDPro.Core.BaseProvider
 {
@@ -224,11 +225,11 @@ namespace HDPro.Core.BaseProvider
         }
 
 
-        public IQueryable<TEntity> FindAsIQueryable(Expression<Func<TEntity, bool>> predicate, Expression<Func<TEntity, Dictionary<object, QueryOrderBy>>> orderBy = null)
+        public IQueryable<TEntity> FindAsIQueryable(Expression<Func<TEntity, bool>> predicate, Expression<Func<TEntity, Dictionary<object, QueryOrderBy>>> orderBy = null,bool filterDeleted = true)
         {
             if (orderBy != null)
-                return DbContext.Set<TEntity>().Where(predicate).GetIQueryableOrderBy(orderBy.GetExpressionToDic());
-            return DbContext.Set<TEntity>().Where(predicate);
+                return DbContext.Set<TEntity>(filterDeleted).Where(predicate).GetIQueryableOrderBy(orderBy.GetExpressionToDic());
+            return DbContext.Set<TEntity>(filterDeleted).Where(predicate);
         }
 
         public IIncludableQueryable<TEntity, TProperty> Include<TProperty>(Expression<Func<TEntity, TProperty>> incluedProperty)
@@ -359,11 +360,18 @@ namespace HDPro.Core.BaseProvider
             //2020.04.24增加更新时并行重试处理
             try
             {
-                // Attempt to save changes to the database
-                return DbContext.SaveChanges();
+                // 使用增强的SaveChanges方法，自动记录详细异常信息
+                return DbContext.SafeSaveChanges(
+                    logToFile: true,
+                    logToConsole: false, // 在Repository层不输出到控制台，避免过多日志
+                    customMessage: $"更新实体 {typeof(TSource).Name}"
+                );
             }
             catch (DbUpdateConcurrencyException ex)
             {
+                // 记录并发异常的详细信息
+                ex.WriteToFile($"并发更新冲突 - 实体类型: {typeof(TSource).Name}", "Concurrency_Conflicts");
+                
                 int affectedRows = 0;
                 foreach (var entry in ex.Entries)
                 {
@@ -386,7 +394,11 @@ namespace HDPro.Core.BaseProvider
                 }
                 if (affectedRows == 0) return 0;
 
-                return DbContext.SaveChanges();
+                return DbContext.SafeSaveChanges(
+                    logToFile: true,
+                    logToConsole: false, // 在Repository层不输出到控制台，避免过多日志
+                    customMessage: $"重试更新实体 {typeof(TSource).Name} - 并发冲突解决后"
+                );
             }
         }
 
@@ -574,8 +586,6 @@ namespace HDPro.Core.BaseProvider
         }
         public virtual void AddRange(IEnumerable<TEntity> entities, bool saveChanges = false)
         {
-            //DBSet.AddRange(entities);
-            //if (saveChanges) DbContext.SaveChanges();
             AddRange<TEntity>(entities, saveChanges);
         }
 
@@ -600,7 +610,14 @@ namespace HDPro.Core.BaseProvider
                 }
             }
             DbContext.Set<T>().AddRange(entities);
-            if (saveChanges) DbContext.SaveChanges();
+            if (saveChanges) 
+            {
+                DbContext.SafeSaveChanges(
+                    logToFile: true,
+                    logToConsole: false, // 在Repository层不输出到控制台，避免过多日志
+                    customMessage: $"批量添加实体 {typeof(T).Name} - 数量: {entities.Count()}"
+                );
+            }
         }
 
 

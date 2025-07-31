@@ -20,12 +20,17 @@ if (process.env.NODE_ENV == 'development') {
 } else if (process.env.NODE_ENV == 'production') {
   //大屏发布的地址
   dataViewUrl = 'http://www.baidu.com/'
+}else{
+  axios.defaults.baseURL = 'http://localhost:9200/'
 }
+
 
 dataViewUrl = import.meta.env.VITE_DATA_VIEW_URL
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
 
-if (!axios.defaults.baseURL.endsWith('/')) {
+console.log(axios.defaults.baseURL);
+
+if (!axios.defaults.baseURL?.endsWith('/')) {
   axios.defaults.baseURL += '/'
 }
 

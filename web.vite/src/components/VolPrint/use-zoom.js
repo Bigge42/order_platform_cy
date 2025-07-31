@@ -1,11 +1,3 @@
-/*
- * @Description:
- * @Author: CcSimple
- * @Github: https://github.com/CcSimple
- * @Date: 2023-02-09 13:32:39
- * @LastEditors: CcSimple
- * @LastEditTime: 2023-02-10 16:00:54
- */
 import { reactive, toRefs } from "vue";
 import { getHiprintPrintTemplate } from "./template-helper";
 

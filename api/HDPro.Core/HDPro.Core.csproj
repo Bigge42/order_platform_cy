@@ -70,6 +70,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HDPro.Entity\HDPro.Entity.csproj" />
+    <ProjectReference Include="..\HDPro.Utilities\HDPro.Utilities.csproj" />
   </ItemGroup>
 
 </Project>

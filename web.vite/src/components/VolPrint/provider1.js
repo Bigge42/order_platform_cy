@@ -1,12 +1,3 @@
-/*
- * @Description:
- * @Author: CcSimple
- * @Github: https://github.com/CcSimple
- * @Date: 2023-02-09 10:40:26
- * @LastEditors: CcSimple
- * @LastEditTime: 2023-02-09 11:37:21
- */
-// import { hiprint } from 'vue-plugin-hiprint';
 import hiprintPackage from "./vue-plugin-hiprint.js" // "vue-plugin-hiprint";
 var hiprint=hiprintPackage.hiprint;
 export const provider1 = function(options) {

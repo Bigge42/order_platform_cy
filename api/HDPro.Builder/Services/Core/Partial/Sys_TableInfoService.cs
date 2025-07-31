@@ -22,6 +22,8 @@ using HDPro.Entity.DomainModels.Sys;
 using HDPro.Entity.SystemModels;
 using HDPro.Core.EFDbContext;
 using HDPro.Core.Configuration;
+using HDPro.Core.Services;
+using ServiceStack; // 添加模板选择器引用
 
 namespace HDPro.Builder.Services
 {
@@ -32,6 +34,21 @@ namespace HDPro.Builder.Services
         private string webProject = null;
         private string apiNameSpace = null;
         private string startName = "";
+        private TemplateSelector _templateSelector; // 添加模板选择器字段
+
+        // 添加模板选择器属性
+        private TemplateSelector TemplateSelector
+        {
+            get
+            {
+                if (_templateSelector == null)
+                {
+                    _templateSelector = new TemplateSelector();
+                }
+                return _templateSelector;
+            }
+        }
+
         private string StratName
         {
             get
@@ -547,7 +564,14 @@ DISTINCT
             repository.DbContext.Set<Sys_TableColumn>().RemoveRange(delColumns);
             repository.UpdateRange(updateColumns, x => new { x.ColumnType, x.Maxlength, x.IsNull });
             await repository.DbContext.SaveChangesAsync();
-
+            foreach (var item in addColumns)
+            {
+                repository.DbContext.Entry(item).State = EntityState.Detached;
+            }
+            foreach (var item in updateColumns)
+            {
+                repository.DbContext.Entry(item).State = EntityState.Detached;
+            }
             return webResponse.OK($"新加字段【{addColumns.Count}】个,删除字段【{delColumns.Count}】,修改字段【{updateColumns.Count}】");
         }
 
@@ -654,16 +678,24 @@ DISTINCT
 
             path = $"{frameworkFolder}\\{nameSpace}\\Services\\{foldername}\\";
             fileName = tableName + "Service.cs";
+
+            // 使用模板选择器获取合适的模板
+            string serviceTemplatePath = TemplateSelector.GetServiceTemplate(nameSpace);
+            string servicePartialTemplatePath = TemplateSelector.GetServicePartialTemplate(nameSpace);
+
+            // 记录使用的模板信息
+            Logger.Info($"为命名空间 {nameSpace} 选择服务模板: {serviceTemplatePath}");
+            Logger.Info($"为命名空间 {nameSpace} 选择Partial模板: {servicePartialTemplatePath}");
+
             //生成Partial Service类
-            domainContent = FileHelper.ReadFile("Template\\Services\\ServiceBasePartial.html").Replace("{Namespace}", nameSpace).Replace("{TableName}", tableName).Replace("{StartName}", StratName);
             if (!File.Exists((path + "Partial\\" + fileName).ReplacePath()))
             {
-                domainContent = FileHelper.ReadFile("Template\\Services\\ServiceBasePartial.html").Replace("{Namespace}", nameSpace).Replace("{TableName}", tableName).Replace("{StartName}", StratName);
+                domainContent = FileHelper.ReadFile(servicePartialTemplatePath).Replace("{Namespace}", nameSpace).Replace("{TableName}", tableName).Replace("{StartName}", StratName);
                 FileHelper.WriteFile(path + "Partial\\", fileName, domainContent);
             }
 
             //生成Service类
-            domainContent = FileHelper.ReadFile("Template\\Services\\ServiceBase.html")
+            domainContent = FileHelper.ReadFile(serviceTemplatePath)
                 .Replace("{Namespace}", nameSpace).Replace("{TableName}", tableName)
                 .Replace("{StartName}", StratName);
             FileHelper.WriteFile(path, fileName, domainContent);
@@ -751,7 +783,17 @@ DISTINCT
                         }
                         if (!string.IsNullOrEmpty(s.displayType) && s.displayType != "''")
                         {
+                            string disPlayType = s.columnType == "img" ? s.columnType : s.displayType;
                             keyValues.Add("type", s.columnType == "img" ? s.columnType : s.displayType);
+                            //添加比较符号集
+                            if (!disPlayType.ToLower().EqualsIgnoreCase("multipleinput"))
+                            {
+                                List<Comparation> comparationList = new List<Comparation>();
+                                comparationList.Add(new Comparation { key = disPlayType, value = QueryOperatorTypeExtensions.GetValueByKey(disPlayType) });
+                                comparationList.Add(new Comparation { key = "EMPTY", value = "空" });
+                                comparationList.Add(new Comparation { key = "NOT_EMPTY", value = "不空" });
+                                keyValues.Add("comparationList", comparationList);
+                            }
                         }
                     }
                     else
@@ -1878,8 +1920,8 @@ DISTINCT
 
                 //if (!app)
                 //{
-                    sb.Append("width:" + (item.ColumnWidth ?? 90) + ",");
-               //}
+                sb.Append("width:" + (item.ColumnWidth ?? 90) + ",");
+                //}
                 if (item.IsDisplay == 0)
                 {
                     sb.Append("hidden:true,");
@@ -2452,7 +2494,7 @@ DISTINCT
 
                 if (!IsMysql()) return webResponse;
 
-                if (mainTableColumn.ColumnType?.ToLower() == "string"&&mainTableColumn.Maxlength==36)
+                if (mainTableColumn.ColumnType?.ToLower() == "string" && mainTableColumn.Maxlength == 36)
                 {
                     tableArr = tableColumns.Where(c => c.ColumnName == key && c.Maxlength != 36).Select(c => c.TableName).ToList();
                     if (tableArr.Count > 0)
@@ -2484,6 +2526,13 @@ DISTINCT
         public bool disabled { get; set; }
         public int colSize { get; set; }
         public int fileMaxCount { get; set; }
+    }
+
+    public class Comparation
+    {
+        public string key { get; set; }
+
+        public string value { get; set; }
     }
 }
 

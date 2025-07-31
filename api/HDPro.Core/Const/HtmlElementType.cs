@@ -27,5 +27,11 @@ namespace HDPro.Core.Const
         public const string Contains = "in";
         public const string Equal = "=";
         public const string NotEqual = "!=";
+
+       
+
+        // 空值查询显示类型标识符
+        public const string EmptyDisplayType = "EMPTY";
+        public const string NotEmptyDisplayType = "NOT_EMPTY";
     }
 }

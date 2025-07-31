@@ -342,6 +342,24 @@
 			}
 
 		}
+			,{
+			"path": "pages/order/OCP_SOProgress/OCP_SOProgress",
+			"style": {
+				"navigationBarTitleText": "订单进度监造"
+			}
+		}
+			,{
+			"path": "pages/order/OCP_SOProgress/OCP_SOProgressDetail",
+			"style": {
+				"navigationBarTitleText": "订单进度监造详情"
+			}
+		}
+			,{
+			"path": "pages/order/OCP_SOProgress/OCP_SOProgressEdit",
+			"style": {
+				"navigationBarTitleText": "销售订单进度查询"
+			}
+		}
 	],
 	//如果需要使用图表，请在此处配置页面，因为图表太大，小程序主包上限2M，这里做了分包处理
 	//分包的访问地址为:/pagesCharts+path
@@ -386,11 +404,13 @@
 		"fontSize": "12px",
 		"borderStyle": "white", //"white",//#e8e8e8",// "black",
 		"backgroundColor": "#ffffff",
-		"list": [{
+		"list": [
+			{
 				"pagePath": "pages/home/home",
 				"iconPath": "static/tabbar/home.png",
 				"selectedIconPath": "static/tabbar/home_active.png",
-				"text": "首页"
+				"text": "首页",
+				"visible": false
 			},
 			{
 				"pagePath": "pages/menu/menu",
@@ -402,13 +422,15 @@
 				"pagePath": "pages/flow/flow",
 				"iconPath": "static/tabbar/flow.png",
 				"selectedIconPath": "static/tabbar/flow_active.png",
-				"text": "审批"
+				"text": "审批",
+				"visible": false
 			},
 			{
 				"pagePath": "pages/report/index",
 				"iconPath": "static/tabbar/report.png",
 				"selectedIconPath": "static/tabbar/report_active.png",
-				"text": "报表"
+				"text": "报表",
+				"visible": false
 			},
 			{
 				"pagePath": "pages/user/user",

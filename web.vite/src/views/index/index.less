@@ -775,10 +775,14 @@ img:not([src]) {
   .vol-header .settings,
   .vol-header .user {
     color: white;
-
-    ::v-deep(.el-icon) {
-      color: white;
+   ::v-deep(.el-dropdown){
+    .el-icon{
+        color: white;
     }
+   }
+    // ::v-deep(.el-icon) {
+    //   color: white;
+    // }
   }
 }
 

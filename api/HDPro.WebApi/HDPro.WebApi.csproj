@@ -36,6 +36,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HDPro.Builder\HDPro.Builder.csproj" />
     <ProjectReference Include="..\HDPro.Core\HDPro.Core.csproj" />
+    <ProjectReference Include="..\HDPro.CY.Order\HDPro.CY.Order.csproj" />
     <ProjectReference Include="..\HDPro.DbTest\HDPro.DbTest.csproj" />
     <ProjectReference Include="..\HDPro.Entity\HDPro.Entity.csproj" />
     <ProjectReference Include="..\HDPro.MES\HDPro.MES.csproj" />
@@ -44,6 +45,10 @@
   <ItemGroup>
     <Folder Include="plugs\" />
     <Folder Include="ReportTemplate\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="NLog.config" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 

@@ -6,6 +6,11 @@ export default function () {
       type: Boolean,
       default: false
     },
+    sortable: {
+      //明细表拖动排序
+      type: Boolean,
+      default: false
+    },
     keyField: {
       //主键字段
       type: String,

@@ -23,7 +23,7 @@ const getFormValues = (formFields, formOptions) => {
   const formValues = {}
   for (const key in formFields) {
     let val = formFields[key]
-    const option = getFormOption(formOptions, key, false)
+    const option = getFormOption(formOptions, key, false) || {}
     if (typeof val == 'function') {
       formValues[key] = formFields[key]()
       continue
@@ -114,7 +114,7 @@ const setFormValue = (formFields, formOptions, field, data) => {
     newVal = newVal * 1
   } else {
     if (typeof newVal == 'number') {
-      newVal = newVal + '';
+      newVal = newVal + ''
     }
   }
   formFields[field] = newVal
@@ -284,6 +284,11 @@ const getSearchParameters = (proxy, formFields, formRules) => {
     } else if (displayType == 'treeSelect' && Array.isArray(value)) {
       displayType = 'selectList'
       value = (value || []).join(',')
+    } else if (displayType == 'multipleInput') {
+      displayType = value.displayType
+      value = value.value
+      value = value?.replace(/\r\n/g, ',')
+      value = value?.replace(/\n/g, ',')
     }
     //2021.05.02增加区间查询
     if (

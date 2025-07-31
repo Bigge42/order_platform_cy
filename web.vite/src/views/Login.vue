@@ -5,17 +5,17 @@
       <!-- 使用canvas实现背景动画 -->
       <canvas ref="starCanvas" class="star-canvas"></canvas>
     </div>
-    
+
     <div class="system-title">
-      <div class="project-name">订单协同管理系统</div>
-      <div class="project-subtitle">Order Collaboration Platform</div>
+      <div class="project-name">控制阀订单智能管理系统</div>
+      <div class="project-subtitle">Control Valve Order Intelligent Management System</div>
     </div>
-    
+
     <div class="login-form" ref="loginForm">
       <div class="form-user" @keypress="loginPress">
         <div class="login-text">
           <div>
-            <div>{{ $ts("账号登录") }}</div>
+            <div>{{ $ts('账号登录') }}</div>
             <div class="login-line"></div>
           </div>
           <div style="flex: 1"></div>
@@ -53,60 +53,68 @@
         </div>
       </div>
       <div class="loging-btn">
-        <el-button
-          size="large"
-          :loading="loading"
-          color="#3a6cd1"
-          :dark="true"
-          @click="login"
-          long
-        >
-          <span v-if="!loading">{{ $ts("登录") }}</span>
-          <span v-else>{{ $ts("正在登录") }}...</span>
+        <el-button class="login-btn primary-btn" size="large" :loading="loading" @click="login">
+          <span v-if="!loading">{{ $ts('登录') }}</span>
+          <span v-else>{{ $ts('正在登录') }}...</span>
+        </el-button>
+        <el-button class="sso-btn secondary-btn" size="large" @click="ssoLogin" :loading="loading">
+          {{ $ts('单点登录') }}
         </el-button>
       </div>
+      <!-- <div class="forgot-password">
+        <a @click="showForgotDialog = true" class="forgot-link">{{ $ts('忘记密码') }}</a>
+      </div> -->
     </div>
-    <div class="footer-info">© 2023-2024 All Rights Reserved</div>
+    <div class="footer-info">© 2023-2025 All Rights Reserved</div>
+
+    <!-- 忘记密码弹窗 -->
+    <ResetPassword v-model="showForgotDialog" />
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, reactive, toRefs, getCurrentInstance, onMounted, onUnmounted } from "vue";
-import { useRouter, useRoute } from "vue-router";
-import store from "../store/index";
-import http from "@/../src/api/http.js";
-import lang from "@/components/lang/lang";
+import { defineComponent, ref, reactive, getCurrentInstance, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import store from '../store/index'
+import http from '@/../src/api/http.js'
+import { ssoApi } from '@/api/sso.js'
+import lang from '@/components/lang/lang'
+import ResetPassword from '@/views/reset-pass/index.vue'
 export default defineComponent({
   components: {
     lang,
+    ResetPassword
   },
-  setup(props, context) {
-    const loading = ref(false);
-    const codeImgSrc = ref("");
-    const container = ref(null);
-    const loginForm = ref(null);
-    const starCanvas = ref(null);
-    
+  setup() {
+    const loading = ref(false)
+    const codeImgSrc = ref('')
+    const container = ref(null)
+    const loginForm = ref(null)
+    const starCanvas = ref(null)
+
     const userInfo = reactive({
-      userName: "",
-      password: "",
-      verificationCode: "",
-      UUID: undefined,
-    });
-    
+      userName: '',
+      password: '',
+      verificationCode: '',
+      UUID: undefined
+    })
+
+    // 忘记密码相关状态
+    const showForgotDialog = ref(false)
+
     // 鼠标位置追踪
-    const mousePosition = reactive({ x: 0, y: 0 });
-    
+    const mousePosition = reactive({ x: 0, y: 0 })
+
     // 定义背景动画需要的变量
-    let animationFrame = null;
-    let stars = [];
-    let nebulas = [];
-    let canvasWidth = 0;
-    let canvasHeight = 0;
-    
+    let animationFrame = null
+    let stars = []
+    let nebulas = []
+    let canvasWidth = 0
+    let canvasHeight = 0
+
     // 创建星星
     const createStars = (count) => {
-      stars = [];
+      stars = []
       for (let i = 0; i < count; i++) {
         stars.push({
           x: Math.random() * canvasWidth,
@@ -116,68 +124,68 @@ export default defineComponent({
           blinkSpeed: Math.random() * 0.02 + 0.005,
           blinkDir: Math.random() > 0.5 ? 1 : -1,
           glow: Math.random() > 0.7
-        });
+        })
       }
-    };
-    
+    }
+
     // 创建星云
     const createNebulas = (count) => {
-      nebulas = [];
+      nebulas = []
       for (let i = 0; i < count; i++) {
-        const radius = 100 + Math.random() * 150;
+        const radius = 100 + Math.random() * 150
         nebulas.push({
           x: Math.random() * canvasWidth,
           y: Math.random() * canvasHeight,
           radius: radius,
           hue: 200 + Math.random() * 60,
           opacity: 0.03 + Math.random() * 0.05
-        });
+        })
       }
-    };
-    
+    }
+
     // 初始化canvas
     const initCanvas = () => {
-      if (!starCanvas.value) return;
-      
-      const ctx = starCanvas.value.getContext('2d');
-      const dpr = window.devicePixelRatio || 1;
-      
+      if (!starCanvas.value) return
+
+      const ctx = starCanvas.value.getContext('2d')
+      const dpr = window.devicePixelRatio || 1
+
       const updateCanvasSize = () => {
-        canvasWidth = window.innerWidth;
-        canvasHeight = window.innerHeight;
-        
-        starCanvas.value.width = canvasWidth * dpr;
-        starCanvas.value.height = canvasHeight * dpr;
-        
-        starCanvas.value.style.width = `${canvasWidth}px`;
-        starCanvas.value.style.height = `${canvasHeight}px`;
-        
-        ctx.scale(dpr, dpr);
-      };
-      
+        canvasWidth = window.innerWidth
+        canvasHeight = window.innerHeight
+
+        starCanvas.value.width = canvasWidth * dpr
+        starCanvas.value.height = canvasHeight * dpr
+
+        starCanvas.value.style.width = `${canvasWidth}px`
+        starCanvas.value.style.height = `${canvasHeight}px`
+
+        ctx.scale(dpr, dpr)
+      }
+
       // 设置canvas尺寸
-      updateCanvasSize();
-      
+      updateCanvasSize()
+
       // 监听窗口大小变化
-      let resizeTimeout;
+      let resizeTimeout
       window.addEventListener('resize', () => {
-        updateCanvasSize();
-        clearTimeout(resizeTimeout);
+        updateCanvasSize()
+        clearTimeout(resizeTimeout)
         resizeTimeout = setTimeout(() => {
-          createStars(80);
-          createNebulas(4);
-        }, 300);
-      });
-      
+          createStars(80)
+          createNebulas(4)
+        }, 300)
+      })
+
       // 创建星星和星云
-      createStars(120);
-      createNebulas(4);
-      
+      createStars(120)
+      createNebulas(4)
+
       // 渲染函数
       const render = () => {
         // 清除画布
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+
         // 绘制背景
         const gradient = ctx.createRadialGradient(
           canvasWidth / 2,
@@ -186,15 +194,15 @@ export default defineComponent({
           canvasWidth / 2,
           canvasHeight,
           canvasHeight
-        );
-        gradient.addColorStop(0, '#1B2735');
-        gradient.addColorStop(1, '#090A0F');
-        
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        
+        )
+        gradient.addColorStop(0, '#1B2735')
+        gradient.addColorStop(1, '#090A0F')
+
+        ctx.fillStyle = gradient
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight)
+
         // 绘制星云
-        nebulas.forEach(nebula => {
+        nebulas.forEach((nebula) => {
           const gradient = ctx.createRadialGradient(
             nebula.x,
             nebula.y,
@@ -202,39 +210,39 @@ export default defineComponent({
             nebula.x,
             nebula.y,
             nebula.radius
-          );
-          gradient.addColorStop(0, `hsla(${nebula.hue}, 100%, 80%, ${nebula.opacity * 1.3})`);
-          gradient.addColorStop(0.3, `hsla(${nebula.hue}, 100%, 70%, ${nebula.opacity})`);
-          gradient.addColorStop(0.7, `hsla(${nebula.hue}, 100%, 60%, ${nebula.opacity * 0.5})`);
-          gradient.addColorStop(1, 'transparent');
-          
-          ctx.globalCompositeOperation = 'screen';
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(nebula.x, nebula.y, nebula.radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalCompositeOperation = 'source-over';
-        });
-        
+          )
+          gradient.addColorStop(0, `hsla(${nebula.hue}, 100%, 80%, ${nebula.opacity * 1.3})`)
+          gradient.addColorStop(0.3, `hsla(${nebula.hue}, 100%, 70%, ${nebula.opacity})`)
+          gradient.addColorStop(0.7, `hsla(${nebula.hue}, 100%, 60%, ${nebula.opacity * 0.5})`)
+          gradient.addColorStop(1, 'transparent')
+
+          ctx.globalCompositeOperation = 'screen'
+          ctx.fillStyle = gradient
+          ctx.beginPath()
+          ctx.arc(nebula.x, nebula.y, nebula.radius, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.globalCompositeOperation = 'source-over'
+        })
+
         // 绘制星星
-        stars.forEach(star => {
+        stars.forEach((star) => {
           // 闪烁效果
-          star.opacity += star.blinkSpeed * star.blinkDir;
+          star.opacity += star.blinkSpeed * star.blinkDir
           if (star.opacity > 0.8 || star.opacity < 0.2) {
-            star.blinkDir *= -1;
+            star.blinkDir *= -1
           }
-          
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-          
+
+          ctx.beginPath()
+          ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
+
           // 绘制星星核心
-          ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
-          ctx.fill();
-          
+          ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`
+          ctx.fill()
+
           // 对特定星星添加光晕
           if (star.glow) {
-            ctx.beginPath();
-            ctx.arc(star.x, star.y, star.radius * 3, 0, Math.PI * 2);
+            ctx.beginPath()
+            ctx.arc(star.x, star.y, star.radius * 3, 0, Math.PI * 2)
             const glowGradient = ctx.createRadialGradient(
               star.x,
               star.y,
@@ -242,23 +250,23 @@ export default defineComponent({
               star.x,
               star.y,
               star.radius * 3
-            );
-            glowGradient.addColorStop(0, `rgba(255, 255, 255, ${star.opacity * 0.6})`);
-            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = glowGradient;
-            ctx.fill();
+            )
+            glowGradient.addColorStop(0, `rgba(255, 255, 255, ${star.opacity * 0.6})`)
+            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+            ctx.fillStyle = glowGradient
+            ctx.fill()
           }
-        });
-        
+        })
+
         // 随机选择一些星星进行缓慢移动
         if (Math.random() > 0.95) {
-          const index = Math.floor(Math.random() * stars.length);
+          const index = Math.floor(Math.random() * stars.length)
           if (stars[index]) {
-            stars[index].x += (Math.random() - 0.5) * 2;
-            stars[index].y += (Math.random() - 0.5) * 2;
+            stars[index].x += (Math.random() - 0.5) * 2
+            stars[index].y += (Math.random() - 0.5) * 2
           }
         }
-        
+
         // 随机添加流星效果
         if (Math.random() > 0.993) {
           const meteor = {
@@ -268,135 +276,163 @@ export default defineComponent({
             speed: 8 + Math.random() * 7,
             angle: 10 + Math.random() * 20,
             width: 1 + Math.random() * 2
-          };
-          
+          }
+
           const drawMeteor = () => {
-            meteor.x += Math.sin(meteor.angle * Math.PI / 180) * meteor.speed;
-            meteor.y += Math.cos(meteor.angle * Math.PI / 180) * meteor.speed;
-            
+            meteor.x += Math.sin((meteor.angle * Math.PI) / 180) * meteor.speed
+            meteor.y += Math.cos((meteor.angle * Math.PI) / 180) * meteor.speed
+
             // 绘制流星
-            ctx.beginPath();
+            ctx.beginPath()
             const gradient = ctx.createLinearGradient(
               meteor.x,
               meteor.y,
-              meteor.x - Math.sin(meteor.angle * Math.PI / 180) * meteor.length,
-              meteor.y - Math.cos(meteor.angle * Math.PI / 180) * meteor.length
-            );
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-            gradient.addColorStop(0.3, 'rgba(99, 102, 241, 0.7)');
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = meteor.width;
-            ctx.moveTo(meteor.x, meteor.y);
+              meteor.x - Math.sin((meteor.angle * Math.PI) / 180) * meteor.length,
+              meteor.y - Math.cos((meteor.angle * Math.PI) / 180) * meteor.length
+            )
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)')
+            gradient.addColorStop(0.3, 'rgba(99, 102, 241, 0.7)')
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+
+            ctx.strokeStyle = gradient
+            ctx.lineWidth = meteor.width
+            ctx.moveTo(meteor.x, meteor.y)
             ctx.lineTo(
-              meteor.x - Math.sin(meteor.angle * Math.PI / 180) * meteor.length, 
-              meteor.y - Math.cos(meteor.angle * Math.PI / 180) * meteor.length
-            );
-            ctx.stroke();
-            
+              meteor.x - Math.sin((meteor.angle * Math.PI) / 180) * meteor.length,
+              meteor.y - Math.cos((meteor.angle * Math.PI) / 180) * meteor.length
+            )
+            ctx.stroke()
+
             if (meteor.y < canvasHeight + meteor.length) {
-              requestAnimationFrame(drawMeteor);
+              requestAnimationFrame(drawMeteor)
             }
-          };
-          
-          drawMeteor();
+          }
+
+          drawMeteor()
         }
-        
-        animationFrame = requestAnimationFrame(render);
-      };
-      
+
+        animationFrame = requestAnimationFrame(render)
+      }
+
       // 开始渲染
-      render();
-    };
-    
+      render()
+    }
+
     const handleMouseMove = (e) => {
-      mousePosition.x = e.clientX;
-      mousePosition.y = e.clientY;
-      
+      mousePosition.x = e.clientX
+      mousePosition.y = e.clientY
+
       // 更新粒子位置 - 引力效果
-      const particles = document.querySelectorAll('.particle');
-      particles.forEach(particle => {
-        const rect = particle.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        const distX = mousePosition.x - centerX;
-        const distY = mousePosition.y - centerY;
-        const distance = Math.sqrt(distX * distX + distY * distY);
-        
+      const particles = document.querySelectorAll('.particle')
+      particles.forEach((particle) => {
+        const rect = particle.getBoundingClientRect()
+        const centerX = rect.left + rect.width / 2
+        const centerY = rect.top + rect.height / 2
+
+        const distX = mousePosition.x - centerX
+        const distY = mousePosition.y - centerY
+        const distance = Math.sqrt(distX * distX + distY * distY)
+
         if (distance < 150) {
           // 粒子被鼠标吸引
-          const strength = (150 - distance) / 150;
-          const moveX = distX * strength * 0.2;
-          const moveY = distY * strength * 0.2;
-          particle.style.transform = `translate(${moveX}px, ${moveY}px)`;
+          const strength = (150 - distance) / 150
+          const moveX = distX * strength * 0.2
+          const moveY = distY * strength * 0.2
+          particle.style.transform = `translate(${moveX}px, ${moveY}px)`
         } else {
-          particle.style.transform = 'translate(0, 0)';
+          particle.style.transform = 'translate(0, 0)'
         }
-      });
-    };
-    
+      })
+    }
+
     onMounted(() => {
-      window.addEventListener('mousemove', handleMouseMove);
-      
+      window.addEventListener('mousemove', handleMouseMove)
+
       // 添加登录表单入场动画
       if (loginForm.value) {
         setTimeout(() => {
-          loginForm.value.classList.add('show');
-        }, 300);
+          loginForm.value.classList.add('show')
+        }, 300)
       }
-      
+
       // 初始化canvas背景
-      initCanvas();
-      
+      initCanvas()
+
       // 清理定时器和动画帧
       onUnmounted(() => {
-        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mousemove', handleMouseMove)
         if (animationFrame) {
-          cancelAnimationFrame(animationFrame);
+          cancelAnimationFrame(animationFrame)
         }
-      });
-    });
+      })
+    })
 
     const getVierificationCode = () => {
-      http.get("/api/User/getVierificationCode").then((x) => {
-        codeImgSrc.value = "data:image/png;base64," + x.img;
-        userInfo.UUID = x.uuid;
-      });
-    };
-    getVierificationCode();
+      http.get('/api/User/getVierificationCode').then((x) => {
+        codeImgSrc.value = 'data:image/png;base64,' + x.img
+        userInfo.UUID = x.uuid
+      })
+    }
+    getVierificationCode()
 
-    let appContext = getCurrentInstance().appContext;
-    let $message = appContext.config.globalProperties.$message;
-    let router = useRouter();
-    let $ts = appContext.config.globalProperties.$ts;
+    let appContext = getCurrentInstance().appContext
+    let $message = appContext.config.globalProperties.$message
+    let router = useRouter()
+    let $ts = appContext.config.globalProperties.$ts
     const login = () => {
-      if (!userInfo.userName) return $message.error($ts(["请输入", "账号"]));
-      if (!userInfo.password) return $message.error($ts(["请输入", "密码"]));
+      if (!userInfo.userName) return $message.error($ts(['请输入', '账号']))
+      if (!userInfo.password) return $message.error($ts(['请输入', '密码']))
       if (!userInfo.verificationCode) {
-        return $message.error($ts(["请输入", "验证码"]));
+        return $message.error($ts(['请输入', '验证码']))
       }
-      loading.value = true;
-      http.post("/api/user/login", userInfo, $ts("正在登录") + "....").then((result) => {
+      loading.value = true
+      http.post('/api/user/login', userInfo, $ts('正在登录') + '....').then((result) => {
         if (!result.status) {
-          loading.value = false;
-          getVierificationCode();
-          return $message.error(result.message);
+          loading.value = false
+          getVierificationCode()
+          return $message.error(result.message)
         }
         //  $message.success($ts("登录成功,正在跳转!"));
-        store.commit("setUserInfo", result.data);
-        router.push({ path: "/" });
-      });
-    };
+        store.commit('setUserInfo', result.data)
+        router.push({ path: '/' })
+      })
+    }
     const loginPress = (e) => {
       if (e.keyCode == 13) {
-        login();
+        login()
       }
-    };
+    }
     const openUrl = (url) => {
-      window.open(url, "_blank");
-    };
+      window.open(url, '_blank')
+    }
+    // SSO 单点登录方法
+    const ssoLogin = async () => {
+      try {
+        // 显示加载状态
+        loading.value = true
+
+        // 调用SSO API获取授权地址
+        const result = await ssoApi.getAuthUrl()
+
+        if (!result.status) {
+          $message.error(result.message || $ts('获取单点登录地址失败'))
+          return
+        }
+
+        // 获取成功后跳转到SSO服务器
+        const authUrl = result.data
+        console.log('SSO登录跳转地址:', authUrl)
+
+        // 跳转到SSO认证服务器
+        window.location.href = authUrl
+      } catch (error) {
+        console.error('SSO登录失败:', error)
+        $message.error($ts('获取单点登录地址失败，请重试'))
+      } finally {
+        loading.value = false
+      }
+    }
+
     return {
       loading,
       codeImgSrc,
@@ -405,19 +441,21 @@ export default defineComponent({
       userInfo,
       loginPress,
       openUrl,
+      ssoLogin,
       container,
       loginForm,
-      starCanvas
-    };
+      starCanvas,
+      showForgotDialog
+    }
   },
   directives: {
     focus: {
       inserted: function (el) {
-        el.focus();
-      },
-    },
-  },
-});
+        el.focus()
+      }
+    }
+  }
+})
 </script>
 <style lang="less" scoped>
 .login-container {
@@ -441,7 +479,7 @@ export default defineComponent({
   height: 100%;
   z-index: 1;
   overflow: hidden;
-  
+
   .star-canvas {
     position: absolute;
     top: 0;
@@ -470,7 +508,7 @@ export default defineComponent({
   transform: translateY(20px);
   opacity: 0;
   transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.8s;
-  
+
   &.show {
     transform: translateY(0);
     opacity: 1;
@@ -492,7 +530,7 @@ export default defineComponent({
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease;
-    
+
     &:hover {
       border-color: #3a6cd1;
       box-shadow: 0 0 15px rgba(58, 108, 209, 0.3);
@@ -503,11 +541,11 @@ export default defineComponent({
       cursor: pointer;
       width: 74px;
       padding: 5px 10px 0 0;
-      
+
       img {
         border-radius: 4px;
         transition: transform 0.3s ease;
-        
+
         &:hover {
           transform: scale(1.05);
         }
@@ -542,7 +580,7 @@ export default defineComponent({
     outline: none;
     font-size: 16px;
     line-height: 20px;
-    
+
     &::placeholder {
       color: rgba(255, 255, 255, 0.5);
     }
@@ -555,56 +593,121 @@ export default defineComponent({
 }
 
 .loging-btn {
-  box-shadow: 2px 4px 11px rgba(58, 108, 209, 0.5);
-  margin-top: 10px;
+  margin-top: 20px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
 
-  button {
-    padding: 21px;
-    font-size: 14px !important;
-    width: 100%;
-    background: linear-gradient(90deg, #3a6cd1, #6366f1) !important;
+  .primary-btn {
+    padding: 18px 24px;
+    font-size: 15px !important;
+    font-weight: 600;
+    flex: 1.2;
+    background: linear-gradient(135deg, #3a6cd1, #6366f1) !important;
     border: none !important;
     position: relative;
     overflow: hidden;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #fff !important;
+    box-shadow: 0 4px 15px rgba(58, 108, 209, 0.4);
+
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(58, 108, 209, 0.5);
+      background: linear-gradient(135deg, #4a7ce1, #7366f1) !important;
+    }
+
+    &:active {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(58, 108, 209, 0.4);
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    &:hover::before {
+      left: 100%;
+    }
+  }
+
+  .secondary-btn {
+    padding: 18px 20px;
+    font-size: 14px !important;
+    font-weight: 500;
+    flex: 1;
+    background: rgba(16, 27, 55, 0.8) !important;
+    border: 2px solid rgba(99, 102, 241, 0.6) !important;
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #6366f1 !important;
+    backdrop-filter: blur(10px);
+
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 7px 14px rgba(58, 108, 209, 0.3);
+      background: rgba(99, 102, 241, 0.1) !important;
+      border-color: #6366f1 !important;
+      color: #7366f1 !important;
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
     }
-    
+
     &:active {
-      transform: translateY(1px);
+      transform: translateY(0);
+      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
     }
-    
+
     &::after {
       content: '';
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 5px;
-      height: 5px;
-      background: rgba(255, 255, 255, 0.5);
-      opacity: 0;
+      width: 0;
+      height: 0;
+      background: rgba(99, 102, 241, 0.1);
       border-radius: 100%;
-      transform: scale(1, 1) translate(-50%);
-      transform-origin: 50% 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.3s, height 0.3s;
     }
-    
+
     &:hover::after {
-      animation: ripple 1s ease-out;
+      width: 300px;
+      height: 300px;
     }
-    
-    @keyframes ripple {
-      0% {
-        transform: scale(0, 0);
-        opacity: 0.5;
+  }
+
+  // 按钮通用的涟漪效果
+  .primary-btn,
+  .secondary-btn {
+    &:focus {
+      outline: none;
+    }
+
+    &.is-loading {
+      &:hover {
+        transform: none;
       }
-      100% {
-        transform: scale(20, 20);
-        opacity: 0;
-      }
+    }
+  }
+
+  // 响应式设计
+  @media (max-width: 480px) {
+    flex-direction: column;
+    gap: 16px;
+
+    .primary-btn,
+    .secondary-btn {
+      flex: 1;
+      width: 100%;
     }
   }
 }
@@ -670,12 +773,12 @@ export default defineComponent({
     opacity: 0;
     transform: translateY(-50px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-
 </style>
 <style lang="less" scoped>
 .app-link {
@@ -756,5 +859,23 @@ export default defineComponent({
   color: rgba(255, 255, 255, 0.3);
   font-size: 12px;
   z-index: 20;
+}
+
+.forgot-password {
+  text-align: center;
+  margin-top: 15px;
+
+  .forgot-link {
+    color: #6366f1;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.3s ease;
+
+    &:hover {
+      color: #7366f1;
+      text-decoration: underline;
+    }
+  }
 }
 </style>

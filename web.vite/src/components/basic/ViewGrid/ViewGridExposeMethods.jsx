@@ -52,7 +52,7 @@ export const initMethods = (proxy, props, dataConfig) => {
     proxy.tabClick.call(proxy, name)
     props.tabClick(name)
   }
-  //获取table对象,table=true获取主表table
+  //获取voltable对象,table=true获取主表table
   const getTable = (table) => {
     return getGridTableRef(proxy, props, table)
   }

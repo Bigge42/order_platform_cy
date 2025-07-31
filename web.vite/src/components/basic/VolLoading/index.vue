@@ -13,9 +13,9 @@
 const props = defineProps({
   center: {
     type: Boolean,
-    default: false,
-  },
-});
+    default: false
+  }
+})
 </script>
 <style scoped lang="less">
 .vol-spinner {

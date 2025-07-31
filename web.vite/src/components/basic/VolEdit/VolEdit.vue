@@ -157,6 +157,7 @@
           :column-index="columnIndex"
           :ck="ck"
           :text-inline="textInline"
+          :sortable="sortable"
           @onSortEnd="onSortEnd"
         ></vol-table>
       </div>
@@ -173,9 +174,6 @@ import {
   defineComponent,
   ref,
   reactive,
-  
-  
-  
   watch,
   computed,
   getCurrentInstance,
@@ -414,6 +412,12 @@ const initDetailButtons = (_buttons, item) => {
 }
 
 let permission = proxy.base.getButtons('/' + props.tableName, null, props.tableName)
+if (permission.length == 1 && permission[0].value == 'Search') {
+  let routePermission = proxy.base.getButtons(route.path)
+  if (routePermission.length > 1) {
+    permission = routePermission
+  }
+}
 
 if (!isAdd && permission.some((x) => x.value == 'Print')) {
   buttons.push({
@@ -738,6 +742,9 @@ const loadSubDetailTableBefore = (param, callback, table, item) => {
 
 //明细表加载后
 const loadDetailTableAfter = (rows, result, table, item) => {
+  if (typeof result == 'function') {
+    result(true)
+  }
   console.log(table)
   props.loadTableAfter(rows, result, (x) => {}, table, item)
   return true
@@ -842,7 +849,12 @@ const detailAddRow = (item, isSub) => {
   }
   // getCurrentDetailSelectRows(item.secondTable)[0][item.table].push(_row || {});
   // //getTable(item.secondTable).push(_row || {});
-  tableRef.rowData.push(_row || {})
+  if (proxy.$global.table.insertFirstRow) {
+    tableRef.rowData.unshift(_row || {})
+  } else {
+    tableRef.rowData.push(_row || {})
+  }
+
   //单独处理设置值，这里数据不是响应式的
   if (isSub) {
     getTable(item.secondTable).getSelected()[0][item.table] = tableRef.rowData
@@ -955,8 +967,8 @@ const saveAudit = (params, rows, callback) => {
 const currentRow = reactive({})
 
 //编辑页面加载表单数据
-const getData = () => {
-  loadFormData(props, proxy, emit, dicInfo, files, id, buttons, currentRow)
+const getData = async () => {
+  await loadFormData(props, proxy, emit, dicInfo, files, id, buttons, currentRow)
 }
 
 const getDetailData = (item, row) => {

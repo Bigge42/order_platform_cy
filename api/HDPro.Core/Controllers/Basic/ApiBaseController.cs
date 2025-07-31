@@ -33,7 +33,6 @@ namespace HDPro.Core.Controllers.Basic
             Service = service;
         }
         [ActionLog("查询")]
-        [ApiActionPermission(Enums.ActionPermissionOptions.Search)]
         [HttpPost, Route("GetPageData")]
         public virtual ActionResult GetPageData([FromBody] PageDataOptions loadData)
         {
@@ -46,7 +45,6 @@ namespace HDPro.Core.Controllers.Basic
         /// <param name="loadData"></param>
         /// <returns></returns>
         [ActionLog("明细查询")]
-        [ApiActionPermission(Enums.ActionPermissionOptions.Search)]
         [HttpPost, Route("GetDetailPage")]
         [ApiExplorerSettings(IgnoreApi = true)]
         public virtual ActionResult GetDetailPage([FromBody] PageDataOptions loadData)
@@ -174,7 +172,6 @@ namespace HDPro.Core.Controllers.Basic
         /// <param name="saveDataModel"></param>
         /// <returns></returns>
         [ActionLog("新建")]
-        [ApiActionPermission(Enums.ActionPermissionOptions.Add)]
         [HttpPost, Route("Add")]
         [ApiExplorerSettings(IgnoreApi = true)]
         public virtual ActionResult Add([FromBody] SaveModel saveModel)
@@ -193,7 +190,6 @@ namespace HDPro.Core.Controllers.Basic
         /// <param name="saveDataModel"></param>
         /// <returns></returns>
         [ActionLog("编辑")]
-        [ApiActionPermission(Enums.ActionPermissionOptions.Update)]
         [HttpPost, Route("Update")]
         [ApiExplorerSettings(IgnoreApi = true)]
         public virtual ActionResult Update([FromBody] SaveModel saveModel)

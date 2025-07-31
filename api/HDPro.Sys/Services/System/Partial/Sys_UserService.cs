@@ -17,6 +17,7 @@ using HDPro.Core.UserManager;
 using HDPro.Core.Utilities;
 using HDPro.Entity.DomainModels;
 using HDPro.Sys.IRepositories;
+using HDPro.Utilities;
 
 namespace HDPro.Sys.Services
 {
@@ -156,7 +157,8 @@ namespace HDPro.Sys.Services
         /// <summary>
         /// 修改密码
         /// </summary>
-        /// <param name="parameters"></param>
+        /// <param name="oldPwd">旧密码</param>
+        /// <param name="newPwd">新密码</param>
         /// <returns></returns>
         public async Task<WebResponseContent> ModifyPwd(string oldPwd, string newPwd)
         {
@@ -168,7 +170,13 @@ namespace HDPro.Sys.Services
             {
                 if (string.IsNullOrEmpty(oldPwd)) return webResponse.Error("旧密码不能为空".Translator());
                 if (string.IsNullOrEmpty(newPwd)) return webResponse.Error("新密码不能为空".Translator());
-                if (newPwd.Length < 6) return webResponse.Error("密码不能少于6位".Translator());
+
+                // 密码强度校验：8~12位大小写字母数字特殊字符
+                var passwordValidation = PasswordValidator.ValidatePassword(newPwd);
+                if (!passwordValidation.IsValid)
+                {
+                    return webResponse.Error(passwordValidation.ErrorMessage.Translator());
+                }
 
                 int userId = UserContext.Current.UserId;
                 string userCurrentPwd = await base.repository.FindFirstAsync(x => x.User_Id == userId, s => s.UserPwd);
@@ -178,7 +186,6 @@ namespace HDPro.Sys.Services
 
                 string _newPwd = newPwd.EncryptDES(AppSetting.Secret.User);
                 if (userCurrentPwd == _newPwd) return webResponse.Error("新密码不能与旧密码相同".Translator());
-
 
                 repository.Update(new Sys_User
                 {
@@ -299,8 +306,8 @@ namespace HDPro.Sys.Services
             };
 
 
-            ///生成6位数随机密码
-            string pwd = 6.GenerateRandomNumber();
+            ///生成符合强度要求的随机密码
+            string pwd = GenerateStrongPassword();
             //在AddOnExecuting之前已经对提交的数据做过验证是否为空
             base.AddOnExecuting = (Sys_User user, object obj) =>
             {
@@ -608,6 +615,54 @@ namespace HDPro.Sys.Services
                 return responseData;
             };
             return base.Export(pageData);
+        }
+
+        /// <summary>
+        /// 生成符合强度要求的随机密码
+        /// </summary>
+        /// <returns>符合强度要求的8-12位随机密码</returns>
+        private string GenerateStrongPassword()
+        {
+            const string upperCase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string lowerCase = "abcdefghijklmnopqrstuvwxyz";
+            const string digits = "0123456789";
+            const string specialChars = "!@#$%^&*";
+            
+            var random = new Random();
+            var password = new List<char>();
+            
+            // 确保至少包含一个大写字母
+            password.Add(upperCase[random.Next(upperCase.Length)]);
+            
+            // 确保至少包含一个小写字母
+            password.Add(lowerCase[random.Next(lowerCase.Length)]);
+            
+            // 确保至少包含一个数字
+            password.Add(digits[random.Next(digits.Length)]);
+            
+            // 确保至少包含一个特殊字符
+            password.Add(specialChars[random.Next(specialChars.Length)]);
+            
+            // 随机生成8-12位长度
+            int targetLength = random.Next(8, 13); // 8到12位
+            
+            // 填充剩余位数，从所有字符中随机选择
+            string allChars = upperCase + lowerCase + digits + specialChars;
+            for (int i = 4; i < targetLength; i++)
+            {
+                password.Add(allChars[random.Next(allChars.Length)]);
+            }
+            
+            // 打乱密码字符顺序
+            for (int i = password.Count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                char temp = password[i];
+                password[i] = password[j];
+                password[j] = temp;
+            }
+            
+            return new string(password.ToArray());
         }
     }
 }

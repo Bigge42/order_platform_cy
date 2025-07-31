@@ -1,8 +1,9 @@
 <!--
-*Author：jxx
- *Contact：283591387@qq.com
- *代码由框架生成,任何更改都可能导致被代码生成器覆盖
- *业务请在@/extension/sys/Sys_User.jsx此处编写
+ *Author：jxx
+ *Date：{Date}
+ *Contact：461857658@qq.com
+ *业务请在@/extension/sys/Sys_User.jsx或Sys_User.vue文件编写
+ *新版本支持vue或【表.jsx]文件编写业务,
  -->
 <template>
     <view-grid ref="grid"
@@ -14,72 +15,69 @@
                :searchFormFields="searchFormFields"
                :searchFormOptions="searchFormOptions"
                :table="table"
-               :extend="extend">
+               :extend="extend"
+               :onInit="onInit"
+               :onInited="onInited"
+               :searchBefore="searchBefore"
+               :searchAfter="searchAfter"
+               :addBefore="addBefore"
+               :updateBefore="updateBefore"
+               :rowClick="rowClick"
+               :modelOpenBefore="modelOpenBefore"
+               :modelOpenAfter="modelOpenAfter">
+        <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
+        <template #gridHeader>
+        </template>
     </view-grid>
 </template>
-<script>
+<script setup lang="jsx">
     import extend from "@/extension/sys/Sys_User.jsx";
-    import { ref, defineComponent } from "vue";
-    export default defineComponent({
-        setup() {
-            const table = ref({
-                key: 'User_Id',
-                footer: "Foots",
-                cnName: '用户管理',
-                name: 'Sys_User',
-                newTabEdit: false,
-                url: "/Sys_User/",
-                sortName: "User_Id"
-            });
-            const editFormFields = ref({"UserName":"","UserTrueName":"","HeadImageUrl":"","Gender":"","PhoneNo":"","Email":"","Remark":"","DeptIds":"","RoleIds":"","PostId":""});
-            const editFormOptions = ref([[{"title":"帐号","required":true,"field":"UserName","disabled":true},
-                               {"title":"姓名","required":true,"field":"UserTrueName","type":"text"},
-                               {"title":"头像","field":"HeadImageUrl","type":"img"}],
-                              [{"dataKey":"gender","data":[],"title":"性别","field":"Gender","type":"select"},
-                               {"title":"手机号","field":"PhoneNo"}],
-                              [{"title":"邮箱","field":"Email","type":"mail"},
-                               {"title":"备注","field":"Remark","type":"text"}],
-                              [{"dataKey":"部门级联","data":[],"title":"部门","field":"DeptIds","colSize":12,"type":"treeSelect"}],
-                              [{"dataKey":"tree_roles","data":[],"title":"角色","field":"RoleIds","colSize":12,"type":"treeSelect"}],
-                              [{"dataKey":"岗位","data":[],"title":"岗位","field":"PostId","colSize":12,"type":"treeSelect"}]]);
-            const searchFormFields = ref({"UserName":"","UserTrueName":"","Gender":"","Token":"","CreateDate":"","PhoneNo":""});
-            const searchFormOptions = ref([[{"title":"帐号","field":"UserName"},{"title":"姓名","field":"UserTrueName"},{"dataKey":"gender","data":[],"title":"性别","field":"Gender","type":"select"},{"title":"注册时间","field":"CreateDate","type":"datetime"}],[{"title":"Token","field":"Token"},{"title":"手机号","field":"PhoneNo"}]]);
-            const columns = ref([{field:'User_Id',title:'User_Id',type:'int',width:90,hidden:true,readonly:true,require:true,align:'left'},
-                       {field:'UserName',title:'帐号',type:'string',link:true,width:100,readonly:true,require:true,align:'left'},
-                       {field:'UserTrueName',title:'姓名',type:'string',width:90,require:true,align:'left'},
-                       {field:'Gender',title:'性别',type:'int',bind:{ key:'gender',data:[]},width:80,align:'left'},
-                       {field:'HeadImageUrl',title:'头像',type:'img',width:70,align:'left'},
-                       {field:'Role_Id',title:'(角色)不用字段',type:'int',width:150,hidden:true,align:'left'},
-                       {field:'RoleIds',title:'角色',type:'string',bind:{ key:'tree_roles',data:[]},width:220,hidden:true,align:'left'},
-                       {field:'PostId',title:'岗位',type:'string',bind:{ key:'岗位',data:[]},width:120,align:'left'},
-                       {field:'Email',title:'邮箱',type:'string',width:120,align:'left'},
-                       {field:'Token',title:'Token',type:'string',width:180,hidden:true,align:'left'},
-                       {field:'CreateDate',title:'注册时间',type:'datetime',width:120,readonly:true,align:'left'},
-                       {field:'PhoneNo',title:'手机号',type:'string',width:150,hidden:true,align:'left'},
-                       {field:'CreateID',title:'CreateID',type:'int',width:90,hidden:true,align:'left'},
-                       {field:'Creator',title:'创建人',type:'string',width:90,readonly:true,align:'left'},
-                       {field:'Enable',title:'是否可用',type:'sbyte',bind:{ key:'enable',data:[]},width:90,hidden:true,align:'left'},
-                       {field:'ModifyID',title:'ModifyID',type:'int',width:90,hidden:true,align:'left'},
-                       {field:'Modifier',title:'修改人',type:'string',width:130,hidden:true,readonly:true,align:'left'},
-                       {field:'ModifyDate',title:'修改时间',type:'datetime',width:90,hidden:true,readonly:true,align:'left'},
-                       {field:'LastLoginDate',title:'最后登陆时间',type:'datetime',width:150,hidden:true,align:'left'},
-                       {field:'LastModifyPwdDate',title:'最后密码修改时间',type:'datetime',width:150,hidden:true,align:'left'},
-                       {field:'Remark',title:'备注',type:'string',width:120,align:'left'},
-                       {field:'OrderNo',title:'排序号',type:'int',width:90,hidden:true,align:'left'},
-                       {field:'DeptIds',title:'部门',type:'string',bind:{ key:'部门级联',data:[]},width:220,hidden:true,align:'left'}]);
-            const detail = ref({columns:[]});
-            const details = ref([]);
-            return {
-                table,
-                extend,
-                editFormFields,
-                editFormOptions,
-                searchFormFields,
-                searchFormOptions,
-                columns,
-                detail,
-                details
-            };
-        },
-    });
+    import viewOptions from './Sys_User/options.js'
+    import { ref, reactive, getCurrentInstance, watch, onMounted } from "vue";
+    const grid = ref(null);
+    const { proxy } = getCurrentInstance()
+    //http请求，proxy.http.post/get
+    const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
+
+    let gridRef;//对应[表.jsx]文件中this.使用方式一样
+    //生成对象属性初始化
+    const onInit = async ($vm) => {
+        gridRef = $vm;
+        gridRef.setFixedSearchForm(true);
+        //与jsx中的this.xx使用一样，只需将this.xx改为gridRef.xx
+ 
+    }
+    //生成对象属性初始化后,操作明细表配置用到
+    const onInited = async () => {
+    }
+    const searchBefore = async (param) => {
+        //界面查询前,可以给param.wheres添加查询参数
+        //返回false，则不会执行查询
+        return true;
+    }
+    const searchAfter = async (rows, result) => {
+        return true;
+    }
+    const addBefore = async (formData) => {
+        //新建保存前formData为对象，包括明细表，可以给给表单设置值，自己输出看formData的值
+        return true;
+    }
+    const updateBefore = async (formData) => {
+        //编辑保存前formData为对象，包括明细表、删除行的Id
+        return true;
+    }
+    const rowClick = ({ row, column, event }) => {
+        //查询界面点击行事件
+        // grid.value.toggleRowSelection(row); //单击行时选中当前行;
+    }
+    const modelOpenBefore = async (row) => {//弹出框打开后方法
+        return true;//返回false，不会打开弹出框
+    }
+    const modelOpenAfter = (row) => {
+        //弹出框打开后方法,设置表单默认值,按钮操作等
+    }
+    //监听表单输入，做实时计算
+    //watch(() => editFormFields.字段,(newValue, oldValue) => {	})
+    //对外暴露数据
+    defineExpose({})
 </script>

@@ -1,0 +1,17 @@
+Invalid argument   at System.Net.Sockets.Socket.UpdateStatusAfterSocketErrorAndThrowException(SocketError error, Boolean disconnectOnFailure, String callerName)
+   at System.Net.Sockets.Socket.UpdateStatusAfterSocketOptionErrorAndThrowException(SocketError error, String callerName)
+   at System.Data.SqlClient.SNI.SNITCPHandle.Receive(SNIPacket& packet, Int32 timeoutInMilliseconds)
+   at System.Data.SqlClient.TdsParserStateObject.ReadSniSyncOverAsync()
+   at System.Data.SqlClient.TdsParserStateObject.TryPrepareBuffer()
+   at System.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at System.Data.SqlClient.TdsParser.Run(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj)
+   at System.Data.SqlClient.SqlBulkCopy.RunParser(BulkCopySimpleResultSet bulkCopyHandler)
+   at System.Data.SqlClient.SqlBulkCopy.CreateAndExecuteInitialQueryAsync(BulkCopySimpleResultSet& result)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServerInternalRestAsync(CancellationToken cts, TaskCompletionSource`1 source)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServerInternalAsync(CancellationToken ctoken)
+   at System.Data.SqlClient.SqlBulkCopy.WriteRowSourceToServerAsync(Int32 columnCount, CancellationToken ctoken)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServer(DataTable table, DataRowState rowState)
+   at System.Data.SqlClient.SqlBulkCopy.WriteToServer(DataTable table)
+   at HDPro.Core.Dapper.SqlDapper.MSSqlBulkInsert(DataTable table, String tableName, SqlBulkCopyOptions sqlBulkCopyOptions, String dbKeyName) in /Users/monkeyinwind/workspace/project/Haodee.CY.Order.OCP/api/HDPro.Core/Dapper/SqlDapper.cs:line 751
+   at HDPro.Core.Dapper.SqlDapper.BulkInsert(DataTable table, String tableName, Nullable`1 sqlBulkCopyOptions, String fileName, String tmpPath) in /Users/monkeyinwind/workspace/project/Haodee.CY.Order.OCP/api/HDPro.Core/Dapper/SqlDapper.cs:line 785
+   at HDPro.Core.Services.Logger.Start() in /Users/monkeyinwind/workspace/project/Haodee.CY.Order.OCP/api/HDPro.Core/Services/Logger.cs:line 179System.Net.Sockets

@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HDPro.Core\HDPro.Core.csproj" />
+    <ProjectReference Include="..\HDPro.Entity\HDPro.Entity.csproj" />
+    <ProjectReference Include="..\HDPro.Utilities\HDPro.Utilities.csproj" />
+  </ItemGroup>
+
+</Project>

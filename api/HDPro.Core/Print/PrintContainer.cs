@@ -363,7 +363,7 @@ namespace HDPro.Core.Print
         private static async Task<List<Dictionary<string, object>>> ConvertListAsync<T>(List<T> entities, object[] ids, string table, List<string> fields, PrintQuery query)
         {
             var tableOptions = await DBServerProvider.DbContext.Set<Sys_TableColumn>().Where(c => c.TableName == table && fields.Contains(c.ColumnName))
-            .Select(s => new { s.ColumnName, s.ColumnCnName, s.DropNo, isDate = s.IsImage == 4 || s.EditType == "date" }).ToListAsync();
+            .Select(s => new { s.ColumnName, s.ColumnCnName, s.DropNo, s.ColumnType, isDate = s.IsImage == 4 || s.EditType == "date" }).ToListAsync();
 
 
             List<Sys_Dictionary> dictionaries = new List<Sys_Dictionary>();
@@ -382,9 +382,20 @@ namespace HDPro.Core.Print
                 foreach (var field in fields)
                 {
                     var property = properties.Where(c => c.Name == field).FirstOrDefault();
-                    string value = property.GetValue(data)?.ToString();
-
                     var option = tableOptions.Where(c => c.ColumnName == field).FirstOrDefault();
+                    string value = null;
+                    if (option.ColumnType == "decimal")
+                    {
+                        var deciVal = property.GetValue(data);
+                        if (deciVal != null)
+                        {
+                            value = ((decimal)deciVal).ToString("G29");
+                        }
+                    }
+                    else
+                    {
+                        value = property.GetValue(data)?.ToString();
+                    }
                     string name = option?.ColumnCnName;
                     if (string.IsNullOrEmpty(name))
                     {

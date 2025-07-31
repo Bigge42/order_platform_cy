@@ -15,9 +15,16 @@ export const ViewGridAuditConfig = (proxy, props, ctx, dataConfig) => {
         return
       }
       const b = props.columns.some((x) => {
-        return x.field&&x.field.toLowerCase() === 'auditstatus'
+        return x.field && x.field.toLowerCase() === 'auditstatus'
       })
-      if (!b) return
+      if (
+        !b &&
+        !dataConfig.buttons.value.some((x) => {
+          return x.value == 'Audit'
+        })
+      )
+        return
+
       props.columns.push({
         title: '流程', //按钮名称
         field: 'audit_view',
@@ -58,7 +65,7 @@ export const showAudit = async (proxy, props, dataConfig, rows, isAnti, view) =>
     rows = getGridTableRef(proxy, props, true).getSelected()
   }
   if (rows.length === 0) return proxy.$message.error(proxy.$ts('请选择要审核的行!'))
-    console.log(rows[0])
+  console.log(rows[0])
   let auditStatus = Object.keys(rows[0]).find((x) => {
     return x.toLowerCase() === 'auditstatus'
   })
@@ -99,7 +106,7 @@ export const showAudit = async (proxy, props, dataConfig, rows, isAnti, view) =>
   })
 }
 
-export const saveAuditClick = async (proxy, props, params, rows, callback) => {
+export const saveAuditClick = async (proxy, props, params, rows, attachFile, callback) => {
   //保存审核
   let keys = rows.map((x) => {
     return x[props.table.key]
@@ -113,6 +120,9 @@ export const saveAuditClick = async (proxy, props, params, rows, callback) => {
   let url = `${getUrl(action.AUDIT, null, props.table)}?auditReason=${params.reason}&auditStatus=${
     params.value
   }`
+  if (attachFile) {
+    url = url + '&attach=' + attachFile
+  }
   proxy.http.post(url, keys, 'loading....').then(async (x) => {
     if (!(await props.auditAfter(x, rows))) {
       return
@@ -146,11 +156,11 @@ export const auditTabelOnClick = (proxy, props, dataConfig, row) => {
       icon: 'el-icon-check',
       plain: true,
       onClick: async () => {
-        const currentRow = dataConfig.currentRow.value 
-        if ((await proxy.boxAuditOptionOpenBefore.call(proxy, currentRow))===false) {
+        const currentRow = dataConfig.currentRow.value
+        if ((await proxy.boxAuditOptionOpenBefore.call(proxy, currentRow)) === false) {
           return
         }
-        if ((await props.boxAuditOptionOpenBefore(currentRow))===false) {
+        if ((await props.boxAuditOptionOpenBefore(currentRow)) === false) {
           return
         }
         proxy.audit([currentRow], false, false)

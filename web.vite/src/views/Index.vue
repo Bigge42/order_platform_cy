@@ -1,13 +1,20 @@
 <template>
   <vol-loading v-if="!permissionInited" center></vol-loading>
-  <div id="vol-container" :class="['vol-theme-' + theme, layoutIsLeft() ? 'vol-layout-left' : '']"
-    v-if="permissionInited">
+  <div
+    id="vol-container"
+    :class="['vol-theme-' + theme, layoutIsLeft() ? 'vol-layout-left' : '']"
+    v-if="permissionInited"
+  >
     <div class="vol-menu-side-left" v-if="layoutIsLeft()">
       <div @click="toggleLeft"><i class="el-icon-s-fold collapse-menu" /></div>
       <el-scrollbar style="height: 0; flex: 1">
-        <div @click="menuDataClick(item, index)"
+        <div
+          @click="menuDataClick(item, index)"
           :class="[navCurrentMenuId === item.id ? 'vol-menu-side-left-item-acitve' : '']"
-          v-for="(item, index) in navMenuList" :key="index" class="vol-menu-side-left-item">
+          v-for="(item, index) in navMenuList"
+          :key="index"
+          class="vol-menu-side-left-item"
+        >
           <i :class="item.icon"></i>
           <p>{{ $ts(item.name) }}</p>
         </div>
@@ -20,17 +27,27 @@
       </div>
       <div class="vol-menu">
         <el-scrollbar style="height: 100%; flex: 1">
-          <VolMenu :currentMenuId="currentMenuId" :on-select="onSelect" :enable="true" :open-select="false"
-            :isCollapse="isCollapse" :list="menuData"></VolMenu>
+          <VolMenu
+            :currentMenuId="currentMenuId"
+            :on-select="onSelect"
+            :enable="true"
+            :open-select="false"
+            :isCollapse="isCollapse"
+            :list="menuData"
+          ></VolMenu>
         </el-scrollbar>
       </div>
     </div>
     <div class="vol-container">
       <div class="vol-header">
         <div class="header-text">
-          <div class="h-link" v-if="layout == 'top'">
-            <a :class="[navCurrentMenuId === item.id ? 'h-link-a-acitve' : '']" @click="menuDataClick(item, index)"
-              v-for="(item, index) in navMenuList" :key="index">
+          <div class="h-link" v-if="layout === 'top'">
+            <a
+              :class="[navCurrentMenuId === item.id ? 'h-link-a-acitve' : '']"
+              @click="menuDataClick(item, index)"
+              v-for="(item, index) in navMenuList"
+              :key="index"
+            >
               <i :class="item.icon"></i> <span> {{ $ts(item.name) }}</span>
             </a>
           </div>
@@ -49,7 +66,12 @@
             <lang :color="color"></lang>
           </div>
           <div class="h-link h-link-icons">
-            <a v-for="(item, index) in icons" @click="linkClick(item)" :key="index" :class="item.icon"></a>
+            <a
+              v-for="(item, index) in icons"
+              @click="linkClick(item)"
+              :key="index"
+              :class="item.icon"
+            ></a>
             <!-- <a><i class="el-icon-message-solid"></i></a> -->
           </div>
           <!--消息管理-->
@@ -82,10 +104,22 @@
         </div>
       </div>
       <div class="vol-path">
-        <el-tabs @tab-click="selectNav" @tab-remove="removeNav" type="border-card" class="header-navigation"
-          v-model="selectId" :strtch="false">
-          <el-tab-pane v-for="(item, navIndex) in navigation" type="card" :name="navIndex + ''" :closable="navIndex > 0"
-            :key="navIndex" :label="$ts(item.name)">
+        <el-tabs
+          @tab-click="selectNav"
+          @tab-remove="removeNav"
+          type="border-card"
+          class="header-navigation"
+          v-model="selectId"
+          :strtch="false"
+        >
+          <el-tab-pane
+            v-for="(item, navIndex) in navigation"
+            type="card"
+            :name="navIndex + ''"
+            :closable="navIndex > 0"
+            :key="navIndex"
+            :label="$ts(item.name)"
+          >
             <span style="display: none">{{ navIndex }}</span>
           </el-tab-pane>
         </el-tabs>
@@ -93,18 +127,23 @@
         <div v-show="contextMenuVisible">
           <ul :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" class="contextMenu">
             <li v-show="visibleItem.left">
-              <el-button link @click="navCloseTabs('left')"><i class="el-icon-back"></i>{{ $ts('关闭左边') }}</el-button>
+              <el-button link @click="navCloseTabs('left')"
+                ><i class="el-icon-back"></i>{{ $ts('关闭左边') }}</el-button
+              >
             </li>
             <li v-show="visibleItem.right">
               <el-button link @click="navCloseTabs('right')">
-                <i class="el-icon-right"></i>{{ $ts('关闭右边') }}</el-button>
+                <i class="el-icon-right"></i>{{ $ts('关闭右边') }}</el-button
+              >
             </li>
             <li v-show="visibleItem.other">
-              <el-button link @click="navCloseTabs('other')"><i class="el-icon-right"></i>{{ $ts('关闭其他') }}
+              <el-button link @click="navCloseTabs('other')"
+                ><i class="el-icon-right"></i>{{ $ts('关闭其他') }}
               </el-button>
             </li>
             <li>
-              <el-button link @click="navRefreshPage"><i class="el-icon-refresh"></i>{{ $ts('刷新页面') }}
+              <el-button link @click="navRefreshPage"
+                ><i class="el-icon-refresh"></i>{{ $ts('刷新页面') }}
               </el-button>
             </li>
           </ul>
@@ -116,7 +155,13 @@
         </el-scrollbar>
       </div>
     </div>
-    <el-drawer :title="$ts('基础设置')" size="360px" v-model="drawer_model" direction="rtl" destroy-on-close>
+    <el-drawer
+      :title="$ts('基础设置')"
+      size="360px"
+      v-model="drawer_model"
+      direction="rtl"
+      destroy-on-close
+    >
       <home-setting @layoutChange="layoutChange"></home-setting>
     </el-drawer>
   </div>
@@ -124,6 +169,7 @@
 <style lang="less" scoped>
 @import './index/index.less';
 @import './index/aside.less';
+@import './index/override/logo.less';
 </style>
 <script setup>
 import VolLoading from '@/components/basic/VolLoading'
@@ -169,7 +215,11 @@ const {
   navMenuList,
   menuData
 } = dataConfig
-const { navCloseTabs, open, close, selectNav, removeNav, navRefreshPage } = IndexTabs(proxy, dataConfig, router)
+const { navCloseTabs, open, close, selectNav, removeNav, navRefreshPage } = IndexTabs(
+  proxy,
+  dataConfig,
+  router
+)
 
 navigation.push({ orderNo: '0', id: '1', name: '首页', path: '/home' })
 
@@ -193,8 +243,8 @@ const icons = computed(() => {
 
 const color = ref('')
 const getColor = () => {
-
-  color.value = layoutIsLeft() || theme.value == 'dark' || theme.value == 'white' ? '#000' : '#ffff'
+  color.value =
+    layoutIsLeft() || theme.value === 'dark' || theme.value === 'white' ? '#000' : '#ffff'
 }
 
 const theme = ref()
@@ -219,7 +269,6 @@ const getErrorImg = ($e) => {
   $e.target.src = userInfo.errorImg
 }
 
-
 const linkClick = (item) => {
   if (item.click) {
     item.click()
@@ -229,12 +278,12 @@ const linkClick = (item) => {
     item.path = ''
   }
   /* 2020.07.31增加手动打开tabs*/
-  if (item.path.indexOf('http') != -1) {
+  if (item.path.indexOf('http') !== -1) {
     window.open(item.path)
     return
   }
-  if (typeof item == 'string' || item.path == '/login') {
-    if (item == '/login' || item.path == '/login') {
+  if (typeof item === 'string' || item.path === '/login') {
+    if (item === '/login' || item.path === '/login') {
       store.commit('clearUserInfo', '')
       window.location.reload()
       return
@@ -242,18 +291,18 @@ const linkClick = (item) => {
     router.push({ path: item })
     return
   }
-  if (item.path == '#') return
+  if (item.path === '#') return
   open(item)
 }
 
 const getSelectMenuName = (id) => {
-  return menuOptions.value.find(function (x) {
-    return x.id == id
+  return menuOptions.value.find((x) => {
+    return `${x.id}` === `${id}`
   })
 }
 const onSelect = (treeId) => {
   /* 2020.07.31增加手动打开tabs*/
-  var item = getSelectMenuName(treeId)
+  const item = getSelectMenuName(treeId)
   open(item, false)
 }
 
@@ -296,15 +345,15 @@ const layoutChange = (layoutValue, themeValue) => {
   getColor()
 }
 const layoutIsLeft = () => {
-  if (theme.value == 'white') {
-    return false;
+  if (theme.value === 'white') {
+    return false
   }
-  return layout.value == 'left'
+  return layout.value === 'left'
 }
 theme.value = localStorage.getItem('vol-theme')
 if (!theme.value) {
   if (layoutIsLeft()) {
-    theme.value = proxy.$global.theme + '-aside'
+    theme.value = `${proxy.$global.theme}-aside`
   } else {
     theme.value = proxy.$global.theme
   }
@@ -329,5 +378,71 @@ onUnmounted(() => {
 <style>
 .horizontal-collapse-transition {
   transition: 0s width ease-in-out, 0s padding-left ease-in-out, 0s padding-right ease-in-out;
+}
+
+/* 默认主题 tab 背景色 */
+#vol-container .header-navigation .el-tabs__item.is-active {
+  background-color: rgb(190, 223, 255) !important;
+}
+
+/* 深色主题 tab 背景色 */
+#vol-container.vol-theme-dark .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(0, 21, 41, 0.3) !important;
+  color: #fff !important;
+}
+
+/* 深色侧边栏主题 tab 背景色 */
+#vol-container.vol-theme-dark-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(0, 21, 41, 0.3) !important;
+  color: #fff !important;
+}
+
+/* 红色主题 tab 背景色 */
+#vol-container.vol-theme-red .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-red2 .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-red-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(237, 64, 20, 0.15) !important;
+  color: rgb(237, 64, 20) !important;
+}
+
+/* 橙色主题 tab 背景色 */
+#vol-container.vol-theme-orange .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-orange2 .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-orange-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(255, 153, 0, 0.15) !important;
+  color: rgb(255, 153, 0) !important;
+}
+
+/* 渐变橙色主题 tab 背景色 */
+#vol-container.vol-theme-gradient_orange .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-gradient_orange-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(217, 114, 4, 0.15) !important;
+  color: #d97204 !important;
+}
+
+/* 绿色主题 tab 背景色 */
+#vol-container.vol-theme-green .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-green2 .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-green-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(25, 190, 107, 0.15) !important;
+  color: rgb(25, 190, 107) !important;
+}
+
+/* 蓝色主题 tab 背景色 */
+#vol-container.vol-theme-blue .header-navigation .el-tabs__item.is-active,
+#vol-container.vol-theme-blue-aside .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(45, 140, 240, 0.15) !important;
+  color: rgb(45, 140, 240) !important;
+}
+
+#vol-container.vol-theme-blue2 .header-navigation .el-tabs__item.is-active {
+  background-color: rgba(0, 104, 214, 0.15) !important;
+  color: rgb(0, 104, 214) !important;
+}
+
+/* 白色主题 tab 背景色 */
+#vol-container.vol-theme-white .header-navigation .el-tabs__item.is-active {
+  background-color: #f5f5f5 !important;
+  color: #1a81ea !important;
 }
 </style>

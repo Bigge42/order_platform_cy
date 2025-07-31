@@ -1,11 +1,3 @@
-/*
- * @Description:
- * @Author: CcSimple
- * @Github: https://github.com/CcSimple
- * @Date: 2023-02-09 10:40:26
- * @LastEditors: CcSimple
- * @LastEditTime: 2023-02-09 10:50:02
- */
 // import { hiprint } from "vue-plugin-hiprint";
 import hiprintPackage from "./vue-plugin-hiprint.js" // "vue-plugin-hiprint";
 var hiprint=hiprintPackage.hiprint;

@@ -2,13 +2,19 @@ import * as signalR from '@microsoft/signalr';
 import { ElNotification } from 'element-plus';
 import { ElMessageBox } from 'element-plus';
 import store from '@/store/index';
-
 export default function(http, receive) {
   let connection;
   http.post('api/user/GetCurrentUserInfo').then((result) => {
+    // 确保store中有loginName字段
+    let user = store.getters.getUserInfo();
+    if (user && !user.loginName) {
+      user.loginName = result.data.userName;  // 设置真正的登录账号
+      store.commit("setUserInfo", user);
+    }
+    
     connection = new signalR.HubConnectionBuilder()
       .withAutomaticReconnect()
-      .withUrl(`${http.ipAddress}message?userName=${result.data.userName}`,{
+      .withUrl(`${http.ipAddress}hub/message?userName=${result.data.userName}`,{
         //withCredentials: true // 启用凭证模式
        // accessTokenFactory: () => store.getters.getToken()
     })
@@ -21,17 +27,17 @@ export default function(http, receive) {
       console.log(connectionId);
     });
     connection.on('ReceiveHomePageMessage', function(data) {
-      //console.log(data);
-      switch (data.value) {
-        case 'logout':
+      switch (data.code) {
+        case '-1':
           showLogoutMessage(data);
           return;
         default:
           ElNotification.success({
-            title: data.title,
-            message: data.message + '',
+            title:'消息' ,
+            message: data.title,
             type: 'warning'
           });
+          store.getters.data().pushMessage(data)
           receive && receive(data);
           break;
       }
@@ -44,8 +50,8 @@ function showLogoutMessage(data) {
   const timerId = setTimeout(() => {
     clearTimeout(timerId);
     window.location.href = '/';
-  }, 5000);
-  ElMessageBox.confirm(data.msg, '警告', {
+  }, 15000);
+  ElMessageBox.confirm(data.message, '警告', {
     center: true,
     showCancelButton: false,
     closeOnClickModal: false,

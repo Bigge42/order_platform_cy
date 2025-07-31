@@ -66,8 +66,8 @@
 	const codeSrc = ref('');
 
 	const userInfo = ref({
-		userName: "admin666",
-		password: "123456",
+		userName: "",
+		password: "",
 		UUID: "",
 		verificationCode: ""
 	})

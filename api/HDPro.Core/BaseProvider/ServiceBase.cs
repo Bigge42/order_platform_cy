@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OfficeOpenXml.FormulaParsing.Excel.Functions.Logical;
+using Quartz.Util;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,6 +17,7 @@ using HDPro.Core.BaseProvider;
 using HDPro.Core.CacheManager;
 using HDPro.Core.Configuration;
 using HDPro.Core.Const;
+using HDPro.Core.DBManager;
 using HDPro.Core.Enums;
 using HDPro.Core.Extensions;
 using HDPro.Core.Extensions.AutofacManager;
@@ -298,10 +300,20 @@ namespace HDPro.Core.BaseProvider
             for (int i = 0; i < searchParametersList.Count; i++)
             {
                 SearchParameters x = searchParametersList[i];
+
+                // 处理空值查询的特殊逻辑
+                if (IsEmptyValueQuery(x))
+                {
+                    queryable = ProcessEmptyValueQuery<TEntity>(queryable, x);
+                    continue;
+                }
+
+                // 跳过普通的空值参数
                 if (string.IsNullOrEmpty(x.Value))
                 {
                     continue;
                 }
+
                 // x.DisplayType = x.DisplayType.GetDbCondition();
                 PropertyInfo property = TProperties.Where(c => c.Name.ToUpper() == x.Name.ToUpper()).FirstOrDefault();
                 //2020.06.25增加字段null处理
@@ -321,6 +333,116 @@ namespace HDPro.Core.BaseProvider
                               : queryable.Where(x.Name.CreateExpression<TEntity>(x.Value, expressionType));
             }
             return queryable;
+        }
+
+        /// <summary>
+        /// 判断是否为空值查询（包括空值和非空值查询）
+        /// 通过displayType判断空值查询类型
+        /// </summary>
+        /// <param name="searchParam">查询参数</param>
+        /// <returns>是否为空值相关查询</returns>
+        private bool IsEmptyValueQuery(SearchParameters searchParam)
+        {
+            if (searchParam == null || string.IsNullOrEmpty(searchParam.Name))
+                return false;
+
+            // 检查displayType是否为空值查询类型
+            if (!string.IsNullOrEmpty(searchParam.DisplayType))
+            {
+                var displayType = searchParam.DisplayType.Trim();
+
+                // 检查是否为空值或非空值的displayType
+                if (string.Equals(displayType, HtmlElementType.EmptyDisplayType, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(displayType, HtmlElementType.NotEmptyDisplayType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 处理空值查询
+        /// </summary>
+        /// <typeparam name="TEntity">实体类型</typeparam>
+        /// <param name="queryable">查询对象</param>
+        /// <param name="searchParam">查询参数</param>
+        /// <returns>处理后的查询对象</returns>
+        private IQueryable<TEntity> ProcessEmptyValueQuery<TEntity>(IQueryable<TEntity> queryable, SearchParameters searchParam) where TEntity : class
+        {
+            PropertyInfo property = TProperties.Where(c => c.Name.ToUpper() == searchParam.Name.ToUpper()).FirstOrDefault();
+            if (property == null) return queryable;
+
+            // 判断是否为非空查询
+            bool isNotEmptyQuery = IsNotEmptyQuery(searchParam);
+
+            // 添加调试日志
+            System.Diagnostics.Debug.WriteLine($"[空值查询调试] 字段: {searchParam.Name}, 值: '{searchParam.Value}', 显示类型: {searchParam.DisplayType}, 是否非空查询: {isNotEmptyQuery}, 字段类型: {property.PropertyType.Name}");
+
+            // 构建空值查询表达式
+            if (property.PropertyType == typeof(string))
+            {
+                // 字符串类型：同时处理 null 和空字符串
+                if (isNotEmptyQuery)
+                {
+                    // 非空查询：字段不为null且不为空字符串
+                    System.Diagnostics.Debug.WriteLine($"[空值查询调试] 执行非空查询逻辑: {searchParam.Name} IS NOT NULL AND {searchParam.Name} != ''");
+                    var notNullExpression = searchParam.Name.CreateExpression<TEntity>(null, LinqExpressionType.NotEqual);
+                    var notEmptyExpression = searchParam.Name.CreateExpression<TEntity>("", LinqExpressionType.NotEqual);
+                    queryable = queryable.Where(notNullExpression.And(notEmptyExpression));
+                }
+                else
+                {
+                    // 空值查询：字段为null或为空字符串
+                    System.Diagnostics.Debug.WriteLine($"[空值查询调试] 执行空值查询逻辑: {searchParam.Name} IS NULL OR {searchParam.Name} = ''");
+                    var nullExpression = searchParam.Name.CreateExpression<TEntity>(null, LinqExpressionType.Equal);
+                    var emptyExpression = searchParam.Name.CreateExpression<TEntity>("", LinqExpressionType.Equal);
+                    queryable = queryable.Where(nullExpression.Or(emptyExpression));
+                }
+            }
+            else if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                // 可空类型：只处理 null
+                if (isNotEmptyQuery)
+                {
+                    // 非空查询：字段有值
+                    queryable = queryable.Where(searchParam.Name.CreateExpression<TEntity>(null, LinqExpressionType.NotEqual));
+                }
+                else
+                {
+                    // 空值查询：字段为null
+                    queryable = queryable.Where(searchParam.Name.CreateExpression<TEntity>(null, LinqExpressionType.Equal));
+                }
+            }
+
+            return queryable;
+        }
+
+        /// <summary>
+        /// 判断是否为非空查询
+        /// 通过displayType判断非空查询类型
+        /// </summary>
+        /// <param name="searchParam">查询参数</param>
+        /// <returns>是否为非空查询</returns>
+        private bool IsNotEmptyQuery(SearchParameters searchParam)
+        {
+            if (searchParam == null || string.IsNullOrEmpty(searchParam.Name))
+                return false;
+
+            // 检查displayType是否为非空查询类型
+            if (!string.IsNullOrEmpty(searchParam.DisplayType))
+            {
+                var displayType = searchParam.DisplayType.Trim();
+
+                // 直接检查是否为NOT_EMPTY的displayType
+                if (string.Equals(displayType, HtmlElementType.NotEmptyDisplayType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -388,6 +510,7 @@ namespace HDPro.Core.BaseProvider
             if (authFields.Length == 0)
             {
                 return queryable.ToList();
+                //return null;
             }
             var source = typeof(T);
             var target = typeof(T);
@@ -624,7 +747,7 @@ namespace HDPro.Core.BaseProvider
                     keyPro.SetValue(item, idWorker.NextId());
                 }
             }
-            list.SetTenancyValue().CreateCode();
+            list.SetTenancyValue().CreateCodeList();
 
             if (ImportOnExecuting != null)
             {
@@ -637,7 +760,7 @@ namespace HDPro.Core.BaseProvider
                 ImportOnExecuted?.Invoke(list);
                 return Response.OK("文件上传成功".Translator(), list.Serialize());
             }
-            repository.AddRange(list, true);
+			SaveImportData(list);
             if (ImportOnExecuted != null)
             {
                 Response = ImportOnExecuted.Invoke(list);
@@ -645,13 +768,16 @@ namespace HDPro.Core.BaseProvider
             }
             return Response.OK("文件上传成功".Translator());
         }
-
-        /// <summary>
-        /// 导出
-        /// </summary>
-        /// <param name="pageData"></param>
-        /// <returns></returns>
-        public virtual WebResponseContent Export(PageDataOptions pageData)
+		protected virtual void SaveImportData(List<T> list)
+		{
+			repository.AddRange(list, true);
+		}
+		/// <summary>
+		/// 导出
+		/// </summary>
+		/// <param name="pageData"></param>
+		/// <returns></returns>
+		public virtual WebResponseContent Export(PageDataOptions pageData)
         {
             pageData.Export = true;
             List<T> list = GetPageData(pageData).rows;
@@ -2015,74 +2141,67 @@ namespace HDPro.Core.BaseProvider
                 LogicDel(keys, keyProperty, lgProperty);
                 return Response;
             }
-            //后面升级到.net8重写删除代码
-            if (entityType.GetKeyProperty() == typeof(string) || DBType.Name == DbCurrentType.Oracle.ToString())
+            //可能在删除后还要做一些其它数据库新增或删除操作，这样就可能需要与删除保持在同一个事务中处理
+            Response = repository.DbContextBeginTransaction(() =>
             {
-                keys = keys.Distinct().ToArray();
-
-                foreach (var key in keys)
+                typeof(ServiceBase<T, TRepository>)
+                          .GetMethod("DelDetails", BindingFlags.Instance | BindingFlags.NonPublic)
+                         .MakeGenericMethod(new Type[] { entityType, keyProperty.PropertyType })
+                         .Invoke(this, new object[] { keys });
+                if (delList)
                 {
-                    var entity = Activator.CreateInstance<T>();
-                    keyProperty.SetValue(entity, key.ChangeType(keyProperty.PropertyType));
-                    repository.DbContext.Remove(entity);
-                }
-                repository.SaveChanges();
-                return Response.OK(ResponseType.DelSuccess);
-            }
-            FieldType fieldType = entityType.GetFieldType();
-            string joinKeys = (fieldType == FieldType.Int || fieldType == FieldType.BigInt)
-                 ? string.Join(",", keys)
-                 : $"'{string.Join("','", keys)}'";
-
-            // 2020.08.15添加判断多租户数据（删除）
-            if (IsMultiTenancy && !UserContext.Current.IsSuperAdmin)
-            {
-                CheckDelMultiTenancy(joinKeys, tKey);
-                if (CheckResponseResult())
-                {
-                    return Response;
-                }
-            }
-
-            string sql = $"DELETE FROM {entityType.GetEntityTableName()} where {tKey} in ({joinKeys});";
-            // 2020.08.06增加pgsql删除功能
-            if (DBType.Name == DbCurrentType.PgSql.ToString())
-            {
-                sql = $"DELETE FROM \"public\".\"{entityType.GetEntityTableName()}\" where \"{tKey}\" in ({joinKeys});";
-            }
-            if (delList)
-            {
-                var detailTables = entityType.GetCustomAttribute<EntityAttribute>()?.DetailTable;
-                if (detailTables != null)
-                {
-                    var tables = detailTables.Select(s => s.GetEntityTableName()).ToList();
-                    if (tables.Count > 0)
+                    var types = entityType.GetCustomAttribute<EntityAttribute>()?.DetailTable;
+                    if (types != null)
                     {
-                        if (DBType.Name == DbCurrentType.PgSql.ToString())
+                        foreach (var type in types)
                         {
-                            sql += string.Join(" ", tables.Select(c => $"DELETE FROM \"public\".\"{c}\" where \"{tKey}\" in ({joinKeys});"));
-                        }
-                        else
-                        {
-                            sql += string.Join(" ", tables.Select(c => $"DELETE FROM {c} where {tKey} in ({joinKeys});"));
+                            typeof(ServiceBase<T, TRepository>)
+                            .GetMethod("DelDetails", BindingFlags.Instance | BindingFlags.NonPublic)
+                           .MakeGenericMethod(new Type[] { type, keyProperty.PropertyType })
+                           .Invoke(this, new object[] { keys });
                         }
                     }
                 }
-            }
-            //可能在删除后还要做一些其它数据库新增或删除操作，这样就可能需要与删除保持在同一个事务中处理
-            //采用此方法 repository.DbContextBeginTransaction(()=>{//do delete......and other});
-            //做的其他操作，在DelOnExecuted中加入委托实现
-            Response = repository.DbContextBeginTransaction(() =>
-            {
-                repository.ExecuteSqlCommand(sql);
                 if (DelOnExecuted != null)
                 {
-                    return DelOnExecuted(keys);
+                    Response = DelOnExecuted(keys);
                 }
                 return Response;
             });
+            string tableName = entityType.GetEntityTableName();
+            //是否有流程
+            if (WorkFlowManager.Exists(tableName))
+            {
+                //删除进入流程的数据
+                var ids = keys.Select(s => s.ToString()).ToList();
+                DBServerProvider.DbContext.Set<Sys_WorkFlowTable>().Where(x => x.WorkTable == tableName && ids.Contains(x.WorkTableKey)).Include(x => x.Sys_WorkFlowTableStep).ExecuteDelete();
+            }
             if (Response.Status && string.IsNullOrEmpty(Response.Message)) Response.OK(ResponseType.DelSuccess);
             return Response;
+        }
+        private void DelDetails<Entity, KeyType>(object[] keys) where Entity : class
+        {
+            var values = keys.Select(s => (KeyType)(s.ChangeType(typeof(KeyType)))).ToList();
+            var expression = typeof(T).GetKeyName().CreateExpression<Entity>(values, LinqExpressionType.In);
+            repository.DbContext.Set<Entity>().Where(expression).ExecuteDelete();
+        }
+        /// <summary>
+        /// 逻辑删除
+        /// </summary>
+        /// <param name="keys"></param>
+        /// <param name="keyProperty"></param>
+        /// <param name="logicDelProperty"></param>
+        /// <returns></returns>
+        private void LogicDelDetails<Entity, KeyType, LogicFieldType>(object[] keys, PropertyInfo keyProperty, PropertyInfo logicDelProperty) where Entity : class
+        {
+            var values = keys.Select(s => (KeyType)(s.ChangeType(typeof(KeyType)))).ToList();
+            var expression = keyProperty.Name.CreateExpression<Entity>(values, LinqExpressionType.In);
+            var value = (LogicFieldType)(((int)DelStatus.已删除).ChangeType(typeof(LogicFieldType)));
+
+            var query = repository.DbContext.Set<Entity>().Where(expression);
+            query.ExecuteUpdate(c =>
+                c.SetProperty(e => EF.Property<LogicFieldType>(e, logicDelProperty.Name), value)
+            );
         }
 
         /// <summary>
@@ -2094,23 +2213,28 @@ namespace HDPro.Core.BaseProvider
         /// <returns></returns>
         private WebResponseContent LogicDel(object[] keys, PropertyInfo keyProperty, PropertyInfo logicDelProperty)
         {
-            var keyCondition = keyProperty.Name.CreateExpression<T>(keys, LinqExpressionType.In);
-
-            //var selectExp = keyProperty.Name.GetExpression<T, object>();
-            //keys = repository.FindAsIQueryable(keyCondition).Select(selectExp).ToArray();
-
-            List<T> delList = new List<T>();
-
-            foreach (object key in keys)
-            {
-                var entity = Activator.CreateInstance<T>();
-                keyProperty.SetValue(entity, key.ChangeType(keyProperty.PropertyType));
-                logicDelProperty.SetValue(entity, ((int)DelStatus.已删除).ChangeType(logicDelProperty.PropertyType));
-                delList.Add(entity);
-            }
             Response = repository.DbContextBeginTransaction(() =>
             {
-                repository.UpdateRange(delList, new string[] { logicDelProperty.Name }, true);
+                typeof(ServiceBase<T, TRepository>)
+                                        .GetMethod("LogicDelDetails", BindingFlags.Instance | BindingFlags.NonPublic)
+                                       .MakeGenericMethod(new Type[] { typeof(T), keyProperty.PropertyType, logicDelProperty.PropertyType })
+                                       .Invoke(this, new object[] { keys, keyProperty, logicDelProperty });
+
+                var types = typeof(T).GetCustomAttribute<EntityAttribute>()?.DetailTable;
+                if (types != null && types.Length > 0)
+                {
+                    foreach (var detailType in types)
+                    {
+                        var logPro = GetLogicDelProperty(detailType);
+                        if (logPro != null)
+                        {
+                            typeof(ServiceBase<T, TRepository>)
+                                         .GetMethod("LogicDelDetails", BindingFlags.Instance | BindingFlags.NonPublic)
+                                        .MakeGenericMethod(new Type[] { detailType, keyProperty.PropertyType, logicDelProperty.PropertyType })
+                                        .Invoke(this, new object[] { keys, keyProperty, logicDelProperty });
+                        }
+                    }
+                }
                 if (DelOnExecuted != null)
                 {
                     return DelOnExecuted(keys);
@@ -2119,6 +2243,7 @@ namespace HDPro.Core.BaseProvider
             });
             return Response;
         }
+
 
 
         private static string[] auditFields = new string[] { "auditid", "auditstatus", "auditor", "auditdate", "auditreason" };
@@ -2138,11 +2263,8 @@ namespace HDPro.Core.BaseProvider
             {
                 return Response.Error($"未查到数据,或者数据已被删除,id:{id}");
             }
-            Response = repository.DbContextBeginTransaction(() =>
-            {
-                return WorkFlowManager.Audit<T>(repository.DbContext, entity, AuditStatus.审核未通过, msg, autditProperty: GetAuditProperty(), flowWriteState: flowWriteState, workFlowTableName: WorkFlowTableName);
-            });
-            return Response;
+
+            return WorkFlowManager.Audit<T>(repository.DbContext, entity, AuditStatus.审核未通过, msg, autditProperty: GetAuditProperty(), flowWriteState: flowWriteState, workFlowTableName: WorkFlowTableName);
         }
 
 

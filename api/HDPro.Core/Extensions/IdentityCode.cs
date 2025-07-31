@@ -54,7 +54,7 @@ namespace HDPro.Core.Extensions
         /// <returns></returns>
         public static T CreateCode<T>(this T entity) where T : class
         {
-            CreateCode(new List<T>() { entity });
+            CreateCodeList(new List<T>() { entity });
             return entity;
         }
         /// <summary>
@@ -65,7 +65,7 @@ namespace HDPro.Core.Extensions
         /// <typeparam name="T"></typeparam>
         /// <param name="entity"></param>
         /// <returns></returns>
-        public static List<T> CreateCode<T>(this List<T> entity) where T : class
+        public static List<T> CreateCodeList<T>(this List<T> entity) where T : class
         {
             var query = CodeRules.Where(x => x.TableName == typeof(T).Name);
             //租户分库
@@ -95,7 +95,7 @@ namespace HDPro.Core.Extensions
             {
                 Console.WriteLine($"单据号枚举转换失败:${rule.RuleIncremental},ex:{ex.Message}");
             }
-            Create<T>(entity,
+            CreateList<T>(entity,
                  rule.Field.GetExpression<T>(),
                  rule.PrefixCode,
                  rule.OrderFiled.GetExpression<T>(),
@@ -136,10 +136,10 @@ namespace HDPro.Core.Extensions
             RuleIncremental ruleIncremental=RuleIncremental.day
             ) where T : class
         {
-            return new List<T>() { entity }.Create(codeField, preCode, dateFieldExpression, filter, startingDay, dateFormat, len, concatenationSymbol,ruleIncremental: ruleIncremental);
+            return new List<T>() { entity }.CreateList(codeField, preCode, dateFieldExpression, filter, startingDay, dateFormat, len, concatenationSymbol,ruleIncremental: ruleIncremental);
         }
 
-        public static string Create<T>(this List<T> list,
+        public static string CreateList<T>(this List<T> list,
          Expression<Func<T, object>> codeField,
          string preCode = "Code",
          Expression<Func<T, object>> dateFieldExpression = null,

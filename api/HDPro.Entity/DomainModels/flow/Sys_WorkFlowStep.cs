@@ -21,6 +21,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Key]
        [Display(Name ="WorkStepFlow_Id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Required(AllowEmptyStrings=false)]
        public Guid WorkStepFlow_Id { get; set; }
@@ -29,6 +30,7 @@ namespace HDPro.Entity.DomainModels
        ///流程主表id
        /// </summary>
        [Display(Name ="流程主表id")]
+       [MaxLength(36)]
        [Column(TypeName="uniqueidentifier")]
        [Editable(true)]
        public Guid? WorkFlow_Id { get; set; }
@@ -38,7 +40,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Display(Name ="流程节点Id")]
        [MaxLength(100)]
-       [Column(TypeName="varchar(100)")]
+       [Column(TypeName="nvarchar(100)")]
        [Editable(true)]
        public string StepId { get; set; }
 
@@ -63,8 +65,7 @@ namespace HDPro.Entity.DomainModels
        ///审批用户id或角色id
        /// </summary>
        [Display(Name ="审批用户id或角色id")]
-       [MaxLength(500)]
-       [Column(TypeName="varchar(500)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string StepValue { get; set; }
 
@@ -72,8 +73,7 @@ namespace HDPro.Entity.DomainModels
        ///备注
        /// </summary>
        [Display(Name ="备注")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string Remark { get; set; }
 
@@ -141,8 +141,7 @@ namespace HDPro.Entity.DomainModels
        ///下一个审批节点
        /// </summary>
        [Display(Name ="下一个审批节点")]
-       [MaxLength(500)]
-       [Column(TypeName="varchar(500)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string NextStepIds { get; set; }
 
@@ -150,8 +149,7 @@ namespace HDPro.Entity.DomainModels
        ///父级节点
        /// </summary>
        [Display(Name ="父级节点")]
-       [MaxLength(2000)]
-       [Column(TypeName="varchar(2000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string ParentId { get; set; }
 
@@ -191,8 +189,7 @@ namespace HDPro.Entity.DomainModels
        ///审核条件
        /// </summary>
        [Display(Name ="审核条件")]
-       [MaxLength(4000)]
-       [Column(TypeName="nvarchar(4000)")]
+       [Column(TypeName="nvarchar(max)")]
        [Editable(true)]
        public string Filters { get; set; }
 
@@ -201,7 +198,7 @@ namespace HDPro.Entity.DomainModels
        /// </summary>
        [Display(Name ="节点属性(start、node、end))")]
        [MaxLength(50)]
-       [Column(TypeName="varchar(50)")]
+       [Column(TypeName="nvarchar(50)")]
        [Editable(true)]
        public string StepAttrType { get; set; }
 
@@ -212,6 +209,39 @@ namespace HDPro.Entity.DomainModels
        [Column(TypeName="int")]
        [Editable(true)]
        public int? Weight { get; set; }
+
+       /// <summary>
+       ///节点编辑表彰
+       /// </summary>
+       [Display(Name ="节点编辑表彰")]
+       [Column(TypeName="nvarchar(max)")]
+       [Editable(true)]
+       public string StepEditForm { get; set; }
+
+       /// <summary>
+       ///上传附件
+       /// </summary>
+       [Display(Name ="上传附件")]
+       [Column(TypeName="int")]
+       [Editable(true)]
+       public int? AllowUpload { get; set; }
+
+       /// <summary>
+       ///附件类型
+       /// </summary>
+       [Display(Name ="附件类型")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string AttachType { get; set; }
+
+       /// <summary>
+       ///附件数量
+       /// </summary>
+       [Display(Name ="附件数量")]
+       [Column(TypeName="int")]
+       [Editable(true)]
+       public int? AttachQty { get; set; }
 
        
     }

@@ -117,7 +117,7 @@ namespace HDPro.Core.Extensions
         public static LinqExpressionType GetLinqCondition(this string stringType)
         {
             LinqExpressionType linqExpression;
-            switch (stringType)
+            switch (stringType?.ToLower())
             {
                 case "!=":
                     linqExpression = LinqExpressionType.NotEqual;
@@ -125,18 +125,18 @@ namespace HDPro.Core.Extensions
                 case "like"://模糊查询
                     linqExpression = LinqExpressionType.Like;
                     break;
-                case "likeStart"://like 'xx%'
+                case "likestart"://like 'xx%'
                     linqExpression = LinqExpressionType.LikeStart;
                     break;
-                case "likeEnd"://like '%xx'
+                case "likeend"://like '%xx'
                     linqExpression = LinqExpressionType.LikeEnd;
                     break;
-                case "selectList": //多选 
+                case "selectlist": //多选 
                 case "checkbox": //多选 
                 case "droplist":
                     linqExpression = LinqExpressionType.In;
                     break;
-                case "notIn": //多选不包括
+                case "notin": //多选不包括
                     linqExpression = LinqExpressionType.NotIn;
                     break;
                 case "thanorequal": //>=

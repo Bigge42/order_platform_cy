@@ -7,7 +7,7 @@
   // }
   .grid-search {
     position: relative;
-    padding-top: 15px;
+    padding-top: 16px;
     .search-box {
       background: #fefefe;
       margin-top: 33px;
@@ -50,6 +50,11 @@
     ::v-deep(.form-normal) {
       padding-right: 0 !important;
     }
+    ::v-deep(.el-select__selection) {
+      overflow: hidden;
+      flex-wrap: unset !important;
+    }
+   
   }
   // .search-line > div {
   //   margin-left: 5px;

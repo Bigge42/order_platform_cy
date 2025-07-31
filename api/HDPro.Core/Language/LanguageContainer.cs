@@ -38,7 +38,7 @@ namespace HDPro.Core
         public static string Translator(this string key)
         {
             if (key == null) return key;
-            if (HttpContext.Current.Request.Headers.TryGetValue("lang", out StringValues langType))
+            if (HttpContext.Current != null && HttpContext.Current.Request.Headers.TryGetValue("lang", out StringValues langType))
             {
                 if (langType != LangConst.简体中文 && LanguagePacks.TryGetValue(langType.ToString(), out Dictionary<string, string> lang))
                 {

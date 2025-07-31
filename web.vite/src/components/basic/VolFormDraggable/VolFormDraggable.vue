@@ -47,6 +47,12 @@
         <el-button type="primary" @click="clearItems" size="mini" plain
           ><i class="el-icon-delete"> </i>清空</el-button
         >
+        <a
+          style="margin-left: 15px"
+          href="http://v2.volcore.xyz/document/api"
+          target="_blank"
+          >设计器基于框架volform、voltable、volupload、volbox定制开发</a
+        >
       </div>
       <div>
         <el-alert
@@ -439,7 +445,12 @@
   >
     <template #content>
       <el-alert title="关于table配置" type="info" :closable="false" show-icon>
-        此处table是对框架voltable基本操作的配置,如果需要事件触发、数据加载等更多功能，请在生成后的代码添加需要的功能，完整配置见文档
+        此处table是对框架voltable基本操作的配置,如果需要事件触发、数据加载等更多功能，请在生成后的代码添加需要的功能，完整配置见文档<a
+          href="http://v2.volcore.xyz/document/api"
+          style="color: #1e88e5; margin-left: 9px"
+          target="_blank"
+          >voltable</a
+        >
       </el-alert>
       <div class="btns">
         <div class="btns-left">

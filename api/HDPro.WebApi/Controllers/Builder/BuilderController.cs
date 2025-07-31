@@ -4,6 +4,9 @@ using System;
 using System.Threading.Tasks;
 using HDPro.Core.Filters;
 using HDPro.Entity.DomainModels;
+using HDPro.Core.Utilities;
+using HDPro.Entity.DomainModels.Core;
+using Microsoft.AspNetCore.Authorization;
 
 namespace HDPro.WebApi.Controllers.Builder
 {
@@ -81,6 +84,25 @@ namespace HDPro.WebApi.Controllers.Builder
         public async Task<ActionResult> SyncTable(string tableName)
         {
             return Json(await Service.SyncTable(tableName));
+        }
+        /// <summary>
+        /// 根据表字段定义生成代码
+        /// </summary>
+        /// <param name="param">代码生成参数</param>
+        /// <returns></returns>
+        [Route("GenerateCodeByFieldDefinition")]
+        [HttpPost]
+        public async Task<ActionResult> GenerateCodeByFieldDefinition([FromBody] GenerateCodeParam param)
+        {
+            if (param == null || param.TableNames == null || param.TableNames.Count == 0)
+            {
+                return Json(new WebResponseContent().Error("表名不能为空"));
+            }
+            if (param.ParentId <= 0)
+            {
+                return Json(new WebResponseContent().Error("表的父级ID不能为空"));
+            }
+            return Json(await Service.GenerateCodeByFieldDefinition(param));
         }
     }
 }

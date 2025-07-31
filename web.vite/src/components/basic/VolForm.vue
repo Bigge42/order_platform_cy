@@ -200,7 +200,7 @@
                 v-else
                 :ref="item.field"
                 v-model="formFields[item.field]"
-                filterable
+                :filterable="item.filter === undefined ? true : false"
                 :multiple="item.type == 'select' ? false : true"
                 :placeholder="$ts(item.placeholder || '请选择')"
                 :allow-create="item.autocomplete"
@@ -547,6 +547,7 @@
               :precision="item.precision"
               :min="item.min"
               :disabled="item.readonly || item.disabled"
+              :placeholder="$ts(item.placeholder || item.title)"
               :max="item.max"
               controls-position="right"
               @keypress="
@@ -557,6 +558,11 @@
               @change="item.onKeyPress"
               @blur="item.blur"
               @focus="item.focus"
+              @keyup.delete="
+                ($event) => {
+                  item.onKeyPress && item.onKeyPress($event, item);
+                }
+              "
             />
             <el-input
               :size="size"
@@ -642,9 +648,9 @@ import {
   toRaw,
   toRefs,
   defineAsyncComponent,
-  // 
-  // 
-  // 
+  //
+  //
+  //
   computed,
 } from "vue";
 
