@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using HDPro.Core.Controllers.Basic;
+using HDPro.MES.IServices;
 
 namespace HDPro.WebApi.Controllers.SRM
 {
@@ -21,13 +22,16 @@ namespace HDPro.WebApi.Controllers.SRM
     {
         private readonly IOCP_UrgentOrderReplyService _urgentOrderReplyService;
         private readonly IOCP_NegotiationReplyService _negotiationReplyService;
-
+        private readonly IMES_SpecialPrintRequestService _SpecialPrintRequestService;
         public SrmIntegrationController(
             IOCP_UrgentOrderReplyService urgentOrderReplyService,
-            IOCP_NegotiationReplyService negotiationReplyService)
+            IOCP_NegotiationReplyService negotiationReplyService,
+            IMES_SpecialPrintRequestService specialPrintRequestService
+            )
         {
             _urgentOrderReplyService = urgentOrderReplyService;
             _negotiationReplyService = negotiationReplyService;
+            _SpecialPrintRequestService = specialPrintRequestService;
         }
 
         /// <summary>
@@ -323,6 +327,85 @@ namespace HDPro.WebApi.Controllers.SRM
                 timestamp = DateTime.Now
             });
         }
+
+        /// <summary>
+        /// 创建协商回复记录
+        /// 需要在请求头中传入 X-App-Id 和 X-App-Secret
+        /// 需要应用具有 "negotiation:reply" 权限
+        /// </summary>
+        /// <param name="request">协商回复请求</param>
+        /// <returns></returns>
+        [HttpPost("TestGetUDFinfo")]
+        [ThirdPartyApi]
+        public async Task<IActionResult> TestGetUDFinfo([FromBody] TestRequestClass request)
+        {
+            try
+            {
+                // 获取当前第三方应用信息
+                var app = HttpContext.Items["ThirdPartyApp"] as Sys_ThirdPartyApp;
+
+                // 数据验证
+                if (request == null)
+                {
+                    return BadRequest(new { success = false, message = "请求数据不能为空" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.udf1_key))
+                {
+                    return BadRequest(new { success = false, message = "自定义字段1不能为空测试" });
+                }
+
+
+
+                // 创建催单回复实体
+                var requestEntity = new MES_SpecialPrintRequest
+                {
+                    udf1_key = request.udf1_key,
+                    udf1_value = request.udf1_value,
+                    udf2_key = request.udf2_key,
+                    udf2_value = request.udf2_value,
+
+                };
+
+                // 保存到数据库
+                var result = await _SpecialPrintRequestService.AddReplyAsync(requestEntity);
+
+                if (result.Status)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "特殊打印资料创建成功",
+                        data = new
+                        {
+                            udf1_value = requestEntity.udf1_value,
+                            udf2_key = requestEntity.udf2_key,
+                            udf2_value = requestEntity.udf2_value,
+                        },
+                        appName = app?.AppName,
+                        timestamp = DateTime.Now
+                    });
+                }
+                else
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = $"特殊打印资料创建失败：{result.Message}",
+                        timestamp = DateTime.Now
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = $"服务器内部错误：{ex.Message}",
+                    timestamp = DateTime.Now
+                });
+            }
+        }
     }
 
     /// <summary>
@@ -430,4 +513,33 @@ namespace HDPro.WebApi.Controllers.SRM
         [MaxLength(500, ErrorMessage = "备注不能超过500个字符")]
         public string Remarks { get; set; }
     }
+
+    public class TestRequestClass
+    {
+        /// <summary>
+        /// 自定义字段1
+        /// </summary>
+        [Required(ErrorMessage ="自定义字段1不能为空")]
+        public string udf1_key { get; set; }
+
+        /// <summary>
+        /// 自定义值1
+        /// </summary>
+        [MaxLength(1000,ErrorMessage ="自定义值1超过长度上限1000")]
+        public string udf1_value { get; set; }
+
+        /// <summary>
+        /// 自定义字段2
+        /// </summary>
+        [Required(ErrorMessage = "自定义字段2不能为空")]
+        public string udf2_key { get; set; }
+
+        /// <summary>
+        /// 自定义值2
+        /// </summary>
+        [MaxLength(1000, ErrorMessage = "自定义值2超过长度上限1000")]
+        public string udf2_value { get; set; }
+    }
+
+        
 }

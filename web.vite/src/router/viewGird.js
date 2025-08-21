@@ -664,6 +664,10 @@ let viewgird = [
               edit:true,
               keepAlive:false
             }
+    }    ,{
+        path: '/MES_SpecialPrintRequest',
+        name: 'MES_SpecialPrintRequest',
+        component: () => import('@/views/mes/mes/MES_SpecialPrintRequest.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

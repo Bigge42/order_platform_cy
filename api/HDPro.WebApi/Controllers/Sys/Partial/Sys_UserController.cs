@@ -211,7 +211,7 @@ namespace HDPro.Sys.Controllers
                 img = VierificationCode.CreateBase64Imgage(code),
                 uuid = Guid.NewGuid()
             };
-            HttpContext.GetService<IMemoryCache>().Set(data.uuid.ToString(), code, new TimeSpan(0, 5, 0));
+            HttpContext.GetService<IMemoryCache>().Set(data.uuid.ToString(), code, new TimeSpan(0, 5, 0));//验证码有效期时分秒
             return Json(data);
         }
         [ApiActionPermission()]
