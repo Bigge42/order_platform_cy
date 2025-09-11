@@ -40,7 +40,7 @@ namespace HDPro.MES.Services
         }
 
         /// <summary>
-        /// 添加特殊打印資料记录
+        /// 添加自定义打印資料记录
         /// </summary>
         /// <param name="requestEntity">请求实体</param>
         /// <returns>操作结果</returns>
@@ -56,14 +56,14 @@ namespace HDPro.MES.Services
                     return response.Error("推送数据不能为空");
                 }
 
-                if (requestEntity.udf1_key ==null)
+                if (requestEntity.RetrospectCode ==null)
                 {
-                    return response.Error("自定义字段1不能为空");
+                    return response.Error("产品编码不能为空");
                 }
 
                 // 2. 业务验证 - 检查特殊打印资料是否存在
                 var requestEntityExists = await _repository.DbContext.Set<MES_SpecialPrintRequest>()
-                    .AnyAsync(u => u.udf1_key == requestEntity.udf1_key);
+                    .AnyAsync(u => u.RetrospectCode == requestEntity.RetrospectCode);
 
                 if (requestEntityExists)
                 {
@@ -72,9 +72,10 @@ namespace HDPro.MES.Services
 
                 // 3. 设置默认值
                 requestEntity.SetCreateDefaultVal();
-                if (requestEntity.udf2_key == null)
+                if (requestEntity.Creator == null)
                 {
-                    requestEntity.udf2_key = "测试空字段2";
+                    requestEntity.Creator = "系统";
+                    requestEntity.CreateID = 1;
                 }
 
                 //// 4. 实体验证
@@ -91,15 +92,57 @@ namespace HDPro.MES.Services
                     {
                         // 查找已存在的推送记录
                         var existSPprint = await _repository.DbContext.Set<MES_SpecialPrintRequest>()
-                            .FirstOrDefaultAsync(u => u.udf1_key == requestEntity.udf1_key );
+                            .FirstOrDefaultAsync(u => u.RetrospectCode == requestEntity.RetrospectCode );
 
                         if (existSPprint != null)
                         {
-                            existSPprint.udf1_value = requestEntity.udf1_value;
-                            existSPprint.udf2_key = requestEntity.udf2_key;
-                            existSPprint.udf2_value = requestEntity.udf2_value;
-                            //existSPprint. = HDPro.Core.ManageUser.UserContext.Current?.UserInfo?.UserTrueName ?? "系统";
+                            // existSPprint不为null时，用requestEntity的值更新existSPprint的所有字段
+                            existSPprint.PositionNumber = requestEntity.PositionNumber;
+                            existSPprint.ProductModel = requestEntity.ProductModel;
+                            existSPprint.NominalDiameter = requestEntity.NominalDiameter;
+                            existSPprint.NominalPressure = requestEntity.NominalPressure;
+                            existSPprint.ValveBodyMaterial = requestEntity.ValveBodyMaterial;
+                            existSPprint.ActuatorModel = requestEntity.ActuatorModel;
+                            existSPprint.FailPosition = requestEntity.FailPosition;
+                            existSPprint.AirSupplyPressure = requestEntity.AirSupplyPressure;
+                            existSPprint.OperatingTemperature = requestEntity.OperatingTemperature;
+                            existSPprint.RatedStroke = requestEntity.RatedStroke;
+                            existSPprint.FlowCharacteristic = requestEntity.FlowCharacteristic;
+                            existSPprint.FlowCoefficient = requestEntity.FlowCoefficient;
+                            existSPprint.UDF_Key1 = requestEntity.UDF_Key1;
+                            existSPprint.UDF_Value1 = requestEntity.UDF_Value1;
+                            existSPprint.UDF_Key2 = requestEntity.UDF_Key2;
+                            existSPprint.UDF_Value2 = requestEntity.UDF_Value2;
+                            existSPprint.UDF_Key3 = requestEntity.UDF_Key3;
+                            existSPprint.UDF_Value3 = requestEntity.UDF_Value3;
+                            existSPprint.UDF_Key4 = requestEntity.UDF_Key4;
+                            existSPprint.UDF_Value4 = requestEntity.UDF_Value4;
+                            existSPprint.UDF_Key5 = requestEntity.UDF_Key5;
+                            existSPprint.UDF_Value5 = requestEntity.UDF_Value5;
+                            existSPprint.UDF_Key6 = requestEntity.UDF_Key6;
+                            existSPprint.UDF_Value6 = requestEntity.UDF_Value6;
+                            existSPprint.UDF_Key7 = requestEntity.UDF_Key7;
+                            existSPprint.UDF_Value7 = requestEntity.UDF_Value7;
+                            existSPprint.UDF_Key8 = requestEntity.UDF_Key8;
+                            existSPprint.UDF_Value8 = requestEntity.UDF_Value8;
+                            existSPprint.UDF_Key9 = requestEntity.UDF_Key9;
+                            existSPprint.UDF_Value9 = requestEntity.UDF_Value9;
+                            existSPprint.UDF_Key10 = requestEntity.UDF_Key10;
+                            existSPprint.UDF_Value10 = requestEntity.UDF_Value10;
+                            existSPprint.UDF_Key11 = requestEntity.UDF_Key11;
+                            existSPprint.UDF_Value11 = requestEntity.UDF_Value11;
+                            existSPprint.UDF_Key12 = requestEntity.UDF_Key12;
+                            existSPprint.UDF_Value12 = requestEntity.UDF_Value12;
+                            existSPprint.UDF_Key13 = requestEntity.UDF_Key13;
+                            existSPprint.UDF_Value13 = requestEntity.UDF_Value13;
+                            existSPprint.UDF_Key14 = requestEntity.UDF_Key14;
+                            existSPprint.UDF_Value14 = requestEntity.UDF_Value14;
+                            existSPprint.UDF_Key15 = requestEntity.UDF_Key15;
+                            existSPprint.UDF_Value15 = requestEntity.UDF_Value15;
 
+                            existSPprint.ModifyDate = DateTime.Now;
+                            existSPprint.ModifyID = 1;
+                            existSPprint.Modifier =  "系统";
                             _repository.DbContext.Set<MES_SpecialPrintRequest>().Update(existSPprint);
                         }
                         else 
@@ -127,9 +170,7 @@ namespace HDPro.MES.Services
                 {
                     response.Data = new
                     {
-                        udf1_value = requestEntity.udf1_value,
-                        udf2_key = requestEntity.udf2_value,
-                        udf2_value = requestEntity.udf2_value
+                        RetrospectCode = requestEntity.RetrospectCode
                     };
                 }
 
@@ -137,8 +178,8 @@ namespace HDPro.MES.Services
             }
             catch (Exception ex)
             {
-                Logger.Error($"添加催单回复失败：{ex.Message}");
-                return response.Error($"添加催单回复失败：{ex.Message}");
+                Logger.Error($"添加特殊打印数据失败：{ex.Message}");
+                return response.Error($"添加特殊打印数据失败：{ex.Message}");
             }
         }
 

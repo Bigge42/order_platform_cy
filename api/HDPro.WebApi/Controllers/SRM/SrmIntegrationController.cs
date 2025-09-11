@@ -329,7 +329,7 @@ namespace HDPro.WebApi.Controllers.SRM
         }
 
         /// <summary>
-        /// 创建协商回复记录
+        /// 创建自定义打印资料记录
         /// 需要在请求头中传入 X-App-Id 和 X-App-Secret
         /// 需要应用具有 "negotiation:reply" 权限
         /// </summary>
@@ -350,21 +350,58 @@ namespace HDPro.WebApi.Controllers.SRM
                     return BadRequest(new { success = false, message = "请求数据不能为空" });
                 }
 
-                if (string.IsNullOrWhiteSpace(request.udf1_key))
+                if (string.IsNullOrWhiteSpace(request.RetrospectCode))
                 {
-                    return BadRequest(new { success = false, message = "自定义字段1不能为空测试" });
+                    return BadRequest(new { success = false, message = "产品编码不能为空" });
                 }
 
-
-
-                // 创建催单回复实体
+                // 创建自定义打印资料实体
                 var requestEntity = new MES_SpecialPrintRequest
                 {
-                    udf1_key = request.udf1_key,
-                    udf1_value = request.udf1_value,
-                    udf2_key = request.udf2_key,
-                    udf2_value = request.udf2_value,
+                    RetrospectCode = request.RetrospectCode,
+                    ProductModel = request.ProductModel,
+                    NominalDiameter = request.NominalDiameter,
+                    NominalPressure = request.NominalPressure,
+                    ValveBodyMaterial = request.ValveBodyMaterial,
+                    ActuatorModel = request.ActuatorModel,
+                    FailPosition = request.FailPosition,
+                    AirSupplyPressure = request.AirSupplyPressure,
+                    OperatingTemperature = request.OperatingTemperature,
+                    RatedStroke = request.RatedStroke,
+                    FlowCharacteristic = request.FlowCharacteristic,
+                    FlowCoefficient = request.FlowCoefficient,
+                    UDF_Key1 = request.UDF_Key1,
+                    UDF_Value1 = request.UDF_Value1,
+                    UDF_Key2 = request.UDF_Key2,
+                    UDF_Value2 = request.UDF_Value2,
+                    UDF_Key3 = request.UDF_Key3,
+                    UDF_Value3 = request.UDF_Value3,
+                    UDF_Key4 = request.UDF_Key4,
+                    UDF_Value4 = request.UDF_Value4,
+                    UDF_Key5 = request.UDF_Key5,
+                    UDF_Value5 = request.UDF_Value5,
+                    UDF_Key6 = request.UDF_Key6,
+                    UDF_Value6 = request.UDF_Value6,
+                    UDF_Key7 = request.UDF_Key7,
+                    UDF_Value7 = request.UDF_Value7,
+                    UDF_Key8 = request.UDF_Key8,
+                    UDF_Value8 = request.UDF_Value8,
+                    UDF_Key9 = request.UDF_Key9,
+                    UDF_Value9 = request.UDF_Value9,
+                    UDF_Key10 = request.UDF_Key10,
+                    UDF_Value10 = request.UDF_Value10,
+                    UDF_Key11 = request.UDF_Key11,
+                    UDF_Value11 = request.UDF_Value11,
+                    UDF_Key12 = request.UDF_Key12,
+                    UDF_Value12 = request.UDF_Value12,
+                    UDF_Key13 = request.UDF_Key13,
+                    UDF_Value13 = request.UDF_Value13,
+                    UDF_Key14 = request.UDF_Key14,
+                    UDF_Value14 = request.UDF_Value14,
+                    UDF_Key15 = request.UDF_Key15,
+                    UDF_Value15 = request.UDF_Value15,
 
+                    CreateDate = DateTime.Now,
                 };
 
                 // 保存到数据库
@@ -378,9 +415,7 @@ namespace HDPro.WebApi.Controllers.SRM
                         message = "特殊打印资料创建成功",
                         data = new
                         {
-                            udf1_value = requestEntity.udf1_value,
-                            udf2_key = requestEntity.udf2_key,
-                            udf2_value = requestEntity.udf2_value,
+                            RetrospectCode = request.RetrospectCode
                         },
                         appName = app?.AppName,
                         timestamp = DateTime.Now
@@ -514,31 +549,226 @@ namespace HDPro.WebApi.Controllers.SRM
         public string Remarks { get; set; }
     }
 
+
+    /// <summary>
+    /// 创建特殊打印推送请求
+    /// </summary>
     public class TestRequestClass
     {
         /// <summary>
-        /// 自定义字段1
+        /// 产品编码
         /// </summary>
-        [Required(ErrorMessage ="自定义字段1不能为空")]
-        public string udf1_key { get; set; }
+        [Required(ErrorMessage ="RetrospectCode字段不能为空")]
+        public string RetrospectCode { get; set; }
 
         /// <summary>
-        /// 自定义值1
+        ///产品型号
         /// </summary>
-        [MaxLength(1000,ErrorMessage ="自定义值1超过长度上限1000")]
-        public string udf1_value { get; set; }
+        public string ProductModel { get; set; }
 
         /// <summary>
-        /// 自定义字段2
+        ///公称通径
         /// </summary>
-        [Required(ErrorMessage = "自定义字段2不能为空")]
-        public string udf2_key { get; set; }
+        public string NominalDiameter { get; set; }
 
         /// <summary>
-        /// 自定义值2
+        ///公称压力
         /// </summary>
-        [MaxLength(1000, ErrorMessage = "自定义值2超过长度上限1000")]
-        public string udf2_value { get; set; }
+        public string NominalPressure { get; set; }
+
+        /// <summary>
+        ///阀体材质
+        /// </summary>
+        public string ValveBodyMaterial { get; set; }
+
+        /// <summary>
+        ///执行机构
+        /// </summary>
+        public string ActuatorModel { get; set; }
+
+        /// <summary>
+        ///故障位
+        /// </summary>
+        public string FailPosition { get; set; }
+
+        /// <summary>
+        ///气源压力
+        /// </summary>
+        public string AirSupplyPressure { get; set; }
+
+        /// <summary>
+        ///工作温度
+        /// </summary>
+        public string OperatingTemperature { get; set; }
+
+        /// <summary>
+        ///额定行程
+        /// </summary>
+        public string RatedStroke { get; set; }
+
+        /// <summary>
+        ///流量特性
+        /// </summary>
+        public string FlowCharacteristic { get; set; }
+
+        /// <summary>
+        ///流量系数(CV值)
+        /// </summary>
+        public string FlowCoefficient { get; set; }
+
+        /// <summary>
+        ///自定义字段1
+        /// </summary>
+        public string UDF_Key1 { get; set; }
+
+        /// <summary>
+        ///自定义值1
+        /// </summary>
+        public string UDF_Value1 { get; set; }
+
+        /// <summary>
+        ///自定义字段2
+        public string UDF_Key2 { get; set; }
+
+        /// <summary>
+        ///自定义值2
+        /// </summary>
+        public string UDF_Value2 { get; set; }
+
+        /// <summary>
+        ///自定义字段3
+        /// </summary>
+        public string UDF_Key3 { get; set; }
+
+        /// <summary>
+        ///自定义值3
+        /// </summary>
+        public string UDF_Value3 { get; set; }
+
+        /// <summary>
+        ///自定义字段4
+        /// </summary>
+        public string UDF_Key4 { get; set; }
+
+        /// <summary>
+        ///自定义值4
+        /// </summary>
+        public string UDF_Value4 { get; set; }
+
+        /// <summary>
+        ///自定义字段5
+        /// </summary>
+        public string UDF_Key5 { get; set; }
+
+        /// <summary>
+        ///自定义值5
+        /// </summary>
+        public string UDF_Value5 { get; set; }
+
+        /// <summary>
+        ///自定义字段6
+        /// </summary>
+        public string UDF_Key6 { get; set; }
+
+        /// <summary>
+        ///自定义值6
+        /// </summary>
+        public string UDF_Value6 { get; set; }
+
+        /// <summary>
+        ///自定义字段7
+        /// </summary>
+        public string UDF_Key7 { get; set; }
+
+        /// <summary>
+        ///自定义值7
+        /// </summary>
+        public string UDF_Value7 { get; set; }
+
+        /// <summary>
+        ///自定义字段8
+        /// </summary>
+        public string UDF_Key8 { get; set; }
+
+        /// <summary>
+        ///自定义值8
+        /// </summary>
+        public string UDF_Value8 { get; set; }
+
+        /// <summary>
+        ///自定义字段9
+        /// </summary>
+        public string UDF_Key9 { get; set; }
+
+        /// <summary>
+        ///自定义值9
+        /// </summary>
+        public string UDF_Value9 { get; set; }
+
+        /// <summary>
+        ///自定义字段10
+        /// </summary>
+        public string UDF_Key10 { get; set; }
+
+        /// <summary>
+        ///自定义值10
+        /// </summary>
+        public string UDF_Value10 { get; set; }
+
+        /// <summary>
+        ///自定义字段11
+        /// </summary>
+        public string UDF_Key11 { get; set; }
+
+        /// <summary>
+        ///自定义值11
+        /// </summary>
+        public string UDF_Value11 { get; set; }
+
+        /// <summary>
+        ///自定义字段12
+        /// </summary>
+        public string UDF_Key12 { get; set; }
+
+        /// <summary>
+        ///自定义值12
+        /// </summary>
+        public string UDF_Value12 { get; set; }
+
+        /// <summary>
+        ///自定义字段13
+        /// </summary>
+
+        public string UDF_Key13 { get; set; }
+
+        /// <summary>
+        ///自定义值13
+        /// </summary>
+
+        public string UDF_Value13 { get; set; }
+
+        /// <summary>
+        ///自定义字段14
+        /// </summary>
+
+        public string UDF_Key14 { get; set; }
+
+        /// <summary>
+        ///自定义值14
+        /// </summary>
+        public string UDF_Value14 { get; set; }
+
+        /// <summary>
+        ///自定义字段15
+        /// </summary>
+
+        public string UDF_Key15 { get; set; }
+
+        /// <summary>
+        ///自定义值15
+        /// </summary>
+
+        public string UDF_Value15 { get; set; }
     }
 
         

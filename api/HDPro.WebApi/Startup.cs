@@ -185,7 +185,15 @@ namespace HDPro.WebApi
                            //明细表自定义的字段需要在:PrintCustom类QueryResult字自定义返回这些字段的值
                            CustomFields = null //自定义字段同上配置一样
                        }
-                );
+                 )
+                 /*****************[MES自定义打印数据]单表打印*****************/
+                 .Use<MES_SpecialPrintRequest>(
+                   //主表配置
+                   name: "MOM自定义打印资料",
+                   //主表可以打印的字段
+                   printFields: x => new { x.RetrospectCode,x.ProductModel,x.NominalDiameter,x.NominalPressure,x.ValveBodyMaterial,x.ActuatorModel,x.FailPosition,x.AirSupplyPressure,x.OperatingTemperature,x.RatedStroke,x.FlowCharacteristic, x.FlowCoefficient,x.UDF_Key1,x.UDF_Value1, x.UDF_Key2,x.UDF_Value2,x.UDF_Key3,x.UDF_Value3,x.UDF_Key4,x.UDF_Value4,x.UDF_Key5,x.UDF_Value5,x.UDF_Key6,x.UDF_Value6,x.UDF_Key7,x.UDF_Value7,x.UDF_Key8,x.UDF_Value8,x.UDF_Key9,x.UDF_Value9,x.UDF_Key10,x.UDF_Value10, x.UDF_Key11,x.UDF_Value11,x.UDF_Key12,x.UDF_Value12,x.UDF_Key13,x.UDF_Value13,x.UDF_Key14,x.UDF_Value14,x.UDF_Key15,x.UDF_Value15 }
+                 )
+                 ;
         }
     }
 }
