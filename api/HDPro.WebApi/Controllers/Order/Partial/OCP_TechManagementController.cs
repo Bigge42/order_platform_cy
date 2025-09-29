@@ -94,6 +94,29 @@ namespace HDPro.CY.Order.Controllers
                 return StatusCode(500, new { error = $"获取BOM未搭建统计失败：{ex.Message}" });
             }
         }
+
+        /// <summary>
+        /// 获取BOM搭建情况统计
+        /// </summary>
+        /// <returns>BOM搭建情况统计数据</returns>
+        [HttpPost("GetBomBuildStatusSummary")]
+        public async Task<IActionResult> GetBomBuildStatusSummary()
+        {
+            try
+            {
+                _logger.LogInformation("接收到获取BOM搭建情况统计请求");
+
+                var result = await _service.GetBomBuildStatusSummary();
+                
+                // 直接返回数组数据
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取BOM搭建情况统计异常");
+                return StatusCode(500, new { error = $"获取BOM搭建情况统计失败：{ex.Message}" });
+            }
+        }
     }
 
     /// <summary>

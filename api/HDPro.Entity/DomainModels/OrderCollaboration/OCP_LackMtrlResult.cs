@@ -53,18 +53,18 @@ namespace HDPro.Entity.DomainModels
        public string ProScheduleYearMonth { get; set; }
 
        /// <summary>
-       ///总任务月
+       ///月度任务
        /// </summary>
-       [Display(Name ="总任务月")]
+       [Display(Name ="月度任务")]
        [MaxLength(500)]
        [Column(TypeName="nvarchar(500)")]
        [Editable(true)]
        public string PlanTaskMonth { get; set; }
 
        /// <summary>
-       ///总任务周
+       ///周任务
        /// </summary>
-       [Display(Name ="总任务周")]
+       [Display(Name ="周任务")]
        [MaxLength(500)]
        [Column(TypeName="nvarchar(500)")]
        [Editable(true)]
@@ -89,11 +89,11 @@ namespace HDPro.Entity.DomainModels
        public string TopMaterialNumber { get; set; }
 
        /// <summary>
-       ///产品大类
+       ///产品型号
        /// </summary>
-       [Display(Name ="产品大类")]
-       [MaxLength(50)]
-       [Column(TypeName="nvarchar(50)")]
+       [Display(Name ="产品型号")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string ProductCategory { get; set; }
 
@@ -101,8 +101,8 @@ namespace HDPro.Entity.DomainModels
        ///规格型号
        /// </summary>
        [Display(Name ="规格型号")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string Specification { get; set; }
 
@@ -110,8 +110,8 @@ namespace HDPro.Entity.DomainModels
        ///整机规格型号
        /// </summary>
        [Display(Name ="整机规格型号")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string TopSpecification { get; set; }
 
@@ -119,8 +119,8 @@ namespace HDPro.Entity.DomainModels
        ///物料编码
        /// </summary>
        [Display(Name ="物料编码")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string MaterialNumber { get; set; }
 
@@ -128,8 +128,8 @@ namespace HDPro.Entity.DomainModels
        ///物料名称
        /// </summary>
        [Display(Name ="物料名称")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string MaterialName { get; set; }
 
@@ -319,6 +319,30 @@ namespace HDPro.Entity.DomainModels
        [Column(TypeName="datetime")]
        [Editable(true)]
        public DateTime? PlanDeliveryDate { get; set; }
+
+       /// <summary>
+       ///客户要货日期
+       /// </summary>
+       [Display(Name ="客户要货日期")]
+       [Column(TypeName="datetime")]
+       [Editable(true)]
+       public DateTime? F_ORA_DATETIME { get; set; }
+
+       /// <summary>
+       ///销售订单回复交货日期
+       /// </summary>
+       [Display(Name ="销售订单回复交货日期")]
+       [Column(TypeName="datetime")]
+       [Editable(true)]
+       public DateTime? F_BLN_HFJHRQ { get; set; }
+
+       /// <summary>
+       ///插单日期
+       /// </summary>
+       [Display(Name ="插单日期")]
+       [Column(TypeName="datetime")]
+       [Editable(true)]
+       public DateTime? F_RLRP_CDRQ { get; set; }
 
        /// <summary>
        ///运算时间

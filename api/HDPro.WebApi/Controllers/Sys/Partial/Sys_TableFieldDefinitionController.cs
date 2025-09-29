@@ -62,5 +62,17 @@ namespace HDPro.Sys.Controllers
         {
             return Json(await Service.AddOrAlterFields(ids, dbServiceName));
         }
+
+        /// <summary>
+        /// 根据表名获取字段信息
+        /// </summary>
+        /// <param name="tableName">表名</param>
+        /// <returns>返回格式：[{ key: "字段名", value: "字段中文名"}]</returns>
+        [Route("GetFieldsByTableName")]
+        [HttpGet]
+        public async Task<ActionResult> GetFieldsByTableName(string tableName)
+        {
+            return Json(await Service.GetFieldsByTableName(tableName));
+        }
     }
 }

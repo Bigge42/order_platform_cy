@@ -22,9 +22,9 @@ namespace HDPro.CY.Order.IServices
         Task<object[]> GetDefaultLackMtrlSummary();
 
         /// <summary>
-        /// 获取近14天的缺料情况统计
+        /// 获取近7天的缺料情况统计
         /// </summary>
-        /// <returns>近14天每日缺料统计数据</returns>
-        Task<object[]> GetLast14DaysLackMtrlTrend();
+        /// <returns>近7天每日缺料统计数据</returns>
+        Task<object[]> GetLast7DaysLackMtrlTrend();
     }
 } 

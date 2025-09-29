@@ -21,5 +21,11 @@ namespace HDPro.CY.Order.IServices
         /// <param name="scheduleMonth">排产月份（格式：yyyy-MM）</param>
         /// <returns>近14天订单完成统计数据</returns>
         Task<List<object>> GetOrderCompletionStatsAsync(string scheduleMonth);
+
+        /// <summary>
+        /// 获取总任务完成统计数据
+        /// </summary>
+        /// <returns>总任务完成统计数据</returns>
+        Task<object[]> GetTaskCompletionSummary();
     }
 }

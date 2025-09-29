@@ -2268,5 +2268,263 @@ namespace HDPro.CY.Order.Services
             };
         }
 
+        /// <summary>
+        /// 物资供应中心用户对催单向SRM发起催货
+        /// </summary>
+        /// <param name="urgentOrderId">催单ID</param>
+        /// <returns>操作结果</returns>
+        public async Task<WebResponseContent> SendUrgentOrderToSRMAsync(long urgentOrderId)
+        {
+            try
+            {
+                // 获取催单信息
+                var urgentOrder = await _repository.FindAsIQueryable(x => x.UrgentOrderID == urgentOrderId)
+                    .FirstOrDefaultAsync();
+
+                if (urgentOrder == null)
+                {
+                    return webResponse.Error("催单记录不存在");
+                }
+
+                // 验证业务条件
+                var validationResult = ValidateUrgentOrderForSRM(urgentOrder);
+                if (!validationResult.Status)
+                {
+                    return validationResult;
+                }
+
+                // 获取当前用户信息
+                var (currentUserLoginName, currentUserDisplayName) = MessageHelper.GetCurrentUserInfo();
+
+                // 构建SRM催货数据
+                var orderAskData = new OrderAskData
+                {
+                    AskId = urgentOrder.UrgentOrderID.ToString(),
+                    OrderNo = urgentOrder.BillNo ?? "",
+                    OrderLine = int.TryParse(urgentOrder.Seq, out int line) ? line : 1,
+                    UrgencyLevel = urgentOrder.UrgencyLevel ?? "",
+                    ServiceType = MessageHelper.GetUrgentTypeText(urgentOrder.UrgentType),
+                    Times = "1", // 物资供应中心发起的催货
+                    Remark = $"物资供应中心催货：{urgentOrder.UrgentContent ?? urgentOrder.Remarks ?? ""}"
+                };
+
+                // 记录开始日志
+                MessageHelper.LogIntegrationStart("物资供应中心SRM催货", "UrgentOrder", urgentOrder.UrgentOrderID, 
+                    urgentOrder.BusinessType, currentUserDisplayName);
+
+                // 发送SRM催货
+                var srmResult = await _srmIntegrationService.PushSingleOrderAskAsync(orderAskData, currentUserDisplayName);
+
+                if (srmResult.Status)
+                {
+                    // SRM推送成功，更新标记
+                    await UpdateUrgentOrderSRMStatusAsync(urgentOrder.UrgentOrderID, 1);
+                    
+                    MessageHelper.LogIntegrationSuccess("物资供应中心SRM催货", "UrgentOrder", 
+                        urgentOrder.UrgentOrderID, urgentOrder.BillNo, urgentOrder.BusinessType);
+
+                    return webResponse.OK($"催单已成功向SRM发起催货 - 单据号: {urgentOrder.BillNo}");
+                }
+                else
+                {
+                    MessageHelper.LogIntegrationError("物资供应中心SRM催货", "UrgentOrder", 
+                        urgentOrder.UrgentOrderID, urgentOrder.BillNo, urgentOrder.BusinessType, srmResult.Message);
+
+                    return webResponse.Error($"向SRM发起催货失败: {srmResult.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.LogIntegrationException("物资供应中心SRM催货", "UrgentOrder", urgentOrderId, "未知", ex);
+                return webResponse.Error($"向SRM发起催货异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 批量向SRM发起催货
+        /// </summary>
+        /// <param name="urgentOrderIds">催单ID列表</param>
+        /// <returns>操作结果</returns>
+        public async Task<WebResponseContent> BatchSendUrgentOrderToSRMAsync(List<long> urgentOrderIds)
+        {
+            if (urgentOrderIds == null || !urgentOrderIds.Any())
+            {
+                return webResponse.Error("催单ID列表不能为空");
+            }
+
+            try
+            {
+                // 获取催单信息
+                var urgentOrders = await _repository.FindAsIQueryable(x => urgentOrderIds.Contains(x.UrgentOrderID))
+                    .ToListAsync();
+
+                if (!urgentOrders.Any())
+                {
+                    return webResponse.Error("未找到任何催单记录");
+                }
+
+                var successCount = 0;
+                var failedItems = new List<object>();
+                var (currentUserLoginName, currentUserDisplayName) = MessageHelper.GetCurrentUserInfo();
+
+                HDLogHelper.Log("UrgentOrder_BatchSendSRM_Start", 
+                    $"开始批量向SRM发起催货 - 用户: {currentUserDisplayName}, 催单数量: {urgentOrders.Count}", 
+                    BusinessConstants.LogCategory.OrderCollaboration);
+
+                foreach (var urgentOrder in urgentOrders)
+                {
+                    try
+                    {
+                        // 验证业务条件
+                        var validationResult = ValidateUrgentOrderForSRM(urgentOrder);
+                        if (!validationResult.Status)
+                        {
+                            failedItems.Add(new 
+                            { 
+                                UrgentOrderID = urgentOrder.UrgentOrderID,
+                                BillNo = urgentOrder.BillNo,
+                                Seq = urgentOrder.Seq,
+                                Error = validationResult.Message 
+                            });
+                            continue;
+                        }
+
+                        // 构建SRM催货数据
+                        var orderAskData = new OrderAskData
+                        {
+                            AskId = urgentOrder.UrgentOrderID.ToString(),
+                            OrderNo = urgentOrder.BillNo ?? "",
+                            OrderLine = int.TryParse(urgentOrder.Seq, out int line) ? line : 1,
+                            UrgencyLevel = urgentOrder.UrgencyLevel ?? "",
+                            ServiceType = MessageHelper.GetUrgentTypeText(urgentOrder.UrgentType),
+                            Times = "1", // 物资供应中心发起的催货
+                            Remark = $"物资供应中心催货：{urgentOrder.UrgentContent ?? urgentOrder.Remarks ?? ""}"
+                        };
+
+                        // 发送SRM催货
+                        var srmResult = await _srmIntegrationService.PushSingleOrderAskAsync(orderAskData, currentUserDisplayName);
+
+                        if (srmResult.Status)
+                        {
+                            // SRM推送成功，更新标记
+                            await UpdateUrgentOrderSRMStatusAsync(urgentOrder.UrgentOrderID, 1);
+                            successCount++;
+                            
+                            HDLogHelper.Log("UrgentOrder_BatchSendSRM_ItemSuccess", 
+                                $"单项SRM催货成功 - 催单ID: {urgentOrder.UrgentOrderID}, 单据号: {urgentOrder.BillNo}", 
+                                BusinessConstants.LogCategory.OrderCollaboration);
+                        }
+                        else
+                        {
+                            failedItems.Add(new 
+                            { 
+                                UrgentOrderID = urgentOrder.UrgentOrderID,
+                                BillNo = urgentOrder.BillNo,
+                                Seq = urgentOrder.Seq,
+                                Error = srmResult.Message 
+                            });
+                            
+                            HDLogHelper.Log("UrgentOrder_BatchSendSRM_ItemError", 
+                                $"单项SRM催货失败 - 催单ID: {urgentOrder.UrgentOrderID}, 单据号: {urgentOrder.BillNo}, 错误: {srmResult.Message}", 
+                                BusinessConstants.LogCategory.OrderCollaboration);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failedItems.Add(new 
+                        { 
+                            UrgentOrderID = urgentOrder.UrgentOrderID,
+                            BillNo = urgentOrder.BillNo,
+                            Seq = urgentOrder.Seq,
+                            Error = ex.Message 
+                        });
+                        
+                        HDLogHelper.Log("UrgentOrder_BatchSendSRM_ItemException", 
+                            $"单项SRM催货异常 - 催单ID: {urgentOrder.UrgentOrderID}, 单据号: {urgentOrder.BillNo}, 错误: {ex.Message}", 
+                            BusinessConstants.LogCategory.OrderCollaboration);
+                    }
+                }
+
+                HDLogHelper.Log("UrgentOrder_BatchSendSRM_Complete", 
+                    $"批量向SRM发起催货完成 - 成功数量: {successCount}, 失败数量: {failedItems.Count}", 
+                    BusinessConstants.LogCategory.OrderCollaboration);
+
+                var result = new
+                {
+                    SuccessCount = successCount,
+                    FailedCount = failedItems.Count,
+                    FailedItems = failedItems
+                };
+
+                if (failedItems.Any())
+                {
+                    return webResponse.OK($"批量向SRM发起催货完成，成功 {successCount} 条，失败 {failedItems.Count} 条", result);
+                }
+                else
+                {
+                    return webResponse.OK($"批量向SRM发起催货成功，共处理 {successCount} 条催单", result);
+                }
+            }
+            catch (Exception ex)
+            {
+                HDLogHelper.Log("UrgentOrder_BatchSendSRM_Exception", 
+                    $"批量向SRM发起催货异常: {ex.Message}", 
+                    BusinessConstants.LogCategory.OrderCollaboration);
+                return webResponse.Error($"批量向SRM发起催货异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 验证催单是否符合向SRM发起催货的条件
+        /// </summary>
+        /// <param name="urgentOrder">催单实体</param>
+        /// <returns>验证结果</returns>
+        private WebResponseContent ValidateUrgentOrderForSRM(OCP_UrgentOrder urgentOrder)
+        {
+            // 1. 检查业务类型是否为采购或委外
+            if (!BusinessConstants.RequiresSRMIntegration(urgentOrder.BusinessType))
+            {
+                return webResponse.Error($"业务类型 '{MessageHelper.GetBusinessTypeText(urgentOrder.BusinessType)}' 不支持SRM催货，仅支持采购和委外业务");
+            }
+
+            // 2. 检查当前用户是否属于物资供应中心
+            if (!BusinessConstants.IsCurrentUserInMaterialSupplyCenter())
+            {
+                return webResponse.Error("只有物资供应中心的用户才能向SRM发起催货");
+            }
+
+            // 3. 检查催单的指定负责人是否属于物资供应中心
+            var assignedResponsiblePerson = urgentOrder.AssignedResPerson ?? urgentOrder.DefaultResPerson;
+            if (string.IsNullOrWhiteSpace(assignedResponsiblePerson))
+            {
+                return webResponse.Error("催单缺少指定负责人信息，无法向SRM发起催货");
+            }
+
+            if (!BusinessConstants.IsUserInMaterialSupplyCenter(assignedResponsiblePerson))
+            {
+                return webResponse.Error($"催单的指定负责人 '{assignedResponsiblePerson}' 不属于物资供应中心，无法向SRM发起催货");
+            }
+
+            // 4. 检查是否已经推送过SRM
+            if (urgentOrder.IsSendSRM == 1)
+            {
+                return webResponse.Error($"催单已向SRM发起过催货 - 单据号: {urgentOrder.BillNo}");
+            }
+
+            // 5. 检查催单状态是否为催单中
+            if (urgentOrder.UrgentStatus != BusinessConstants.UrgentOrderStatus.Pending)
+            {
+                return webResponse.Error($"只有状态为'催单中'的催单才能向SRM发起催货 - 当前状态: {urgentOrder.UrgentStatus}");
+            }
+
+            // 6. 检查必要字段
+            if (string.IsNullOrWhiteSpace(urgentOrder.BillNo))
+            {
+                return webResponse.Error("催单缺少单据号信息，无法向SRM发起催货");
+            }
+
+            return webResponse.OK("验证通过");
+        }
+
     }
 }

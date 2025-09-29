@@ -57,12 +57,17 @@ builder.Services.AddModule(builder.Configuration);
 builder.Services.AddESBServices();
 // 添加后台服务
 builder.Services.AddHostedService<BackgroundMessageService>();
+// 添加预警规则初始化后台服务
+builder.Services.AddHostedService<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesInitializer>();
 // 添加消息服务
 builder.Services.AddSingleton<IMessageService, MessageService>();
-// 添加消息通道 
+// 添加消息通道
 builder.Services.AddSingleton<MessageChannel>();
 // 添加安全文件读取器
 builder.Services.AddScoped<SafeFileReader>();
+// 添加预警相关服务
+builder.Services.AddScoped<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesSchedulerService>();
+builder.Services.AddScoped<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesLogService>();
 builder.Services
     .AddControllers()
         //https://learn.microsoft.com/zh-cn/aspnet/core/web-api/jsonpatch?view=aspnetcore-8.0
@@ -160,6 +165,8 @@ builder.Services.AddHttpClient()
 .AddHttpContextAccessor()
 .AddMemoryCache()
 .AddTransient<HttpResultfulJob>()
+.AddTransient<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesJob>()
+.AddTransient<HDPro.CY.Order.Services.OrderCollaboration.SingleAlertRuleJob>()
 .AddSingleton<ISchedulerFactory, StdSchedulerFactory>()
 .AddSingleton<Quartz.Spi.IJobFactory, IOCJobFactory>()
 .AddSingleton<RedisCacheService>()
@@ -201,11 +208,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-else
-{
+//else
+//{
     // 定时任务，如果不需要定时执行定时任务，请将此处放到else里面
     app.UseQuartz(app.Environment);
-}
+//}
 app.UseLanguagePack().UseMiddleware<LanguageMiddleWare>();
 app.UseMiddleware<ExceptionHandlerMiddleWare>();
 app.UseDefaultFiles();

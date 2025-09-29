@@ -216,18 +216,46 @@ namespace HDPro.CY.Order.Services
                     };
                 }
 
-                // 需要更详细的数据来区分金工和部件，重新查询包含更多字段的数据
-                var detailedLackMtrlData = await _repository.FindAsIQueryable(x => x.ComputeID == defaultPlan.ComputeID)
-                    .Where(x => x.UnPlanedQty > 0) // 只统计有缺料的记录
+                // 获取默认运算方案的缺料数据，先对(计划跟踪号+物料编码)去重，然后计算总需求减去总库存
+                var lackMtrlData = await _repository.FindAsIQueryable(x => x.ComputeID == defaultPlan.ComputeID)
+                    .Select(x => new
+                    {
+                        x.MtoNo,              // 计划跟踪号
+                        x.MaterialNumber,     // 物料编码
+                        x.BillType,
+                        x.NeedQty,            // 需求数量
+                        x.InventoryQty,       // 库存数量
+                        x.ErpClsid,           // 物料属性
+                        x.MaterialCategory,   // 物料分类
+                        x.SupplierName        // 供应商名称
+                    })
+                    .ToListAsync();
+
+                // 先对(BillType+物料编码+计划跟踪号)去重，汇总需求数量和库存数量
+                var groupedData = lackMtrlData
+                    .Where(x => !string.IsNullOrEmpty(x.MtoNo) && !string.IsNullOrEmpty(x.MaterialNumber) && !string.IsNullOrEmpty(x.BillType))
+                    .GroupBy(x => new { x.BillType, x.MaterialNumber, x.MtoNo })
+                    .Select(g => new
+                    {
+                        BillType = g.Key.BillType,
+                        MaterialNumber = g.Key.MaterialNumber,
+                        MtoNo = g.Key.MtoNo,
+                        TotalNeedQty = g.Sum(x => x.NeedQty ?? 0),
+                        TotalInventoryQty = g.Sum(x => x.InventoryQty ?? 0),
+                        ErpClsid = g.First().ErpClsid,
+                        MaterialCategory = g.First().MaterialCategory,
+                        SupplierName = g.First().SupplierName
+                    })
+                    .Where(x => x.TotalNeedQty > x.TotalInventoryQty) // 只统计缺料的记录（总需求 > 总库存）
                     .Select(x => new
                     {
                         x.BillType,
-                        x.UnPlanedQty,
-                        x.ErpClsid,           // 物料属性
-                        x.MaterialCategory,   // 物料分类
-                        x.SupplierName       // 供应商名称，可能包含车间信息
+                        LackQty = x.TotalNeedQty - x.TotalInventoryQty, // 缺料数量 = 总需求 - 总库存
+                        x.ErpClsid,
+                        x.MaterialCategory,
+                        x.SupplierName
                     })
-                    .ToListAsync();
+                    .ToList();
 
                 // 初始化各类型缺料数量
                 var purchaseLack = 0m;  // 采购缺料
@@ -235,37 +263,26 @@ namespace HDPro.CY.Order.Services
                 var metalworkLack = 0m; // 金工缺料
                 var partLack = 0m;      // 部件缺料
 
-                foreach (var item in detailedLackMtrlData)
+                foreach (var item in groupedData)
                 {
-                    var billType = item.BillType?.ToUpper();
-                    var lackQty = item.UnPlanedQty ?? 0;
+                    var billType = item.BillType?.Trim();
+                    var lackQty = item.LackQty;
 
                     switch (billType)
                     {
-                        case "PO":
-                        case "采购订单":
+                        case "标准采购":
                             purchaseLack += lackQty;
                             break;
-                        case "WO":
-                        case "委外订单":
+                        case "标准委外":
                             outsourceLack += lackQty;
                             break;
-                        case "MO":
-                        case "生产订单":
-                            // 根据供应商名称或物料属性区分金工和部件
-                            // 如果供应商名称包含"金工"或"车间"等关键词，归为金工缺料
-                            if (item.SupplierName?.Contains("金工") == true || 
-                                item.SupplierName?.Contains("JG") == true ||
-                                item.MaterialCategory?.Contains("金工") == true)
-                            {
-                                metalworkLack += lackQty;
-                            }
-                            else
-                            {
-                                // 其他生产订单归为部件缺料
-                                partLack += lackQty;
-                            }
+                        case "金工车间":
+                            metalworkLack += lackQty;
                             break;
+                        case "部件车间":
+                            partLack += lackQty;
+                            break;
+                        case "其他":
                         default:
                             // 其他类型归入部件缺料
                             partLack += lackQty;
@@ -290,35 +307,41 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
-        /// 获取近14天的缺料情况统计
+        /// 获取近7天的缺料情况统计
         /// </summary>
-        /// <returns>近14天每日缺料统计数据</returns>
-        public async Task<object[]> GetLast14DaysLackMtrlTrend()
+        /// <returns>近7天每日缺料统计数据</returns>
+        public async Task<object[]> GetLast7DaysLackMtrlTrend()
         {
             try
             {
-                // 计算近14天的日期范围
+                // 计算近7天的日期范围
                 var endDate = DateTime.Now.Date;
-                var startDate = endDate.AddDays(-13); // 包含今天共14天
+                var startDate = endDate.AddDays(-6); // 包含今天共7天
 
-                // 获取近14天的运算方案
+                // 获取近7天的运算方案，排除方案名包含"全量"的方案
                 var dailyPlans = await _planRepository.FindAsIQueryable(x => x.CreateDate >= startDate && x.CreateDate <= endDate.AddDays(1))
+                    .Where(x => !x.PlanName.Contains("全量")) // 排除方案名包含"全量"的方案
                     .Select(x => new
                     {
                         x.ComputeID,
-                        Date = x.CreateDate.Value.Date
+                        x.PlanName,
+                        Date = x.CreateDate.Value.Date,
+                        CreateTime = x.CreateDate.Value
                     })
                     .ToListAsync();
 
                 // 按日期分组统计
                 var dailyStats = new List<object>();
 
-                for (int i = 0; i < 14; i++)
+                for (int i = 0; i < 7; i++)
                 {
                     var currentDate = startDate.AddDays(i);
                     
-                    // 获取当天的运算方案ID列表
-                    var dayPlanIds = dailyPlans.Where(x => x.Date == currentDate).Select(x => x.ComputeID).ToList();
+                    // 获取当天的运算方案，如果有多个非全量方案，只取最后一个
+                    var dayPlans = dailyPlans.Where(x => x.Date == currentDate).ToList();
+                    var selectedPlan = dayPlans.OrderByDescending(x => x.CreateTime).FirstOrDefault();
+                    
+                    var selectedPlanId = selectedPlan?.ComputeID;
 
                     // 初始化各类型缺料数量
                     var purchaseLack = 0m;  // 采购缺料
@@ -326,51 +349,71 @@ namespace HDPro.CY.Order.Services
                     var metalworkLack = 0m; // 金工缺料
                     var partLack = 0m;      // 部件缺料
 
-                    if (dayPlanIds.Any())
+                    if (selectedPlanId.HasValue)
                     {
-                        // 获取当天运算方案的缺料数据
-                        var dayLackMtrlData = await _repository.FindAsIQueryable(x => dayPlanIds.Contains(x.ComputeID.Value))
-                            .Where(x => x.UnPlanedQty > 0) // 只统计有缺料的记录
+                        // 获取选中运算方案的缺料数据
+                        var dayLackMtrlData = await _repository.FindAsIQueryable(x => x.ComputeID == selectedPlanId.Value)
                             .Select(x => new
                             {
+                                x.MtoNo,              // 计划跟踪号
+                                x.MaterialNumber,     // 物料编码
                                 x.BillType,
-                                x.UnPlanedQty,
+                                x.NeedQty,            // 需求数量
+                                x.InventoryQty,       // 库存数量
                                 x.ErpClsid,
                                 x.MaterialCategory,
                                 x.SupplierName
                             })
                             .ToListAsync();
 
-                        foreach (var item in dayLackMtrlData)
+                        // 先对(BillType+物料编码+计划跟踪号)去重，汇总需求数量和库存数量
+                        var groupedDayData = dayLackMtrlData
+                            .Where(x => !string.IsNullOrEmpty(x.MtoNo) && !string.IsNullOrEmpty(x.MaterialNumber) && !string.IsNullOrEmpty(x.BillType))
+                            .GroupBy(x => new { x.BillType, x.MaterialNumber, x.MtoNo })
+                            .Select(g => new
+                            {
+                                BillType = g.Key.BillType,
+                                MaterialNumber = g.Key.MaterialNumber,
+                                MtoNo = g.Key.MtoNo,
+                                TotalNeedQty = g.Sum(x => x.NeedQty ?? 0),
+                                TotalInventoryQty = g.Sum(x => x.InventoryQty ?? 0),
+                                ErpClsid = g.First().ErpClsid,
+                                MaterialCategory = g.First().MaterialCategory,
+                                SupplierName = g.First().SupplierName
+                            })
+                            .Where(x => x.TotalNeedQty > x.TotalInventoryQty) // 只统计缺料的记录
+                            .Select(x => new
+                            {
+                                x.BillType,
+                                LackQty = x.TotalNeedQty - x.TotalInventoryQty, // 缺料数量 = 总需求 - 总库存
+                                x.ErpClsid,
+                                x.MaterialCategory,
+                                x.SupplierName
+                            })
+                            .ToList();
+
+                        foreach (var item in groupedDayData)
                         {
-                            var billType = item.BillType?.ToUpper();
-                            var lackQty = item.UnPlanedQty ?? 0;
+                            var billType = item.BillType?.Trim();
+                            var lackQty = item.LackQty;
 
                             switch (billType)
                             {
-                                case "PO":
-                                case "采购订单":
+                                case "标准采购":
                                     purchaseLack += lackQty;
                                     break;
-                                case "WO":
-                                case "委外订单":
+                                case "标准委外":
                                     outsourceLack += lackQty;
                                     break;
-                                case "MO":
-                                case "生产订单":
-                                    // 根据供应商名称或物料属性区分金工和部件
-                                    if (item.SupplierName?.Contains("金工") == true || 
-                                        item.SupplierName?.Contains("JG") == true ||
-                                        item.MaterialCategory?.Contains("金工") == true)
-                                    {
-                                        metalworkLack += lackQty;
-                                    }
-                                    else
-                                    {
-                                        partLack += lackQty;
-                                    }
+                                case "金工车间":
+                                    metalworkLack += lackQty;
                                     break;
+                                case "部件车间":
+                                    partLack += lackQty;
+                                    break;
+                                case "其他":
                                 default:
+                                    // 其他类型归入部件缺料
                                     partLack += lackQty;
                                     break;
                             }
@@ -394,7 +437,7 @@ namespace HDPro.CY.Order.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "获取近14天缺料趋势失败");
+                _logger.LogError(ex, "获取近7天缺料趋势失败");
                 throw; // 重新抛出异常，让控制器处理
             }
         }

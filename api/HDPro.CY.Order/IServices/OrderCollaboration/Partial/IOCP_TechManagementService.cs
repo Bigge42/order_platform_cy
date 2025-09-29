@@ -31,5 +31,11 @@ namespace HDPro.CY.Order.IServices
         /// </summary>
         /// <returns>近14天每日BOM未搭建数量统计数据</returns>
         Task<List<object>> GetLast14DaysBomUnbuiltTrend();
+
+        /// <summary>
+        /// 获取BOM搭建情况统计
+        /// </summary>
+        /// <returns>BOM搭建情况统计数据</returns>
+        Task<object[]> GetBomBuildStatusSummary();
     }
  }

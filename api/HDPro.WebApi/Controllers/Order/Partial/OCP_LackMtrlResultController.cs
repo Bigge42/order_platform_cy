@@ -74,20 +74,20 @@ namespace HDPro.CY.Order.Controllers
         }
 
         /// <summary>
-        /// 获取近14天的缺料情况统计
+        /// 获取近7天的缺料情况统计
         /// </summary>
-        /// <returns>近14天每日缺料统计数据</returns>
-        [HttpPost("GetLast14DaysLackMtrlTrend")]
-        public async Task<IActionResult> GetLast14DaysLackMtrlTrend()
+        /// <returns>近7天每日缺料统计数据</returns>
+        [HttpPost("GetLast7DaysLackMtrlTrend")]
+        public async Task<IActionResult> GetLast7DaysLackMtrlTrend()
         {
             try
             {
-                var result = await _service.GetLast14DaysLackMtrlTrend();
+                var result = await _service.GetLast7DaysLackMtrlTrend();
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = $"获取近14天缺料趋势失败：{ex.Message}" });
+                return StatusCode(500, new { error = $"获取近7天缺料趋势失败：{ex.Message}" });
             }
         }
 

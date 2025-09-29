@@ -297,6 +297,34 @@ WHERE   t.name = '{field.TableName}'
             var tables = await _repository.FindAsync(p => tableNames.Contains(p.TableName));
             return new WebResponseContent().OK("OK", tables);
         }
+
+        /// <summary>
+        /// 根据表名获取字段信息，返回前端需要的格式
+        /// </summary>
+        /// <param name="tableName">表名</param>
+        /// <returns>返回格式：[{ key: "字段名", value: "字段中文名"}]</returns>
+        public async Task<WebResponseContent> GetFieldsByTableName(string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+            {
+                return new WebResponseContent().Error("表名不能为空");
+            }
+
+            var fields = await _repository.FindAsync(p => p.TableName == tableName);
+            
+            if (fields == null || !fields.Any())
+            {
+                return new WebResponseContent().Error($"未找到表 {tableName} 的字段定义");
+            }
+
+            var result = fields.Select(f => new 
+            { 
+                key = f.FieldName, 
+                value = f.FieldCName 
+            }).ToList();
+
+            return new WebResponseContent().OK("获取成功", result);
+        }
         /// <summary>
         /// 导入
         /// </summary>

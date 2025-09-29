@@ -101,5 +101,23 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"获取订单完成统计数据失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 获取总任务完成统计数据
+        /// </summary>
+        /// <returns>总任务完成统计数据</returns>
+        [HttpPost("GetTaskCompletionSummary")]
+        public async Task<IActionResult> GetTaskCompletionSummary()
+        {
+            try
+            {
+                var result = await _service.GetTaskCompletionSummary();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"获取总任务完成统计失败：{ex.Message}" });
+            }
+        }
     }
 }

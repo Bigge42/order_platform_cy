@@ -1,3 +1,4 @@
+using HDPro.Entity.DomainModels;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -195,6 +196,57 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.Common
 
                 // 检查用户所在的部门是否包含"物资供应中心"
                 var userDepartments = allDepartments.Where(d => userDeptIds.Contains(d.id)).ToList();
+
+                return userDepartments.Any(d => d.value != null && d.value.Contains(Department.MaterialSupplyCenter));
+            }
+            catch (System.Exception)
+            {
+                // 如果出现异常，默认返回false，不影响主流程
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 检查指定用户是否属于物资供应中心
+        /// </summary>
+        /// <param name="userLoginName">用户登录名</param>
+        /// <returns>是否属于物资供应中心</returns>
+        public static bool IsUserInMaterialSupplyCenter(string userLoginName)
+        {
+            if (string.IsNullOrWhiteSpace(userLoginName))
+            {
+                return false;
+            }
+
+            try
+            {
+                // 获取所有部门信息
+                var allDepartments = HDPro.Core.UserManager.DepartmentContext.GetAllDept();
+                
+                // 获取所有用户信息
+                using var context = new HDPro.Core.EFDbContext.SysDbContext();
+                var user = context.Set<Sys_User>()
+                    .Where(u => u.UserName == userLoginName && u.Enable == 1)
+                    .FirstOrDefault();
+
+                if (user == null)
+                {
+                    return false;
+                }
+
+                // 获取用户部门信息
+                var userDepts = context.Set<Sys_UserDepartment>()
+                    .Where(ud => ud.UserId == user.User_Id)
+                    .Select(ud => ud.DepartmentId)
+                    .ToList();
+
+                if (!userDepts.Any())
+                {
+                    return false;
+                }
+
+                // 检查用户所在的部门是否包含"物资供应中心"
+                var userDepartments = allDepartments.Where(d => userDepts.Contains(d.id)).ToList();
 
                 return userDepartments.Any(d => d.value != null && d.value.Contains(Department.MaterialSupplyCenter));
             }

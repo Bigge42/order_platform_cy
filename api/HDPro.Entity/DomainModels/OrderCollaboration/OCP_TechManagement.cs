@@ -239,8 +239,8 @@ namespace HDPro.Entity.DomainModels
        ///备注
        /// </summary>
        [Display(Name ="备注")]
-       [MaxLength(500)]
-       [Column(TypeName="nvarchar(500)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        public string Remarks { get; set; }
 
@@ -372,6 +372,15 @@ namespace HDPro.Entity.DomainModels
        [Column(TypeName="datetime")]
        [Editable(true)]
        public DateTime? ESBModifyDate { get; set; }
+
+       /// <summary>
+       ///评审意见
+       /// </summary>
+       [Display(Name ="评审意见")]
+       [MaxLength(500)]
+       [Column(TypeName="nvarchar(500)")]
+       [Editable(true)]
+       public string FPSYJ { get; set; }
 
        
     }

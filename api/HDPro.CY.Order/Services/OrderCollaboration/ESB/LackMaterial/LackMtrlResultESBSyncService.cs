@@ -186,7 +186,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.LackMaterial
             entity.POCreateDate = ParseDate(esbData.FCGCREATEDATE);
             entity.POAuditDate = ParseDate(esbData.FCGAPPROVEDATE);
             entity.PlanDeliveryDate = ParseDate(esbData.FJHJHRQ);
-            
+            entity.F_ORA_DATETIME = ParseDate(esbData.F_ORA_DATETIME);
+            entity.F_RLRP_CDRQ = ParseDate(esbData.F_RLRP_CDRQ);
+            entity.F_BLN_HFJHRQ = ParseDate(esbData.F_BLN_HFJHRQ);
+
             // 设置ESB主键
             entity.ESBID = esbData.ID;
         }

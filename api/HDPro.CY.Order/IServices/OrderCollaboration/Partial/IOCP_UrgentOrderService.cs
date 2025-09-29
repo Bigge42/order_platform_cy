@@ -108,5 +108,19 @@ namespace HDPro.CY.Order.IServices
         /// <returns>当前用户催单情况统计数据</returns>
         Task<List<object>> GetUserUrgentOrderStatisticsAsync();
 
+        /// <summary>
+        /// 物资供应中心用户对催单向SRM发起催货
+        /// </summary>
+        /// <param name="urgentOrderId">催单ID</param>
+        /// <returns>操作结果</returns>
+        Task<WebResponseContent> SendUrgentOrderToSRMAsync(long urgentOrderId);
+
+        /// <summary>
+        /// 批量向SRM发起催货
+        /// </summary>
+        /// <param name="urgentOrderIds">催单ID列表</param>
+        /// <returns>操作结果</returns>
+        Task<WebResponseContent> BatchSendUrgentOrderToSRMAsync(List<long> urgentOrderIds);
+
     }
 }

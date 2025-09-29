@@ -116,5 +116,9 @@ namespace HDPro.Entity.DomainModels.ESB
         /// 修改日期
         /// </summary>
         public string FMODIFYDATE { get; set; }
+        /// <summary>
+        /// 评审意见
+        /// </summary>
+        public string FPSYJ { get; set; }
     }
 }

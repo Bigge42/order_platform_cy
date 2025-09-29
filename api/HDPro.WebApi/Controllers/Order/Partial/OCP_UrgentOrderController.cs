@@ -245,9 +245,50 @@ namespace HDPro.CY.Order.Controllers
             }
         }
 
+        /// <summary>
+        /// 物资供应中心用户对催单向SRM发起催货
+        /// </summary>
+        /// <param name="urgentOrderId">催单ID</param>
+        /// <returns>操作结果</returns>
+        [HttpPost("SendToSRM")]
+        [ApiActionPermission("OCP_UrgentOrder", HDPro.Core.Enums.ActionPermissionOptions.Update)]
+        public async Task<IActionResult> SendUrgentOrderToSRMAsync(long urgentOrderId)
+        {
+            try
+            {
+                var result = await _service.SendUrgentOrderToSRMAsync(urgentOrderId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new HDPro.Core.Utilities.WebResponseContent().Error($"向SRM发起催货失败: {ex.Message}"));
+            }
+        }
 
+        /// <summary>
+        /// 批量向SRM发起催货
+        /// </summary>
+        /// <param name="request">批量发送请求</param>
+        /// <returns>操作结果</returns>
+        [HttpPost("BatchSendToSRM")]
+        [ApiActionPermission("OCP_UrgentOrder", HDPro.Core.Enums.ActionPermissionOptions.Update)]
+        public async Task<IActionResult> BatchSendUrgentOrderToSRMAsync([FromBody] BatchSendToSRMRequest request)
+        {
+            try
+            {
+                if (request == null || request.UrgentOrderIds == null || !request.UrgentOrderIds.Any())
+                {
+                    return BadRequest(new HDPro.Core.Utilities.WebResponseContent().Error("请求参数无效"));
+                }
 
-
+                var result = await _service.BatchSendUrgentOrderToSRMAsync(request.UrgentOrderIds);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new HDPro.Core.Utilities.WebResponseContent().Error($"批量向SRM发起催货失败: {ex.Message}"));
+            }
+        }
 
     }
 
@@ -267,5 +308,14 @@ namespace HDPro.CY.Order.Controllers
         public string Status { get; set; }
     }
 
-
+    /// <summary>
+    /// 批量向SRM发送请求模型
+    /// </summary>
+    public class BatchSendToSRMRequest
+    {
+        /// <summary>
+        /// 催单ID列表
+        /// </summary>
+        public List<long> UrgentOrderIds { get; set; }
+    }
 }

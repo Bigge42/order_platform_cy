@@ -176,6 +176,8 @@ namespace HDPro.Entity.DomainModels.ESB
         /// 排产年月（关联总任务单据号）
         /// </summary>
         public string FZRWBILLNO { get; set; }
-
+        public string F_ORA_DATETIME { get; set; }
+        public string F_RLRP_CDRQ { get; set; }
+        public string F_BLN_HFJHRQ { get; set; }
     }
 } 

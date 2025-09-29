@@ -7,22 +7,22 @@ namespace HDPro.CY.Order.IServices.OrderCollaboration.ESB
 {
     /// <summary>
     /// ESB删除数据查询服务接口
-    /// 用于查询订单协同平台各业务领域的删除数据主键
+    /// 用于查询、存储删除数据并执行业务表删除逻辑
     /// </summary>
     public interface IQueryDeletedDataService
     {
         /// <summary>
-        /// 查询单个业务类型的删除数据
+        /// 查询、存储并删除单个业务类型的数据（完整流程）
         /// </summary>
         /// <param name="businessType">业务类型（DDGZ、BOMDJJD、DDJDCX、CGGZ、WWGZ、ZJGZ、BJGZ、JGGZ）</param>
-        /// <returns>删除数据查询结果</returns>
-        Task<WebResponseContent> QueryDeletedDataAsync(string businessType);
+        /// <returns>完整流程处理结果</returns>
+        Task<WebResponseContent> ProcessDeletedDataAsync(string businessType);
 
         /// <summary>
-        /// 批量查询所有业务类型的删除数据
+        /// 查询、存储并删除所有业务类型的数据（完整流程）
         /// </summary>
-        /// <returns>所有业务类型的删除数据查询结果</returns>
-        Task<WebResponseContent> QueryAllDeletedDataAsync();
+        /// <returns>完整流程处理结果</returns>
+        Task<WebResponseContent> ProcessAllDeletedDataAsync();
 
         /// <summary>
         /// 获取业务类型统计信息

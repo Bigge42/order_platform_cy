@@ -282,6 +282,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.TechManagement
 
             // 备注字段映射
             entity.Remarks = esbData.F_BLN_BZ;
+            entity.FPSYJ = esbData.FPSYJ;//评审意见
 
             // 系统字段
             var now = DateTime.Now;

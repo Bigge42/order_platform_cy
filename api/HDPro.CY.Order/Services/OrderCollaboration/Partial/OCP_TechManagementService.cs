@@ -26,6 +26,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Options;
 using HDPro.Core.Configuration;
 using HDPro.Core.Enums;
+using System;
 
 namespace HDPro.CY.Order.Services
 {
@@ -441,15 +442,17 @@ namespace HDPro.CY.Order.Services
                 }
             };
 
-            // 添加物料编码过滤条件
+            // 添加物料编码和订单状态过滤条件
             QueryRelativeExpression = (IQueryable<OCP_TechManagement> queryable) =>
             {
-                // 只查询物料编码以010、BJ或WX开头的记录
-                queryable = queryable.Where(x => x.MaterialNumber.StartsWith("010") || 
-                                                 x.MaterialNumber.StartsWith("BJ") || 
-                                                 x.MaterialNumber.StartsWith("WX"));
+                // 只查询物料编码以010、BJ或WX开头的记录，且订单状态为"正常"
+                queryable = queryable.Where(x => (x.MaterialNumber.StartsWith("010") ||
+                                                  x.MaterialNumber.StartsWith("BJ") ||
+                                                  x.MaterialNumber.StartsWith("WX")) &&
+                                                 x.OrderStatus == "正常");
                 return queryable;
             };
+
             //查询完成后，在返回页面前可对查询的数据进行操作
             GetPageDataOnExecuted = (PageGridData<OCP_TechManagement> grid) =>
             {
@@ -459,6 +462,11 @@ namespace HDPro.CY.Order.Services
                 // 根据物料编码获取技术负责人信息
                 if (list != null && list.Any())
                 {
+                    // 计算每条记录的超期天数
+                    foreach (var record in list)
+                    {
+                        record.OverdueDays = CalculateTechManagementOverdueDays(record);
+                    }
                     // 获取所有不为空的物料编码
                     var materialCodes = list
                         .Where(x => !string.IsNullOrWhiteSpace(x.MaterialNumber))
@@ -498,6 +506,48 @@ namespace HDPro.CY.Order.Services
                 .FirstOrDefault();
             };
             return base.GetPageData(options);
+        }
+
+        /// <summary>
+        /// 计算技术管理超期天数
+        /// 计算规则：是否有BOM=否，并且当前时间大于要求完工日期，计算超期多少天
+        /// </summary>
+        /// <param name="record">技术管理记录</param>
+        /// <returns>超期天数</returns>
+        private int CalculateTechManagementOverdueDays(OCP_TechManagement record)
+        {
+            try
+            {
+                // 如果有BOM，则不计算超期天数
+                if (record.HasBOM.HasValue && record.HasBOM.Value != 0)
+                {
+                    return 0;
+                }
+
+                // 如果没有要求完工日期，无法计算超期天数
+                if (!record.RequiredFinishTime.HasValue)
+                {
+                    return 0;
+                }
+
+                DateTime requiredFinishTime = record.RequiredFinishTime.Value;
+                DateTime currentTime = DateTime.Now;
+
+                // 当前时间大于要求完工日期，计算超期天数
+                if (currentTime > requiredFinishTime)
+                {
+                    int daysDiff = (int)(currentTime.Date - requiredFinishTime.Date).TotalDays;
+                    return Math.Max(0, daysDiff);
+                }
+
+                // 未超期
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "计算技术管理超期天数时发生异常，技术ID：{TechID}", record.TechID);
+                return 0;
+            }
         }
 
         /// <summary>
@@ -590,9 +640,10 @@ namespace HDPro.CY.Order.Services
                 var endDate = DateTime.Now.Date;
                 var startDate = endDate.AddDays(-13); // 包含今天共14天
 
-                // 获取近14天的BOM未搭建数据
+                // 获取近14天的BOM未搭建数据，只统计订单状态为"正常"的记录
                 var bomUnbuiltData = await _repository.FindAsIQueryable(x => x.CreateDate >= startDate && x.CreateDate <= endDate.AddDays(1))
                     .Where(x => x.HasBOM == 0) // HasBOM=0表示BOM未搭建
+                    .Where(x => x.OrderStatus == "正常") // 只统计订单状态为"正常"的记录
                     .Where(x => x.MaterialNumber.StartsWith("010") || 
                                x.MaterialNumber.StartsWith("BJ") || 
                                x.MaterialNumber.StartsWith("WX")) // 只统计特定物料编码开头的记录
@@ -620,13 +671,57 @@ namespace HDPro.CY.Order.Services
                     });
                 }
 
-                _logger.LogInformation($"获取近14天BOM未搭建数量统计完成，共统计 {bomUnbuiltData.Count} 条记录");
+                _logger.LogInformation($"获取近14天BOM未搭建数量统计完成，共统计 {bomUnbuiltData.Count} 条记录（仅统计订单状态为正常的记录）");
 
                 return dailyStats;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "获取近14天BOM未搭建数量统计异常");
+                throw; // 重新抛出异常，让控制器处理
+            }
+        }
+
+        /// <summary>
+        /// 获取BOM搭建情况统计
+        /// </summary>
+        /// <returns>BOM搭建情况统计数据</returns>
+        public async Task<object[]> GetBomBuildStatusSummary()
+        {
+            try
+            {
+                _logger.LogInformation("开始获取BOM搭建情况统计");
+
+                // 查询所有符合条件的技术管理记录，只统计订单状态为"正常"的记录
+                var allRecords = await _repository.FindAsIQueryable(x => true)
+                    .Where(x => x.OrderStatus == "正常") // 只统计订单状态为"正常"的记录
+                    .Where(x => x.MaterialNumber.StartsWith("010") || 
+                               x.MaterialNumber.StartsWith("BJ") || 
+                               x.MaterialNumber.StartsWith("WX")) // 只统计特定物料编码开头的记录
+                    .Select(x => new
+                    {
+                        HasBOM = x.HasBOM
+                    })
+                    .ToListAsync();
+
+                // 统计已搭建和未搭建的数量
+                var builtCount = allRecords.Count(x => x.HasBOM == 1); // HasBOM=1表示已搭建
+                var unbuiltCount = allRecords.Count(x => x.HasBOM == 0); // HasBOM=0表示未搭建
+
+                // 构建返回结果
+                var result = new object[]
+                {
+                    new { value = builtCount, name = "已搭建" },
+                    new { value = unbuiltCount, name = "未搭建" }
+                };
+
+                _logger.LogInformation($"获取BOM搭建情况统计完成，已搭建: {builtCount}，未搭建: {unbuiltCount}（仅统计订单状态为正常的记录）");
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取BOM搭建情况统计异常");
                 throw; // 重新抛出异常，让控制器处理
             }
         }

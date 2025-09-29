@@ -170,7 +170,7 @@ namespace HDPro.CY.Order.Services
                     {
                         date = date.ToString("yyyy.MM.dd"),
                         总任务订单数 = totalOrders,
-                        总任务完成率 = completionRate.ToString(),
+                        总任务完成率 = completionRate.ToString()+"%",
                         任务完成数 = completedOrders
                     });
                 }
@@ -334,6 +334,56 @@ namespace HDPro.CY.Order.Services
                 {
                     item.PrepareMtrl = "";
                 }
+            }
+        }
+
+        /// <summary>
+        /// 获取总任务完成统计数据
+        /// </summary>
+        /// <returns>总任务完成统计数据</returns>
+        public async Task<object[]> GetTaskCompletionSummary()
+        {
+            try
+            {
+                _logger.LogInformation("开始获取总任务完成统计数据");
+
+                // 查询是否关联总任务=是的记录，按SOEntryID字段统计
+                var taskQuery = _repository.FindAsIQueryable(x => x.IsJoinTask == 1 && x.SOEntryID.HasValue);
+
+                // 统计总任务数（按SOEntryID去重）
+                var totalTaskCount = await taskQuery
+                    .Select(x => x.SOEntryID.Value)
+                    .Distinct()
+                    .CountAsync();
+
+                // 统计任务完成数（条件：FinishStatus=已完成，按SOEntryID去重）
+                var completedTaskCount = await taskQuery
+                    .Where(x => x.FinishStatus == "已完成")
+                    .Select(x => x.SOEntryID.Value)
+                    .Distinct()
+                    .CountAsync();
+
+                // 计算总任务完成率（百分比，保留整数）
+                var completionRate = totalTaskCount > 0 
+                    ? Math.Round((decimal)completedTaskCount * 100 / totalTaskCount, 0) 
+                    : 0;
+
+                // 按照指定格式返回结果
+                var result = new object[]
+                {
+                    new { name = "总任务数", value = totalTaskCount },
+                    new { name = "任务完成数", value = completedTaskCount },
+                    new { name = "总任务完成率", value = (int)completionRate }
+                };
+
+                _logger.LogInformation($"获取总任务完成统计数据完成，总任务数: {totalTaskCount}，任务完成数: {completedTaskCount}，完成率: {completionRate}%");
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取总任务完成统计数据异常");
+                throw; // 重新抛出异常，让控制器处理
             }
         }
     }

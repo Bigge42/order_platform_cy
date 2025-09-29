@@ -16,5 +16,6 @@ namespace HDPro.Sys.IServices
         Task<WebResponseContent> GetAllTable();
         Task<WebResponseContent> GetTables(List<string> tableNames);
         Task<WebResponseContent> AddOrAlterFields(List<int> ids, string dbServiceName);
+        Task<WebResponseContent> GetFieldsByTableName(string tableName);
     }
  }
