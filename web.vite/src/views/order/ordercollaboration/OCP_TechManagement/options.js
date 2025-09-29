@@ -77,7 +77,7 @@ export default function(){
                        {field:'Remarks',title:'备注',type:'string',width:220,align:'left'},
                        {field:'TechID',title:'技术ID',type:'long',width:80,hidden:true,readonly:true,require:true,align:'left'},
                        {field:'MaterialID',title:'物料ID',type:'long',width:80,hidden:true,align:'left'},
-                       {field:'OrderStatus',title:'订单状态',type:'string',sort:true,width:220,align:'left'},
+                       {field:'OrderStatus',title:'订单状态',type:'string',sort:true,width:220,hidden:true,align:'left'},
                        {field:'HasBOM',title:'是否有BOM',type:'int',bind:{ key:'enable',data:[]},sort:true,width:110,align:'left'},
                        {field:'RequiredFinishTime',title:'要求完工时间',type:'date',sort:true,width:150,hidden:true,align:'left'},
                        {field:'CreateID',title:'创建人ID',type:'int',width:80,hidden:true,align:'left'},
@@ -90,7 +90,8 @@ export default function(){
                        {field:'JoinTaskBillNo',title:'关联总任务单据号',type:'string',sort:true,width:120,hidden:true,align:'left'},
                        {field:'IsJoinTask',title:'是否关联总任务',type:'int',bind:{ key:'enable',data:[]},sort:true,width:80,hidden:true,align:'left'},
                        {field:'ErpClsid',title:'物料属性',type:'string',sort:true,width:120,hidden:true,align:'left'},
-                       {field:'ESBModifyDate',title:'ESB修改日期',type:'datetime',width:150,hidden:true,align:'left'}];
+                       {field:'ESBModifyDate',title:'ESB修改日期',type:'datetime',width:150,hidden:true,align:'left'},
+                       {field:'FPSYJ',title:'评审意见',type:'string',width:220,align:'left'}];
     const detail ={columns:[]};
     const details = [];
 

@@ -664,6 +664,14 @@ let viewgird = [
               edit:true,
               keepAlive:false
             }
+    }    ,{
+        path: '/OCP_DeletedData',
+        name: 'OCP_DeletedData',
+        component: () => import('@/views/order/ordercollaboration/OCP_DeletedData.vue')
+    }    ,{
+        path: '/OCP_AlertRules',
+        name: 'OCP_AlertRules',
+        component: () => import('@/views/order/ordercollaboration/OCP_AlertRules.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

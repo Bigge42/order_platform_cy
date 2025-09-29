@@ -292,8 +292,8 @@ const handleReminderSend = async (reminderData) => {
     // 构建提交数据，添加必要字段
     const submitData = {
       ...reminderData,
-      // 行号
-      Seq: currentRow.LineNumber || '',
+      // 行号 - 该表没有行号字段，使用空值
+      Seq: '',
       // 计划跟踪号
       PlanTraceNo: currentRow.PlanTraceNo || '',
       // 单据编号
@@ -418,8 +418,8 @@ const handleNegotiationConfirm = async (negotiationData) => {
     // 构建提交数据，添加与催单相同的字段
     const submitData = {
       ...negotiationData,
-      // 行号
-      Seq: currentRow.LineNumber || '',
+      // 行号 - 该表没有行号字段，使用空值
+      Seq: '',
       // 计划跟踪号
       PlanTraceNo: currentRow.PlanTraceNo || '',
       // 单据编号

@@ -276,7 +276,7 @@ const handleFollowUpSend = async (reminderData) => {
     const submitData = {
       ...reminderData,
       // 行号
-      Seq: currentRow.LineNumber || '',
+      Seq: currentRow.Seq || '',
       // 计划跟踪号
       PlanTraceNo: currentRow.PlanTraceNo || '',
       // 单据编号

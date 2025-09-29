@@ -42,7 +42,7 @@ const router = useRouter()
 
 // 页面挂载时重定向到 DashboardPreview
 onMounted(() => {
-  router.push('/DashboardPreview?id=d8ac6c16-fb0a-4c3c-9e7f-445242ab3c2b')
+  router.push('/DashboardPreview?id=8cd64d47-cb9c-463c-8b62-ea69e7416569')
 })
 
 // import { ref, nextTick } from 'vue'

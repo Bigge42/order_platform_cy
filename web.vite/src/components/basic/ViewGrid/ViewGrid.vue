@@ -38,19 +38,20 @@
             :formRules="searchFormOptions"
             :formFields="searchFormFields"
             :label-position="labelPosition"
+            :is-filterForm="true"
             :select2Count="select2Count"
           >
             <template #footer>
               <div v-if="!fixedSearchForm" class="form-closex">
                 <el-button size="small" type="primary" plain @click="advancedSearch">
-                  <i class="el-icon-search" />{{ $ts("查询") }}
+                  <i class="el-icon-search" />{{ $ts('查询') }}
                 </el-button>
 
                 <el-button size="small" type="success" plain @click="onResetSearch">
-                  <i class="el-icon-refresh-right" />{{ $ts("重置") }}
+                  <i class="el-icon-refresh-right" />{{ $ts('重置') }}
                 </el-button>
                 <el-button size="small" plain @click="searchBoxShow = !searchBoxShow">
-                  <i class="el-icon-switch-button" />{{ $ts("关闭") }}
+                  <i class="el-icon-switch-button" />{{ $ts('关闭') }}
                 </el-button>
               </div>
             </template>
@@ -62,11 +63,8 @@
             <i class="el-icon-s-grid" />
             <span>{{ $ts(table.cnName) }}</span>
           </div>
-          <view-grid-expand
-            :render="gridRender.h"
-            :item="gridRender.data"
-          ></view-grid-expand>
-          <div class="btn-left-slot"> <slot name="btnLeft"></slot></div>
+          <view-grid-expand :render="gridRender.h" :item="gridRender.data"></view-grid-expand>
+          <div class="btn-left-slot"><slot name="btnLeft"></slot></div>
           <div class="notice">
             <div v-if="text" v-html="text"></div>
             <a class="text" :title="extend.text">{{ extend.text }}</a>
@@ -90,12 +88,7 @@
             <template :key="bIndex" v-for="(btn, bIndex) in gridButtons">
               <template v-if="btn.data">
                 <el-dropdown size="small" :split-button="false">
-                  <el-button
-                    :color="btn.color"
-                    :dark="false"
-                    :type="btn.type"
-                    :plain="btn.plain"
-                  >
+                  <el-button :color="btn.color" :dark="false" :type="btn.type" :plain="btn.plain">
                     {{ $ts(btn.name) }}
                     <i class="el-icon-arrow-down el-icon--right"></i
                   ></el-button>
@@ -134,15 +127,12 @@
 
             <el-dropdown size="small" @click="changeDropdown" v-if="moreButtons.length">
               <el-button type="primary" plain size="small" class="more-btn">
-                {{ $ts("更多") }}<i class="el-icon-arrow-down el-icon--right"></i>
+                {{ $ts('更多') }}<i class="el-icon-arrow-down el-icon--right"></i>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <template v-for="(item, mindex) in moreButtons" :key="mindex">
-                    <el-dropdown-item
-                      @click="changeDropdown(item.name)"
-                      :name="item.name"
-                    >
+                    <el-dropdown-item @click="changeDropdown(item.name)" :name="item.name">
                       <div v-show="!item.hidden">
                         <i :class="item.icon"></i>
                         {{ $ts(item.name) }}
@@ -257,7 +247,6 @@
     <!--明细头部自定义组件-->
     <template #content>
       <div class="vol-edit-box">
-        
         <div class="vol-edit-content">
           <slot name="modelHeader"></slot>
           <component
@@ -359,7 +348,7 @@
               :class="{ 'detail-item-horizontal': multiple.horizontal }"
               :style="{
                 width: multiple.horizontal ? multiple.leftWidth + 'px' : null,
-                flex: multiple.leftWidth ? '' : 1,
+                flex: multiple.leftWidth ? '' : 1
               }"
               @loadBefore="loadDetailTableBefore"
               @loadAfter="loadDetailTableAfter"
@@ -380,7 +369,7 @@
               :class="{ 'detail-item-horizontal': multiple.horizontal }"
               :style="{
                 width: multiple.horizontal ? multiple.rightWidth + 'px' : null,
-                flex: multiple.rightWidth ? '' : 1,
+                flex: multiple.rightWidth ? '' : 1
               }"
               ref="subDetailsRef"
               v-if="subDetails.length"
@@ -417,41 +406,40 @@
       </div>
     </template>
     <template #footer>
-      <div style="display: flex;align-items: center; justify-content: right;">
+      <div style="display: flex; align-items: center; justify-content: right">
         <slot name="modelBtn"></slot>
         <div style="text-align: center" v-show="isBoxAudit">
-        <el-button size="small" type="primary" plain @click="onGridModelClose(false)">
-          <i class="el-icon-close">{{ $ts("关闭") }}</i>
-        </el-button>
-        <el-button
-          size="small"
-          type="primary"
-          v-show="auditParam.showViewButton"
-          @click="auditParam.model = true"
-        >
-          <i class="el-icon-view">{{ $ts("审批") }}</i>
-        </el-button>
-      </div>
+          <el-button size="small" type="primary" plain @click="onGridModelClose(false)">
+            <i class="el-icon-close">{{ $ts('关闭') }}</i>
+          </el-button>
+          <el-button
+            size="small"
+            type="primary"
+            v-show="auditParam.showViewButton"
+            @click="auditParam.model = true"
+          >
+            <i class="el-icon-view">{{ $ts('审批') }}</i>
+          </el-button>
+        </div>
 
-      <div v-show="!isBoxAudit">
-        
-        <el-button
-          v-for="(btn, bIndex) in boxButtons"
-          :key="bIndex"
-          :type="btn.type"
-          size="small"
-          :plain="btn.plain"
-          v-show="!(typeof btn.hidden == 'boolean' && btn.hidden)"
-          :disabled="btn.hasOwnProperty('disabled') && !!btn.disabled"
-          @click="registerClick(btn.onClick)"
-        >
-          <i :class="btn.icon"></i>{{ $ts(btn.name) }}
-        </el-button>
-      
-        <el-button size="small" plain @click="onGridModelClose(false)">
-          <i class="el-icon-close">{{ $ts("关闭") }}</i>
-        </el-button>
-      </div>
+        <div v-show="!isBoxAudit">
+          <el-button
+            v-for="(btn, bIndex) in boxButtons"
+            :key="bIndex"
+            :type="btn.type"
+            size="small"
+            :plain="btn.plain"
+            v-show="!(typeof btn.hidden == 'boolean' && btn.hidden)"
+            :disabled="btn.hasOwnProperty('disabled') && !!btn.disabled"
+            @click="registerClick(btn.onClick)"
+          >
+            <i :class="btn.icon"></i>{{ $ts(btn.name) }}
+          </el-button>
+
+          <el-button size="small" plain @click="onGridModelClose(false)">
+            <i class="el-icon-close">{{ $ts('关闭') }}</i>
+          </el-button>
+        </div>
       </div>
     </template>
   </vol-box>
@@ -512,59 +500,59 @@ import {
   shallowRef,
   toRaw,
   onBeforeUnmount,
-  // 
-  // 
-  // 
+  //
+  //
+  //
   defineAsyncComponent,
   defineComponent,
   computed,
-  nextTick,
-} from "vue";
-import action from "./Action";
-import { useRouter, useRoute } from "vue-router";
-import viewGridProps from "./ViewGridProps.js";
-import ViewGridExpand from "./ViewGridExpand.js";
-import ViewGridDataConfig from "./ViewGridDataConfig.jsx";
-import * as ViewGridProvider from "./ViewGridProvider.jsx";
-import { initMethods } from "./ViewGridExposeMethods.jsx";
-import { initButtonsAuthFields, getButtons } from "./ViewGridInitButtonsAuthFields.jsx";
-import * as ViewGridProviderDetail from "./ViewGridProviderDetail.jsx";
+  nextTick
+} from 'vue'
+import action from './Action'
+import { useRouter, useRoute } from 'vue-router'
+import viewGridProps from './ViewGridProps.js'
+import ViewGridExpand from './ViewGridExpand.js'
+import ViewGridDataConfig from './ViewGridDataConfig.jsx'
+import * as ViewGridProvider from './ViewGridProvider.jsx'
+import { initMethods } from './ViewGridExposeMethods.jsx'
+import { initButtonsAuthFields, getButtons } from './ViewGridInitButtonsAuthFields.jsx'
+import * as ViewGridProviderDetail from './ViewGridProviderDetail.jsx'
 //审批初始化配置
-import { ViewGridAuditConfig } from "./ViewGridAuditConfig.jsx";
-import ViewGridEditTable from "./ViewGridEditTable.jsx";
-import ViewGridFilter from "./ViewGridFilter.js";
-import { initViewColumns } from "./ViewGridCustomColumn.js";
-import { initDicData } from "./ViewGridDicData.js";
-import ViewGridEvent from "./ViewGridEvent.js";
+import { ViewGridAuditConfig } from './ViewGridAuditConfig.jsx'
+import ViewGridEditTable from './ViewGridEditTable.jsx'
+import ViewGridFilter from './ViewGridFilter.js'
+import { initViewColumns } from './ViewGridCustomColumn.js'
+import { initDicData } from './ViewGridDicData.js'
+import ViewGridEvent from './ViewGridEvent.js'
 
-import Empty from "@/components/basic/Empty.vue";
+import Empty from '@/components/basic/Empty.vue'
 //import VolTable from "@/components/basic/VolTable.vue";
 //import VolForm from "@/components/basic/VolForm.vue";
-import VolCustomSearch from "@/components/basic/VolCustomSearch/VolCustomSearch.vue";
-import ViewGridDetails from "./ViewGridDetails.vue";
+import VolCustomSearch from '@/components/basic/VolCustomSearch/VolCustomSearch.vue'
+import ViewGridDetails from './ViewGridDetails.vue'
 
 export default {
   components: {
     ViewGridExpand,
     // "vol-form": VolForm,
     //"vol-table": VolTable,
-    VolBox: defineAsyncComponent(() => import("@/components/basic/VolBox.vue")),
-    QuickSearch: defineAsyncComponent(() => import("@/components/basic/QuickSearch.vue")),
-    Audit: defineAsyncComponent(() => import("@/components/basic/Audit.vue")),
-    UploadExcel: defineAsyncComponent(() => import("@/components/basic/UploadExcel.vue")),
-    "custom-column": defineAsyncComponent(() => import("./ViewGridCustomColumn.vue")),
-    "vol-header": defineAsyncComponent(() => import("./../VolHeader.vue")),
-    ViewGridAudit: defineAsyncComponent(() => import("./ViewGridAudit.vue")),
-    ViewGridPrint: defineAsyncComponent(() => import("./ViewGridPrint.vue")),
-    "detail-table": ViewGridDetails,
-    "vol-custom-search": VolCustomSearch,
+    VolBox: defineAsyncComponent(() => import('@/components/basic/VolBox.vue')),
+    QuickSearch: defineAsyncComponent(() => import('@/components/basic/QuickSearch.vue')),
+    Audit: defineAsyncComponent(() => import('@/components/basic/Audit.vue')),
+    UploadExcel: defineAsyncComponent(() => import('@/components/basic/UploadExcel.vue')),
+    'custom-column': defineAsyncComponent(() => import('./ViewGridCustomColumn.vue')),
+    'vol-header': defineAsyncComponent(() => import('./../VolHeader.vue')),
+    ViewGridAudit: defineAsyncComponent(() => import('./ViewGridAudit.vue')),
+    ViewGridPrint: defineAsyncComponent(() => import('./ViewGridPrint.vue')),
+    'detail-table': ViewGridDetails,
+    'vol-custom-search': VolCustomSearch
   },
   props: { ...viewGridProps() },
-  emit: ["parentCall"],
+  emit: ['parentCall'],
   setup(props, { attrs, emit, expose, slots }) {
-    const route = useRoute();
-    const { proxy, ctx } = getCurrentInstance();
-    ctx.$route = route;
+    const route = useRoute()
+    const { proxy, ctx } = getCurrentInstance()
+    ctx.$route = route
     const dynamicCom = {
       gridHeader: Empty,
       gridBody: Empty,
@@ -572,22 +560,22 @@ export default {
       modelHeader: Empty,
       modelBody: Empty,
       modelRight: Empty,
-      modelFooter: Empty,
-    };
+      modelFooter: Empty
+    }
     //合并扩展组件
     if (props.extend.components) {
       for (const key in props.extend.components) {
         if (props.extend.components[key]) {
-          dynamicCom[key] = toRaw(props.extend.components[key]);
+          dynamicCom[key] = toRaw(props.extend.components[key])
         }
       }
     }
-    const dynamicComponent = shallowRef(dynamicCom);
+    const dynamicComponent = shallowRef(dynamicCom)
 
-    const dataConfig = ViewGridDataConfig();
-    const tableData = ref([]);
-    const isCreated = ref(false);
-    const { maxBtnLength, pagination, newTabEdit, hiddenFields } = dataConfig;
+    const dataConfig = ViewGridDataConfig()
+    const tableData = ref([])
+    const isCreated = ref(false)
+    const { maxBtnLength, pagination, newTabEdit, hiddenFields } = dataConfig
 
     const {
       //setFixedSearch,
@@ -599,110 +587,105 @@ export default {
       getUrl,
       // resetSearch,
       initExtraHeight,
-      initOntinueAdd,
-    } = ViewGridProvider;
-    const { initDetailOptions } = ViewGridProviderDetail;
-    const exposeMethods = initMethods(proxy, props, dataConfig);
+      initOntinueAdd
+    } = ViewGridProvider
+    const { initDetailOptions } = ViewGridProviderDetail
+    const exposeMethods = initMethods(proxy, props, dataConfig)
     const parentCall = (fun) => {
-      if (typeof fun == "function") {
-        fun(proxy);
+      if (typeof fun == 'function') {
+        fun(proxy)
       }
-    };
+    }
 
     ctx.$error = (message) => {
-      proxy.$message.error(message);
-    };
+      proxy.$message.error(message)
+    }
     ctx.$success = (message) => {
-      proxy.$message.success(message);
-    };
+      proxy.$message.success(message)
+    }
 
-    pagination.sortName = props.table.sortName || props.table.key;
-    newTabEdit.value = props.table.newTabEdit;
+    pagination.sortName = props.table.sortName || props.table.key
+    newTabEdit.value = props.table.newTabEdit
 
     const onGridModelClose = (iconClick) => {
-      let boxVal = proxy.onModelClose.call(proxy, iconClick);
-      if (!boxVal) return;
-      dataConfig.boxModel.value = !props.onModelClose(iconClick);
-    };
+      let boxVal = proxy.onModelClose.call(proxy, iconClick)
+      if (!boxVal) return
+      dataConfig.boxModel.value = !props.onModelClose(iconClick)
+    }
 
     //初始化配置信息
     //初始化按钮
-    initButtonsAuthFields(proxy, props, dataConfig, route, hiddenFields); //初始化弹出框与明细表格按钮
+    initButtonsAuthFields(proxy, props, dataConfig, route, hiddenFields) //初始化弹出框与明细表格按钮
 
     //初始化行内编辑
-    ViewGridEditTable(proxy, props, ctx, dataConfig).initEditTable();
+    ViewGridEditTable(proxy, props, ctx, dataConfig).initEditTable()
     //初始化字典配置
     const initDicKeys = (reset) => {
-      initDicData(proxy, props, ctx, dataConfig,reset); //初始下框数据源
-    };
-    const gridEvent = ViewGridEvent(proxy, props, ctx, dataConfig);
+      initDicData(proxy, props, ctx, dataConfig, reset) //初始下框数据源
+    }
+    const gridEvent = ViewGridEvent(proxy, props, ctx, dataConfig)
     //const { loadTableBefore, loadTableAfter } = gridEvent;
     //查询url
-    dataConfig.url.value = getUrl(action.PAGE, null, props.table);
+    dataConfig.url.value = getUrl(action.PAGE, null, props.table)
     const gridButtons = computed(() => {
       return dataConfig.buttons.value.filter((x, i) => {
-        return i < maxBtnLength.value;
-      });
-    });
+        return i < maxBtnLength.value
+      })
+    })
     const moreButtons = computed(() => {
       return dataConfig.buttons.value.filter((x, i) => {
-        return i >= maxBtnLength.value;
-      });
-    });
+        return i >= maxBtnLength.value
+      })
+    })
     //连续添加
     const setContinueAdd = (isAdd) => {
-      initOntinueAdd(proxy, props, dataConfig, isAdd);
-    };
+      initOntinueAdd(proxy, props, dataConfig, isAdd)
+    }
     //明细配置
-    const detailMethods = initDetailOptions(proxy, props, dataConfig);
-    const { initAuditColumn, signAfter } = ViewGridAuditConfig(
-      proxy,
-      props,
-      ctx,
-      dataConfig
-    );
+    const detailMethods = initDetailOptions(proxy, props, dataConfig)
+    const { initAuditColumn, signAfter } = ViewGridAuditConfig(proxy, props, ctx, dataConfig)
     onBeforeMount(async () => {
       //调用初始化信息
-      await proxy.onInit.call(proxy);
+      await proxy.onInit.call(proxy)
       //审批初始化配置
-      initAuditColumn(false);
-      setContinueAdd();
+      initAuditColumn(false)
+      setContinueAdd()
       if (proxy.$grid) {
         Object.keys(proxy.$grid).forEach((key) => {
-          const fn = proxy.$grid[key];
-          typeof fn == "function" && fn.call(proxy);
-        });
+          const fn = proxy.$grid[key]
+          typeof fn == 'function' && fn.call(proxy)
+        })
       }
-      await props.onInit(proxy);
-      getButtons(proxy, props, ctx, dataConfig);
-      initViewColumns(proxy, props, dataConfig, false);
+      await props.onInit(proxy)
+      getButtons(proxy, props, ctx, dataConfig)
+      initViewColumns(proxy, props, dataConfig, false)
       //初始编辑框等数据
-      initBoxHeightWidth(proxy, props, ctx, dataConfig);
-      initDicKeys();
-      await proxy.onInited.call(proxy);
-      await props.onInited(proxy);
+      initBoxHeightWidth(proxy, props, ctx, dataConfig)
+      initDicKeys()
+      await proxy.onInited.call(proxy)
+      await props.onInited(proxy)
       //proxy.height = 400;
-      isCreated.value = true;
-      initExtraHeight(proxy, dataConfig, true);
-    });
+      isCreated.value = true
+      initExtraHeight(proxy, dataConfig, true)
+    })
 
     const customColumClick = () => {
       proxy.$refs.customColumnRef.show(
         props.columns,
         dataConfig.orginColumnFields,
         props.table.name
-      );
-    };
+      )
+    }
     onMounted(() => {
-      proxy.mounted.call(proxy);
-    });
+      proxy.mounted.call(proxy)
+    })
     onUnmounted(() => {
-      proxy.destroyed.call(proxy);
-    });
+      proxy.destroyed.call(proxy)
+    })
     onActivated(() => {
-      proxy.onActivated && proxy.onActivated.call(proxy);
-      initFlowQuery(proxy, props, dataConfig, route);
-    });
+      proxy.onActivated && proxy.onActivated.call(proxy)
+      initFlowQuery(proxy, props, dataConfig, route)
+    })
     // textInline.value = true;
     return {
       isCreated,
@@ -723,13 +706,13 @@ export default {
       signAfter,
       setContinueAdd,
       customColumClick,
-      ...props.extend.methods,
-    };
-  },
-};
+      ...props.extend.methods
+    }
+  }
+}
 </script>
 <style lang="less" scoped>
-@import "./ViewGrid.less";
+@import './ViewGrid.less';
 </style>
 <style lang="less" scoped>
 .btn-group ::v-deep(.el-dropdown .el-button:focus-visible) {

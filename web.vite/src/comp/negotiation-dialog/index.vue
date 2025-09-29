@@ -74,12 +74,7 @@
               >
                 {{ formData.AssignedResPerson.name }}
               </el-tag>
-              <el-button
-                size="small"
-                type="primary"
-                @click="openPersonSelector"
-                :icon="User"
-              >
+              <el-button size="small" type="primary" @click="openPersonSelector" :icon="User">
                 {{ formData.AssignedResPerson ? '重新选择' : '选择人员' }}
               </el-button>
             </div>
@@ -181,20 +176,20 @@ const loadReasonOptions = async () => {
     const params = {
       page: 1,
       rows: 30,
-      sort: "OrderNo,CreateDate",
-      order: "desc",
-      wheres: "[]",
+      sort: 'OrderNo,CreateDate',
+      order: 'desc',
+      wheres: '[]',
       value: 110,
       tableName: null,
       isCopyClick: false
     }
-    
+
     const result = await proxy.http.post('api/Sys_Dictionary/getDetailPage', params, false)
-    
+
     if (result && result.rows) {
       reasonOptions.value = result.rows
-        .filter(item => item.Enable === 1) // 只显示启用的选项
-        .map(item => ({
+        .filter((item) => item.Enable === 1) // 只显示启用的选项
+        .map((item) => ({
           value: item.DicValue,
           label: item.DicName
         }))
@@ -211,20 +206,20 @@ const loadBusinessTypeOptions = async () => {
     const params = {
       page: 1,
       rows: 30,
-      sort: "OrderNo,CreateDate",
-      order: "desc",
-      wheres: "[]",
+      sort: 'OrderNo,CreateDate',
+      order: 'desc',
+      wheres: '[]',
       value: 109,
       tableName: null,
       isCopyClick: false
     }
-    
+
     const result = await proxy.http.post('api/Sys_Dictionary/getDetailPage', params, false)
-    
+
     if (result && result.rows) {
       businessTypeOptions.value = result.rows
-        .filter(item => item.Enable === 1) // 只显示启用的选项
-        .map(item => ({
+        .filter((item) => item.Enable === 1) // 只显示启用的选项
+        .map((item) => ({
           value: item.DicValue,
           label: item.DicName
         }))
@@ -242,47 +237,46 @@ const defaultResponsibleInfo = ref({
 })
 
 // 根据业务类型获取默认负责人
-const loadDefaultResponsible = async (businessType, supplierCode = null) => {
+const loadDefaultResponsible = async (businessType, supplierCode = null, trackID = null) => {
   if (!businessType) return
-  
+
   try {
-    // 如果BusinessType为PO，调用新接口
-    if (businessType === 'PO') {
-      const params = {
-        page: 1,
-        rows: 30,
-        sort: "CreateDate",
-        order: "desc",
-        wheres: `[{"name":"Code","value":"${supplierCode || ''}"}]`,
-        resetPage: true
+    // 如果BusinessType为PO或WW，调用新接口
+    if (businessType === 'PO' || businessType === 'WW') {
+      const requestParams = {
+        businessType,
+        businessId: trackID // 跟踪表的主键ID
       }
-      
-      const result = await proxy.http.post('api/OCP_PurchaseSupplierMapping/getPageData', params, false)
-      
-      if (result && result.rows && result.rows.length > 0) {
-        const row = result.rows[0]
-        formData.value.DefaultResPerson = row.BusinessPersonName
-        defaultResponsibleInfo.value = {
-          name: row.BusinessPersonName,
-          loginName: row.BusinessPersonLoginName || ''
-        }
-      } else {
-        formData.value.DefaultResPerson = ''
-        defaultResponsibleInfo.value = { name: '', loginName: '' }
+
+      const result = await proxy.http.post(
+        'api/OCP_PurchaseSupplierMapping/GetSupplierResponsible',
+        requestParams,
+        false
+      )
+
+      defaultResponsibleInfo.value = {
+        name: result?.data?.responsiblePersonName,
+        loginName: result?.data?.responsiblePersonLoginName
       }
+
+      formData.value.DefaultResPerson = result?.data?.responsiblePersonName
     } else {
       // 否则调用原接口逻辑不变
       const params = {
         page: 1,
         rows: 30,
-        sort: "CreateDate",
-        order: "desc",
+        sort: 'CreateDate',
+        order: 'desc',
         wheres: `[{"name":"BusinessType","value":"${businessType}"}]`,
         resetPage: true
       }
-      
-      const result = await proxy.http.post('api/OCP_BusinessTypeResponsible/getPageData', params, false)
-      
+
+      const result = await proxy.http.post(
+        'api/OCP_BusinessTypeResponsible/getPageData',
+        params,
+        false
+      )
+
       if (result && result.rows && result.rows.length > 0) {
         const row = result.rows[0]
         formData.value.DefaultResPerson = row.DefaultResponsibleName
@@ -307,19 +301,15 @@ const getBusinessTypeLabel = (businessTypeKey) => {
   if (!businessTypeKey || !businessTypeOptions.value.length) {
     return ''
   }
-  
-  const option = businessTypeOptions.value.find(item => item.value === businessTypeKey)
+
+  const option = businessTypeOptions.value.find((item) => item.value === businessTypeKey)
   return option ? option.label : businessTypeKey
 }
 
 // 表单验证规则
 const formRules = ref({
-  NegotiationReason: [
-    { required: true, message: '请选择协商原因', trigger: 'change' }
-  ],
-  NegotiationDate: [
-    { required: true, message: '请选择协商日期', trigger: 'change' }
-  ],
+  NegotiationReason: [{ required: true, message: '请选择协商原因', trigger: 'change' }],
+  NegotiationDate: [{ required: true, message: '请选择协商日期', trigger: 'change' }],
   NegotiationContent: [
     { required: true, message: '请输入协商内容', trigger: 'blur' },
     { min: 5, message: '协商内容至少输入5个字符', trigger: 'blur' }
@@ -337,7 +327,9 @@ const clearValidation = () => {
 
 // 人员选择相关方法
 const openPersonSelector = () => {
-  selectedPersonId.value = formData.value.AssignedResPerson ? formData.value.AssignedResPerson.id : ''
+  selectedPersonId.value = formData.value.AssignedResPerson
+    ? formData.value.AssignedResPerson.id
+    : ''
   personSelectorVisible.value = true
 }
 
@@ -381,9 +373,10 @@ watch(
   () => visible.value,
   (newVal) => {
     emit('update:modelValue', newVal)
-    
+
     // 弹窗打开时，根据传入的数据重置表单
     if (newVal && props.data) {
+      console.log('props.data', props.data)
       nextTick(() => {
         resetForm()
         // 根据props.data设置默认值
@@ -393,9 +386,10 @@ watch(
         if (props.data.BusinessType) {
           formData.value.BusinessType = props.data.BusinessType
           businessTypeLabel.value = getBusinessTypeLabel(props.data.BusinessType)
-          // 根据业务类型获取默认负责人，如果是PO类型需要传入SupplierCode
+          // 根据业务类型获取默认负责人，如果是PO或WW类型需要传入TrackID
           const supplierCode = props.data.SupplierCode || ''
-          loadDefaultResponsible(props.data.BusinessType, supplierCode)
+          const trackID = props.data?.currentRowData?.TrackID || ''
+          loadDefaultResponsible(props.data.BusinessType, supplierCode, trackID)
         }
         if (props.data.AssignedResPerson) {
           formData.value.AssignedResPerson = props.data.AssignedResPerson
@@ -446,7 +440,7 @@ const handleConfirm = async () => {
   try {
     // 表单验证
     await formRef.value.validate()
-    
+
     // 准备提交数据
     const submitData = {
       ...props.data, // 包含行数据
@@ -454,7 +448,7 @@ const handleConfirm = async () => {
       // 添加默认负责人的loginName
       DefaultResPersonLoginName: defaultResponsibleInfo.value.loginName || ''
     }
-    
+
     // 如果没有选择指定负责人，则使用默认负责人的登录名
     if (!submitData.AssignedResPerson) {
       submitData.AssignedResPerson = {
@@ -464,22 +458,21 @@ const handleConfirm = async () => {
         userTrueName: defaultResponsibleInfo.value.name
       }
     }
-    
+
     console.log('发起协商确认', submitData)
     console.log('提交数据中的指定负责人:', submitData.AssignedResPerson)
     console.log('默认负责人信息:', defaultResponsibleInfo.value)
-    
+
     // 先发送数据给外部
     emit('confirm', submitData)
-    
+
     // 关闭弹窗
     visible.value = false
-    
+
     // 延迟重置表单，确保外部已接收到数据
     nextTick(() => {
       resetForm()
     })
-    
   } catch (error) {
     console.log('表单验证失败:', error)
     ElMessage.warning('请完善必填信息')
@@ -511,26 +504,26 @@ defineExpose({
 .negotiation-dialog-content {
   padding: 20px;
   min-height: 400px;
-  
+
   .el-form {
     .el-form-item {
       margin-bottom: 20px;
-      
+
       &:last-child {
         margin-bottom: 0;
       }
     }
-    
+
     .el-form-item__label {
       font-weight: 500;
       color: var(--el-text-color-primary);
     }
-    
+
     .el-select,
     .el-date-editor {
       width: 100%;
     }
-    
+
     .el-textarea {
       .el-textarea__inner {
         font-family: inherit;
@@ -557,9 +550,9 @@ defineExpose({
 .dialog-footer {
   text-align: right;
   padding: 6px 12px 0 0;
-  
+
   .el-button + .el-button {
     margin-left: 12px;
   }
 }
-</style> 
+</style>

@@ -288,8 +288,8 @@ const handleReminderSend = async (reminderData) => {
     // 构建提交数据，添加必要字段
     const submitData = {
       ...reminderData,
-      // 行号
-      Seq: currentRow.LineNumber || '',
+      // 行号 - 该表没有行号字段，使用空值
+      Seq: '',
       // 计划跟踪号
       PlanTraceNo: currentRow.PlanTraceNo || '',
       // 单据编号 - 配件未完成跟踪订单号
@@ -421,8 +421,8 @@ const handleNegotiationConfirm = async (data) => {
     // 构建提交数据，添加必要字段
     const submitData = {
       ...data,
-      // 行号
-      Seq: currentRow.LineNumber || '',
+      // 行号 - 该表没有行号字段，使用空值
+      Seq: '',
       // 计划跟踪号
       PlanTraceNo: currentRow.PlanTraceNo || '',
       // 单据编号已在初始化时设置为ProductionOrderNo

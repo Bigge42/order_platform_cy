@@ -1,539 +1,666 @@
-<!--
- *Author：jxx
- *Date：{Date}
- *Contact：461857658@qq.com
- *业务请在@/extension/order/ordercollaboration/OCP_UrgentOrder.jsx或OCP_UrgentOrder.vue文件编写
- *新版本支持vue或【表.jsx]文件编写业务,
- -->
 <template>
-    <div class="urgent-order-page">
-        <!-- 消息统计组件 -->
-        <div class="stats-section">
-            <div class="section-header">
-                <h3 class="section-title">催单统计概览</h3>
-            </div>
-            <MessageCount 
-                :count-list="messageStats"
-                :selected-type="selectedMessageType"
-                @item-click="handleStatClick"
-            />
-        </div>
-
-        <!-- 消息列表区域 -->
-        <div class="message-section">
-            <!-- Tabs切换器 -->
-            <div class="tabs-header">
-                <el-tabs 
-                    v-model="activeTab" 
-                    @tab-click="handleTabClick"
-                >
-                    <el-tab-pane 
-                        v-for="tab in messageTabs" 
-                        :key="tab.name"
-                        :name="tab.name"
-                    >
-                        <template #label>
-                            <div class="custom-tabs-label">
-                                <el-icon><calendar /></el-icon>
-                                <span>{{ tab.label }}</span>
-                                <span v-if="tab.count" class="item-qty">{{ tab.count }}</span>
-                            </div>
-                        </template>
-                    </el-tab-pane>
-                </el-tabs>
-            </div>
-
-            <!-- 表格容器 -->
-            <div class="table-section">
-            <view-grid ref="grid"
-                       :columns="columns"
-                       :detail="detail"
-                       :details="details"
-                       :editFormFields="editFormFields"
-                       :editFormOptions="editFormOptions"
-                       :searchFormFields="searchFormFields"
-                       :searchFormOptions="searchFormOptions"
-                       :table="table"
-                       :extend="extend"
-                       :onInit="onInit"
-                       :onInited="onInited"
-                       :searchBefore="searchBefore"
-                       :searchAfter="searchAfter"
-                       :addBefore="addBefore"
-                       :updateBefore="updateBefore"
-                       :rowClick="rowClick"
-                       :modelOpenBefore="modelOpenBefore"
-                       :modelOpenAfter="modelOpenAfter">
-                <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
-                <template #gridHeader>
-                </template>
-            </view-grid>
-            </div>
-        </div>
-
-        <!-- 回复弹窗 -->
-        <ReplyDialog
-            v-model="replyDialogVisible"
-            :message-id="currentMessage.id"
-            @submit="handleReplySubmit"
-        />
-        
-        <!-- 留言板弹窗 -->
-        <MessageBoard ref="messageBoardRef" />
+  <div class="urgent-order-page">
+    <!-- 消息统计组件 -->
+    <div class="stats-section">
+      <div class="section-header">
+        <h3 class="section-title">催单统计概览</h3>
+      </div>
+      <MessageCount
+        :count-list="messageStats"
+        :selected-type="selectedMessageType"
+        @item-click="handleStatClick"
+      />
     </div>
+
+    <!-- 消息列表区域 -->
+    <div class="message-section">
+      <!-- Tabs切换器 -->
+      <div class="tabs-header">
+        <el-tabs v-model="activeTab" @tab-click="handleTabClick">
+          <el-tab-pane v-for="tab in messageTabs" :key="tab.name" :name="tab.name">
+            <template #label>
+              <div class="custom-tabs-label">
+                <el-icon><calendar /></el-icon>
+                <span>{{ tab.label }}</span>
+                <span v-if="tab.count" class="item-qty">{{ tab.count }}</span>
+              </div>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <!-- 表格容器 -->
+      <div class="table-section">
+        <view-grid
+          ref="grid"
+          :columns="columns"
+          :detail="detail"
+          :details="details"
+          :editFormFields="editFormFields"
+          :editFormOptions="editFormOptions"
+          :searchFormFields="searchFormFields"
+          :searchFormOptions="searchFormOptions"
+          :table="table"
+          :extend="extend"
+          :onInit="onInit"
+          :onInited="onInited"
+          :searchBefore="searchBefore"
+          :searchAfter="searchAfter"
+          :addBefore="addBefore"
+          :updateBefore="updateBefore"
+          :rowClick="rowClick"
+          :modelOpenBefore="modelOpenBefore"
+          :modelOpenAfter="modelOpenAfter"
+        >
+          <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
+          <template #gridHeader> </template>
+        </view-grid>
+      </div>
+    </div>
+
+    <!-- 回复弹窗 -->
+    <ReplyDialog
+      v-model="replyDialogVisible"
+      :message-id="currentMessage.id"
+      @submit="handleReplySubmit"
+    />
+
+    <!-- 留言板弹窗 -->
+    <MessageBoard ref="messageBoardRef" />
+  </div>
 </template>
 <script setup lang="jsx">
-import { ref, reactive, getCurrentInstance, watch, onMounted } from "vue";
+import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Calendar } from '@element-plus/icons-vue'
 import { useStore } from 'vuex'
-import extend from "@/extension/order/ordercollaboration/OCP_UrgentOrder.jsx";
+import extend from '@/extension/order/ordercollaboration/OCP_UrgentOrder.jsx'
 import viewOptions from './OCP_UrgentOrder/options.js'
 import MessageCount from '@/comp/message-count/index.vue'
 import ReplyDialog from '@/comp/reminder-dialog/reply.vue'
 import MessageBoard from '@/comp/message-board/index.vue'
 import http from '@/api/http'
-    
-    const grid = ref(null);
-    const { proxy } = getCurrentInstance()
-    const store = useStore()
-    //http请求，proxy.http.post/get
-    const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
-    // 页面状态
-    const activeTab = ref('ALL')
-    const selectedMessageType = ref(null)
-    
-    // 当前登录用户
-    const currentLoginUser = ref('')
+const grid = ref(null)
+const { proxy } = getCurrentInstance()
+const store = useStore()
+//http请求，proxy.http.post/get
+const {
+  table,
+  editFormFields,
+  editFormOptions,
+  searchFormFields,
+  searchFormOptions,
+  columns,
+  detail,
+  details
+} = reactive(viewOptions())
 
-    // 回复弹窗相关状态
-    const replyDialogVisible = ref(false)
-    const currentMessage = ref({
-        id: ''
-    })
-    
-    // 留言板ref
-    const messageBoardRef = ref(null)
+// 页面状态
+const activeTab = ref('ALL')
+const selectedMessageType = ref(null)
 
-    // Tab配置
-    const messageTabs = ref([
-        { name: 'ALL', label: '全部消息', count: 0 },
-        { name: 'PO', label: '采购', count: 0 },
-        { name: 'SO', label: '销售', count: 0 },
-        { name: 'JS', label: '技术', count: 0 },
-        { name: 'JH', label: '计划', count: 0 },
-        { name: 'ZP', label: '装配', count: 0 },
-        { name: 'JG', label: '金工', count: 0 },
-        { name: 'WW', label: '委外', count: 0 },
-        { name: 'BJ', label: '部件', count: 0 }
-    ])
+// 当前登录用户
+const currentLoginUser = ref('')
 
-    // 消息统计数据
-    const messageStats = ref([
-        {
-            label: '发送消息数',
-            count: 0,
-            clickable: true,
-            type: 'sent',
-            status: 'success',
-            needRefresh: false
-        },
-        {
-            label: '待回复消息',
-            count: 0,
-            clickable: true,
-            type: 'pending',
-            status: 'warning'
-        },
-        {
-            label: '已超期消息',
-            count: 0,
-            clickable: true,
-            type: 'overdue',
-            status: 'danger'
-        },
-        {
-            label: '已回复消息',
-            count: 0,
-            clickable: true,
-            type: 'replied',
-            status: 'success'
-        }
-    ])
+// 回复弹窗相关状态
+const replyDialogVisible = ref(false)
+const currentMessage = ref({
+  id: ''
+})
 
-    let gridRef;//对应[表.jsx]文件中this.使用方式一样
-    //生成对象属性初始化
-    const onInit = async ($vm) => {
-        gridRef = $vm;
-        gridRef.pagination.sizes = [20, 50, 100, 200, 500, 1000];
-        //设置默认分页数
-        gridRef.pagination.size = 20;
-        gridRef.setFixedSearchForm(true);
-        //与jsx中的this.xx使用一样，只需将this.xx改为gridRef.xx
+// 留言板ref
+const messageBoardRef = ref(null)
 
-        // 获取当前登录用户
-        currentLoginUser.value = store.getters.getLoginName();
+// Tab配置
+const messageTabs = ref([
+  { name: 'ALL', label: '全部消息', count: 0 },
+  { name: 'PO', label: '采购', count: 0 },
+  { name: 'SO', label: '销售', count: 0 },
+  { name: 'JS', label: '技术', count: 0 },
+  { name: 'JH', label: '计划', count: 0 },
+  { name: 'ZP', label: '装配', count: 0 },
+  { name: 'JG', label: '金工', count: 0 },
+  { name: 'WW', label: '委外', count: 0 },
+  { name: 'BJ', label: '部件', count: 0 }
+])
 
-        // 添加操作列
-        columns.push({
-            field: 'action',
-            title: '操作',
-            width: 150,
-            align: 'left',
-            fixed: 'right',
-            render: (h, { row, column, index }) => {
-                return (
-                    <div>
-                        <el-button type="success" onClick={() => {
-                            openMessageBoard(row)
-                        }}>消息</el-button>
-                        {(row.UrgentStatus === '催单中' && row.AssignedResPerson === currentLoginUser.value) && (
-                            <el-button type="primary" onClick={() => {
-                                replyMessage(row)
-                            }}>回复</el-button>
-                        )}
-                    </div>
-                )
-            }
+// 消息统计数据
+const messageStats = ref([
+  {
+    label: '发送消息数',
+    count: 0,
+    clickable: true,
+    type: 'sent',
+    status: 'success',
+    needRefresh: false
+  },
+  {
+    label: '待回复消息',
+    count: 0,
+    clickable: true,
+    type: 'pending',
+    status: 'warning'
+  },
+  {
+    label: '已超期消息',
+    count: 0,
+    clickable: true,
+    type: 'overdue',
+    status: 'danger'
+  },
+  {
+    label: '已回复消息',
+    count: 0,
+    clickable: true,
+    type: 'replied',
+    status: 'success'
+  }
+])
+
+let gridRef //对应[表.jsx]文件中this.使用方式一样
+//生成对象属性初始化
+const onInit = async ($vm) => {
+  gridRef = $vm
+  gridRef.pagination.sizes = [20, 50, 100, 200, 500, 1000]
+  //设置默认分页数
+  gridRef.pagination.size = 20
+  gridRef.setFixedSearchForm(true)
+  //与jsx中的this.xx使用一样，只需将this.xx改为gridRef.xx
+
+  // 获取当前登录用户
+  currentLoginUser.value = store.getters.getLoginName()
+
+  // 添加操作列
+  columns.push({
+    field: 'action',
+    title: '操作',
+    width: 150,
+    align: 'left',
+    fixed: 'right',
+    render: (h, { row, column, index }) => {
+      return (
+        <div>
+          <el-button
+            type="success"
+            onClick={() => {
+              openMessageBoard(row)
+            }}
+          >
+            消息
+          </el-button>
+          {row.UrgentStatus === '催单中' && row.AssignedResPerson === currentLoginUser.value && (
+            <el-button
+              type="primary"
+              onClick={() => {
+                replyMessage(row)
+              }}
+            >
+              回复
+            </el-button>
+          )}
+        </div>
+      )
+    }
+  })
+
+  gridRef.buttons.push({
+    name: '向SRM发起催货',
+    icon: 'el-icon-bell',
+    type: 'warning',
+    onClick: async () => {
+      const selectedRows = gridRef.getTable(true).getSelected()
+      if (!selectedRows || selectedRows.length === 0) {
+        ElMessage.warning('请先选择要催货的记录')
+        return
+      }
+
+      // 提取选中行的UrgentOrderID
+      const urgentOrderIds = selectedRows.map((row) => row.UrgentOrderID).filter((id) => id)
+
+      if (urgentOrderIds.length === 0) {
+        ElMessage.warning('选中的记录中没有有效的催单ID')
+        return
+      }
+
+      try {
+        // 确认操作
+        await proxy.$confirm(
+          `确定要向SRM发起催货吗？共选中 ${urgentOrderIds.length} 条记录`,
+          '确认操作',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+
+        // 调用批量发起催货接口
+        const response = await http.post('/api/OCP_UrgentOrder/BatchSendToSRM', {
+          urgentOrderIds: urgentOrderIds
         })
 
-        // 并发获取统计数据
-        await Promise.all([
-            fetchCardStatistics(),
-            fetchTabStatistics()
-        ])
-    }
-    //生成对象属性初始化后,操作明细表配置用到
-    const onInited = async () => {
-        // 组件初始化完成后，触发搜索
-        setTimeout(() => {
-            if (gridRef && gridRef.search) {
-                gridRef.search()
-            }
-        }, 200)
-    }
-    const searchBefore = async (param) => {
-        //界面查询前,可以给param.wheres添加查询参数
-        //返回false，则不会执行查询
-        
-        // 构造查询条件数组
-        let whereConditions = []
-        
-        // 添加业务类型查询条件（根据当前tab）
-        if (activeTab.value && activeTab.value !== 'ALL') {
-            whereConditions.push({
-                name: "BusinessType",
-                value: activeTab.value,
-                displayType: "="
+        if (response && response.status) {
+          const { successCount, failedCount, failedItems } = response.data || {}
+
+          // 构造提示消息
+          let message = `批量向SRM发起催货完成`
+          if (successCount > 0) {
+            message += `，成功 ${successCount} 条`
+          }
+          if (failedCount > 0) {
+            message += `，失败 ${failedCount} 条`
+          }
+
+          // 显示成功消息
+          ElMessage.success(message)
+
+          // 如果有失败的记录，显示详细信息
+          if (failedItems && failedItems.length > 0) {
+            // 构造HTML格式的失败详情，让显示更友好
+            const failedDetailsHtml = `
+              <div style="text-align: left; max-height: 400px; overflow-y: auto;">
+                <p style="margin-bottom: 15px; color: #606266; font-size: 14px;">
+                  以下 ${failedItems.length} 条记录发起催货失败：
+                </p>
+                <div style="background: #f5f7fa; padding: 15px; border-radius: 4px;">
+                  ${failedItems
+                    .map(
+                      (item, index) => `
+                    <div style="margin-bottom: ${
+                      index < failedItems.length - 1 ? '12px' : '0'
+                    }; padding-bottom: ${index < failedItems.length - 1 ? '12px' : '0'}; ${
+                        index < failedItems.length - 1 ? 'border-bottom: 1px solid #e4e7ed;' : ''
+                      }">
+                      <div style="margin-bottom: 4px;">
+                        <span style="color: #303133; font-weight: 500;">单据编号：</span>
+                        <span style="color: #409eff;">${item.billNo || '未知'}</span>
+                        <span style="margin-left: 15px; color: #303133; font-weight: 500;">行号：</span>
+                        <span style="color: #409eff;">${item.seq || '未知'}</span>
+                      </div>
+                      <div style="color: #f56c6c; font-size: 13px;">
+                        <span style="color: #303133; font-weight: 500;">失败原因：</span>
+                        ${item.error || '未知错误'}
+                      </div>
+                    </div>
+                  `
+                    )
+                    .join('')}
+                </div>
+              </div>
+            `
+
+            proxy.$alert(failedDetailsHtml, '催货失败详情', {
+              confirmButtonText: '确定',
+              type: 'warning',
+              dangerouslyUseHTMLString: true,
+              customClass: 'failed-details-dialog'
             })
-        }
-        
-        // 添加消息状态查询条件（根据统计卡片选择）
-        if (selectedMessageType.value) {
-            whereConditions.push({
-                name: "MessageStatus",
-                value: selectedMessageType.value,
-                displayType: "="
-            })
-        }
-        
-        // 如果有查询条件，设置到参数中
-        if (whereConditions.length > 0) {
-            param.wheres = JSON.stringify(whereConditions)
-        }
-        
-        return true;
-    }
-    const searchAfter = async (rows, result) => {
-        // 处理API返回的数据，更新统计信息
-        if (result && result.total !== undefined) {
-            // 根据返回的数据更新统计数据
-            updateStatsFromApiResult(result)
-        }
-        return true;
-    }
-    const addBefore = async (formData) => {
-        //新建保存前formData为对象，包括明细表，可以给给表单设置值，自己输出看formData的值
-        return true;
-    }
-    const updateBefore = async (formData) => {
-        //编辑保存前formData为对象，包括明细表、删除行的Id
-        return true;
-    }
-    const rowClick = ({ row, column, event }) => {
-        //查询界面点击行事件
-        // grid.value.toggleRowSelection(row); //单击行时选中当前行;
-    }
-    const modelOpenBefore = async (row) => {//弹出框打开后方法
-        return true;//返回false，不会打开弹出框
-    }
-    const modelOpenAfter = (row) => {
-        //弹出框打开后方法,设置表单默认值,按钮操作等
-    }
+          }
 
-    // 获取顶部卡片统计数据
-    const fetchCardStatistics = async () => {
-        try {
-            const response = await http.get('/api/OCP_UrgentOrder/GetStatistics')
-            if (response && response.status) {
-                const data = response.data || {}
-                
-                // 更新顶部统计数据
-                messageStats.value = [
-                    {
-                        label: '发送消息数',
-                        count: data.sentCount || 0,
-                        clickable: true,
-                        type: 'sent',
-                        status: 'success',
-                        needRefresh: false
-                    },
-                    {
-                        label: '待回复消息',
-                        count: data.pendingCount || 0,
-                        clickable: true,
-                        type: 'pending',
-                        status: 'warning'
-                    },
-                    {
-                        label: '已超期消息',
-                        count: data.overdueCount || 0,
-                        clickable: true,
-                        type: 'overdue',
-                        status: 'danger'
-                    },
-                    {
-                        label: '已回复消息',
-                        count: data.repliedCount || 0,
-                        clickable: true,
-                        type: 'replied',
-                        status: 'success'
-                    }
-                ]
-            }
-        } catch (error) {
-            console.error('获取卡片统计数据失败:', error)
-            ElMessage.error('获取卡片统计数据失败')
-        }
-    }
-
-    // 获取Tab统计数据
-    const fetchTabStatistics = async (messageStatus = null) => {
-        try {
-            let url = '/api/OCP_UrgentOrder/GetStatisticsByBusinessType'
-            if (messageStatus) {
-                url += `?messageStatus=${messageStatus}`
-            }
-            
-            const response = await http.get(url)
-            if (response && response.status) {
-                const data = response.data || {}
-                const allMessages = data.allMessages || {}
-                const businessTypeList = data.businessTypeList || []
-                
-                // 更新Tab的count数据
-                messageTabs.value.forEach(tab => {
-                    if (tab.name === 'ALL') {
-                        // 全部消息的总数
-                        tab.count = allMessages.pendingCount || 0
-                    } else {
-                        // 查找对应业务类型的数据
-                        const businessData = businessTypeList.find(item => item.businessTypeCode === tab.name)
-                        tab.count = businessData ? (businessData.pendingCount || 0) : 0
-                    }
-                })
-            }
-        } catch (error) {
-            console.error('获取Tab统计数据失败:', error)
-            ElMessage.error('获取Tab统计数据失败')
-        }
-    }
-
-    // 根据API结果更新统计数据
-    const updateStatsFromApiResult = (result) => {
-        // 处理API返回的数据，不需要重复调用统计接口
-        console.log('表格数据更新:', result)
-    }
-
-    // 处理统计项点击
-    const handleStatClick = ({ item, index, type }) => {
-        console.log('点击了统计项：', { item, index, type })
-        
-        // 更新选中状态
-        selectedMessageType.value = type
-        
-        // 根据选中的消息状态重新获取Tab统计数据
-        fetchTabStatistics(type)
-        
-        // 触发表格重新查询，会自动应用MessageStatus查询条件
-        if (gridRef && gridRef.search) {
+          // 刷新表格数据
+          if (gridRef && gridRef.search) {
             gridRef.search()
+          }
+
+          // 刷新统计数据
+          await fetchCardStatistics()
+          await fetchTabStatistics()
+        } else {
+          throw new Error(response?.message || '发起催货失败')
         }
-    }
-
-
-
-    // Tab点击事件
-    const handleTabClick = async (tab) => {
-        console.log('切换到tab：', tab.props?.name)
-        activeTab.value = tab.props?.name || 'ALL'
-        
-        // 切换tab时触发搜索，会自动应用BusinessType查询条件
-        if (gridRef && gridRef.search) {
-            gridRef.search()
+      } catch (error) {
+        if (error !== 'cancel') {
+          // 用户取消操作不显示错误
+          console.error('向SRM发起催货失败:', error)
+          ElMessage.error(error.message || '向SRM发起催货失败，请重试')
         }
+      }
     }
+  })
 
-    // 回复消息
-    const replyMessage = (row) => {
-        currentMessage.value = {
-            id: row.UrgentOrderID
+  // 并发获取统计数据
+  await Promise.all([fetchCardStatistics(), fetchTabStatistics()])
+}
+//生成对象属性初始化后,操作明细表配置用到
+const onInited = async () => {
+  // 组件初始化完成后，触发搜索
+  setTimeout(() => {
+    if (gridRef && gridRef.search) {
+      gridRef.search()
+    }
+  }, 200)
+}
+const searchBefore = async (param) => {
+  //界面查询前,可以给param.wheres添加查询参数
+  //返回false，则不会执行查询
+
+  // 构造查询条件数组
+  let whereConditions = []
+
+  // 添加业务类型查询条件（根据当前tab）
+  if (activeTab.value && activeTab.value !== 'ALL') {
+    whereConditions.push({
+      name: 'BusinessType',
+      value: activeTab.value,
+      displayType: '='
+    })
+  }
+
+  // 添加消息状态查询条件（根据统计卡片选择）
+  if (selectedMessageType.value) {
+    whereConditions.push({
+      name: 'MessageStatus',
+      value: selectedMessageType.value,
+      displayType: '='
+    })
+  }
+
+  // 如果有查询条件，设置到参数中
+  if (whereConditions.length > 0) {
+    param.wheres = JSON.stringify(whereConditions)
+  }
+
+  return true
+}
+const searchAfter = async (rows, result) => {
+  // 处理API返回的数据，更新统计信息
+  if (result && result.total !== undefined) {
+    // 根据返回的数据更新统计数据
+    updateStatsFromApiResult(result)
+  }
+  return true
+}
+const addBefore = async (formData) => {
+  //新建保存前formData为对象，包括明细表，可以给给表单设置值，自己输出看formData的值
+  return true
+}
+const updateBefore = async (formData) => {
+  //编辑保存前formData为对象，包括明细表、删除行的Id
+  return true
+}
+const rowClick = ({ row, column, event }) => {
+  //查询界面点击行事件
+  // grid.value.toggleRowSelection(row); //单击行时选中当前行;
+}
+const modelOpenBefore = async (row) => {
+  //弹出框打开后方法
+  return true //返回false，不会打开弹出框
+}
+const modelOpenAfter = (row) => {
+  //弹出框打开后方法,设置表单默认值,按钮操作等
+}
+
+// 获取顶部卡片统计数据
+const fetchCardStatistics = async () => {
+  try {
+    const response = await http.get('/api/OCP_UrgentOrder/GetStatistics')
+    if (response && response.status) {
+      const data = response.data || {}
+
+      // 更新顶部统计数据
+      messageStats.value = [
+        {
+          label: '发送消息数',
+          count: data.sentCount || 0,
+          clickable: true,
+          type: 'sent',
+          status: 'success',
+          needRefresh: false
+        },
+        {
+          label: '待回复消息',
+          count: data.pendingCount || 0,
+          clickable: true,
+          type: 'pending',
+          status: 'warning'
+        },
+        {
+          label: '已超期消息',
+          count: data.overdueCount || 0,
+          clickable: true,
+          type: 'overdue',
+          status: 'danger'
+        },
+        {
+          label: '已回复消息',
+          count: data.repliedCount || 0,
+          clickable: true,
+          type: 'replied',
+          status: 'success'
         }
-        replyDialogVisible.value = true
+      ]
+    }
+  } catch (error) {
+    console.error('获取卡片统计数据失败:', error)
+    ElMessage.error('获取卡片统计数据失败')
+  }
+}
+
+// 获取Tab统计数据
+const fetchTabStatistics = async (messageStatus = null) => {
+  try {
+    let url = '/api/OCP_UrgentOrder/GetStatisticsByBusinessType'
+    if (messageStatus) {
+      url += `?messageStatus=${messageStatus}`
     }
 
-    // 处理回复提交
-    const handleReplySubmit = async (formData) => {
-        try {
-            // 处理回复提交逻辑
-            console.log('回复提交:', formData)
-            
-            // 构造API请求数据 - 按照接口文档格式
-            const requestData = {
-                urgentOrderID: formData.urgentOrderID,
-                replyContent: formData.replyContent || null,
-                replyProgress: formData.replyProgress || null,
-                replyDeliveryDate: formData.replyDeliveryDate || null,
-                remarks: formData.remarks || null
-            }
-            
-            // 调用催单回复API - 使用新的AddReply接口
-            const response = await http.post('/api/OCP_UrgentOrderReply/AddReply', requestData)
-            
-            if (response && response.status) {
-                ElMessage.success(response.message || '回复提交成功')
-                
-                // 刷新表格数据
-                if (gridRef && gridRef.search) {
-                    gridRef.search()
-                }
-                
-                // 刷新统计数据
-                await fetchCardStatistics()
-                await fetchTabStatistics()
-            } else {
-                throw new Error(response?.message || '提交失败')
-            }
-            
-        } catch (error) {
-            console.error('回复提交失败:', error)
-            ElMessage.error(error.message || '回复提交失败，请重试')
+    const response = await http.get(url)
+    if (response && response.status) {
+      const data = response.data || {}
+      const allMessages = data.allMessages || {}
+      const businessTypeList = data.businessTypeList || []
+
+      // 更新Tab的count数据
+      messageTabs.value.forEach((tab) => {
+        if (tab.name === 'ALL') {
+          // 全部消息的总数
+          tab.count = allMessages.pendingCount || 0
+        } else {
+          // 查找对应业务类型的数据
+          const businessData = businessTypeList.find((item) => item.businessTypeCode === tab.name)
+          tab.count = businessData ? businessData.pendingCount || 0 : 0
         }
+      })
+    }
+  } catch (error) {
+    console.error('获取Tab统计数据失败:', error)
+    ElMessage.error('获取Tab统计数据失败')
+  }
+}
+
+// 根据API结果更新统计数据
+const updateStatsFromApiResult = (result) => {
+  // 处理API返回的数据，不需要重复调用统计接口
+  console.log('表格数据更新:', result)
+}
+
+// 处理统计项点击
+const handleStatClick = ({ item, index, type }) => {
+  console.log('点击了统计项：', { item, index, type })
+
+  // 更新选中状态
+  selectedMessageType.value = type
+
+  // 根据选中的消息状态重新获取Tab统计数据
+  fetchTabStatistics(type)
+
+  // 触发表格重新查询，会自动应用MessageStatus查询条件
+  if (gridRef && gridRef.search) {
+    gridRef.search()
+  }
+}
+
+// Tab点击事件
+const handleTabClick = async (tab) => {
+  console.log('切换到tab：', tab.props?.name)
+  activeTab.value = tab.props?.name || 'ALL'
+
+  // 切换tab时触发搜索，会自动应用BusinessType查询条件
+  if (gridRef && gridRef.search) {
+    gridRef.search()
+  }
+}
+
+// 回复消息
+const replyMessage = (row) => {
+  currentMessage.value = {
+    id: row.UrgentOrderID
+  }
+  replyDialogVisible.value = true
+}
+
+// 处理回复提交
+const handleReplySubmit = async (formData) => {
+  try {
+    // 处理回复提交逻辑
+    console.log('回复提交:', formData)
+
+    // 构造API请求数据 - 按照接口文档格式
+    const requestData = {
+      urgentOrderID: formData.urgentOrderID,
+      replyContent: formData.replyContent || null,
+      replyProgress: formData.replyProgress || null,
+      replyDeliveryDate: formData.replyDeliveryDate || null,
+      remarks: formData.remarks || null
     }
 
-    // 打开留言板
-    const openMessageBoard = (row) => {
-        console.log('打开留言板:', row)
-        // 传入业务类型和业务键值
-        messageBoardRef.value?.open(row.BusinessType, row.BusinessKey)
-    }
+    // 调用催单回复API - 使用新的AddReply接口
+    const response = await http.post('/api/OCP_UrgentOrderReply/AddReply', requestData)
 
-    //监听表单输入，做实时计算
-    //watch(() => editFormFields.字段,(newValue, oldValue) => {	})
-    //对外暴露数据
-    defineExpose({})
+    if (response && response.status) {
+      ElMessage.success(response.message || '回复提交成功')
+
+      // 刷新表格数据
+      if (gridRef && gridRef.search) {
+        gridRef.search()
+      }
+
+      // 刷新统计数据
+      await fetchCardStatistics()
+      await fetchTabStatistics()
+    } else {
+      throw new Error(response?.message || '提交失败')
+    }
+  } catch (error) {
+    console.error('回复提交失败:', error)
+    ElMessage.error(error.message || '回复提交失败，请重试')
+  }
+}
+
+// 打开留言板
+const openMessageBoard = (row) => {
+  console.log('打开留言板:', row)
+  // 传入业务类型和业务键值
+  messageBoardRef.value?.open(row.BusinessType, row.BusinessKey)
+}
+
+//监听表单输入，做实时计算
+//watch(() => editFormFields.字段,(newValue, oldValue) => {	})
+//对外暴露数据
+defineExpose({})
 </script>
 
 <style scoped>
 .urgent-order-page {
-    padding: 20px;
-    margin: 0 auto;
-    height: calc(100vh - 94px);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  padding: 20px;
+  margin: 0 auto;
+  height: calc(100vh - 94px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-
-
 .stats-section {
-    margin-bottom: 10px;
-    flex-shrink: 0;
+  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .section-title {
-    color: var(--el-text-color-primary);
-    font-size: 18px;
-    font-weight: 500;
-    margin: 0;
-    padding-left: 8px;
-    border-left: 4px solid var(--el-color-primary);
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+  padding-left: 8px;
+  border-left: 4px solid var(--el-color-primary);
 }
 
 .message-section {
-    overflow: hidden;
-    height: calc(100% - 200px);
+  overflow: hidden;
+  height: calc(100% - 200px);
 }
 
 .tabs-header {
-    flex-shrink: 0;
-    padding: 10px 15px 0 15px;
+  flex-shrink: 0;
+  padding: 10px 15px 0 15px;
 }
 
 .custom-tabs-label {
-    display: flex;
-    position: relative;
-    align-items: center;
+  display: flex;
+  position: relative;
+  align-items: center;
 }
 
 .custom-tabs-label i {
-    margin-right: 3px;
+  margin-right: 3px;
 }
 
 .custom-tabs-label .item-qty {
-    position: absolute;
-    background: #f21f0f;
-    color: #fff;
-    height: 18px;
-    width: 18px;
-    border-radius: 50%;
-    font-size: 10px;
-    line-height: 20px;
-    text-align: center;
-    right: -19px;
-    top: -6px;
+  position: absolute;
+  background: #f21f0f;
+  color: #fff;
+  height: 18px;
+  width: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 20px;
+  text-align: center;
+  right: -19px;
+  top: -6px;
 }
 
 .table-section {
-    height: calc(100% - 65px);
-    overflow: hidden;
+  height: calc(100% - 65px);
+  overflow: hidden;
 }
 </style>
 
 <style>
 :deep(.el-tabs__content) {
-    display: none;
+  display: none;
 }
 
 .tabs-header :deep(.el-tabs__nav-wrap:after),
 .tabs-header :deep(.el-tabs__active-bar) {
-    height: 1px;
+  height: 1px;
 }
 
 .tabs-header :deep(.el-tabs__header) {
-    margin: 0px;
+  margin: 0px;
 }
 
 /* 当作为组件使用时的高度覆盖 */
 .message-center-page .urgent-order-page {
-    height: calc(100vh - 150px) !important;
+  height: calc(100vh - 150px) !important;
+}
+
+/* 失败详情弹窗样式优化 */
+:deep(.failed-details-dialog) {
+  width: 600px !important;
+}
+
+:deep(.failed-details-dialog .el-message-box__content) {
+  padding: 20px !important;
+}
+
+:deep(.failed-details-dialog .el-message-box__message) {
+  margin: 0 !important;
 }
 </style>

@@ -36,7 +36,7 @@ let dataType = [
   { key: 'rate', value: '评分' }
 ]
 
-let searchDataType = [
+const searchDataType = [
   { key: '=', value: '等于' },
   { key: '!=', value: '不等于' },
   { key: 'like', value: '模糊查询(包含)' },
@@ -51,8 +51,8 @@ let searchDataType = [
   { key: 'datetime', value: 'datetime(年月日时分秒)' },
   { key: 'month', value: 'year_month' },
   { key: 'time', value: 'time' },
-  { key: 'cascader', value: '级联' }, 
-  { key: 'treeSelect', value: '树形级联tree-select' }, 
+  { key: 'cascader', value: '级联' },
+  { key: 'treeSelect', value: '树形级联tree-select' },
   { key: 'selectTable', value: '下拉框Table搜索' },
   { key: 'checkbox', value: 'checkbox' },
   { key: 'radio', value: 'radio' },
@@ -60,7 +60,9 @@ let searchDataType = [
   { key: 'mail', value: 'mail' },
   { key: 'number', value: 'number' },
   { key: 'decimal', value: 'decimal' },
-  { key: 'multipleInput', value: '批量查询' }
+  { key: 'multipleInput', value: '批量查询' },
+  { key: 'EMPTY', value: '空' },
+  { key: 'NOT_EMPTY', value: '非空' }
   // { key: 'phone', value: 'phone' }
 ]
 

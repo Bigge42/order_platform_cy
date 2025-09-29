@@ -1,11 +1,6 @@
 <template>
   <div style="padding: 0 10px">
-    <el-tabs
-      @tab-click="tabClick"
-      v-if="currentGroup"
-      v-model="currentGroup"
-      class="form-tabs"
-    >
+    <el-tabs @tab-click="tabClick" v-if="currentGroup" v-model="currentGroup" class="form-tabs">
       <el-tab-pane v-for="(group, index) in tabsGroup" :key="index" :name="group">
         <template #label>
           <span class="custom-tabs-label">
@@ -27,10 +22,9 @@
     :label-position="labelPosition || $global.labelPosition"
     :rules="rules"
     :class="[
-      (labelPosition == 'left' || $global.labelPosition == 'left') &&
-      labelPosition != 'top'
+      (labelPosition == 'left' || $global.labelPosition == 'left') && labelPosition != 'top'
         ? 'form-normal'
-        : 'form-lang',
+        : 'form-lang'
     ]"
   >
     <template v-for="(row, findex) in formRules" :key="findex">
@@ -45,27 +39,47 @@
           style="float: left; margin-right: 0; padding: 0 10px; margin-bottom: 10px"
         >
           <template #label>
-            <form-expand
-              v-if="item.labelRender"
-              :render="item.labelRender"
-              :par="12"
-            ></form-expand>
+            <form-expand v-if="item.labelRender" :render="item.labelRender" :par="12"></form-expand>
             <span v-else :style="item.labelStyle">
               {{
                 $ts(item.title) +
-                ((labelPosition == "left" || $global.labelPosition == "left") &&
-                item.title
-                  ? ":"
-                  : "")
+                ((labelPosition == 'left' || $global.labelPosition == 'left') && item.title
+                  ? ':'
+                  : '')
               }}
             </span>
+
+            <!-- 比较符号计集 -->
+            <el-dropdown size="small" v-if="isFilterForm && item?.comparationList?.length > 0">
+              <el-tag type="info">
+                {{ findSearchDataTypeValue(item.type)
+                }}<i class="el-icon-arrow-down el-icon--right"></i>
+              </el-tag>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="(item2, index) in item.comparationList"
+                    :key="item.filed + '_' + index"
+                  >
+                    <div
+                      @click="comparationItemClick(item, item2)"
+                      style="display: inline-block; width: 100%"
+                    >
+                      {{ item2.value }}
+                    </div>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
+
           <!-- render -->
           <form-expand
             v-if="item.render && typeof item.render == 'function'"
             :render="item.render"
             :par="12"
           ></form-expand>
+
           <!-- 2021.10.17增加表单实时方法计算 -->
           <div v-else-if="item.readonly && typeof formFields[item.field] == 'function'">
             {{ formFields[item.field]() }}
@@ -96,14 +110,7 @@
               :key="fileIndex"
             >
               <a
-                @click="
-                  dowloadFile(
-                    formFields[item.field][fileIndex],
-                    access_token,
-                    $store,
-                    http
-                  )
-                "
+                @click="dowloadFile(formFields[item.field][fileIndex], access_token, $store, http)"
                 >{{ file.name }}</a
               >
             </div>
@@ -135,7 +142,7 @@
               :props="{ label: 'label' }"
               @change="
                 (val) => {
-                  item.onChange && item.onChange(val, item.data);
+                  item.onChange && item.onChange(val, item.data)
                 }
               "
             >
@@ -156,7 +163,7 @@
                 :options="item.data"
                 @change="
                   (val) => {
-                    item.onChange && item.onChange(val, item.data);
+                    item.onChange && item.onChange(val, item.data)
                   }
                 "
                 clearable
@@ -180,7 +187,7 @@
                 clearable
                 :remote-method="
                   (val) => {
-                    remoteSearch(item, formFields, val);
+                    remoteSearch(item, formFields, val)
                   }
                 "
               >
@@ -207,13 +214,13 @@
                 :filter-method="item.filterMethod"
                 @change="
                   (val) => {
-                    itemChange(item, val, false);
+                    itemChange(item, val, false)
                   }
                 "
                 clearable
                 @clear="
                   () => {
-                    itemChange(item, null, true);
+                    itemChange(item, null, true)
                   }
                 "
               >
@@ -333,8 +340,7 @@
               class="v-date-range"
               style="display: flex"
               v-else-if="
-                ['date', 'datetime', 'month', 'year'].indexOf(item.type) != -1 &&
-                item.range
+                ['date', 'datetime', 'month', 'year'].indexOf(item.type) != -1 && item.range
               "
             >
               <el-date-picker
@@ -350,7 +356,7 @@
                 :end-placeholder="$ts('结束时间')"
                 @change="
                   (val) => {
-                    dateRangeChange(val, item);
+                    dateRangeChange(val, item)
                   }
                 "
                 :value-format="getDateFormat(item)"
@@ -449,7 +455,7 @@
               :imgOption="item.imgOption"
               :on-change="
                 (files) => {
-                  return fileOnChange(files, item);
+                  return fileOnChange(files, item)
                 }
               "
               :file-click="item.fileClick"
@@ -466,7 +472,7 @@
               v-else-if="item.type == 'cascader'"
               :options="item.data"
               :props="{
-                checkStrictly: item.changeOnSelect || item.checkStrictly,
+                checkStrictly: item.changeOnSelect || item.checkStrictly
               }"
               @change="item.onChange"
             >
@@ -475,7 +481,7 @@
               v-else-if="item.type == 'rate'"
               @change="
                 (val) => {
-                  item.onChange && item.onChange(val);
+                  item.onChange && item.onChange(val)
                 }
               "
               :max="item.max"
@@ -509,7 +515,7 @@
                   '#90ee90',
                   '#00ced1',
                   '#1e90ff',
-                  '#c71585',
+                  '#c71585'
                 ]"
                 v-model="formFields[item.field]"
               />
@@ -525,12 +531,12 @@
               type="textarea"
               :autosize="{
                 minRows: item.minRows || 2,
-                maxRows: item.maxRows || 10,
+                maxRows: item.maxRows || 10
               }"
               :placeholder="$ts(item.placeholder || item.title)"
               @keypress="
                 ($event) => {
-                  onKeyPress($event, item);
+                  onKeyPress($event, item)
                 }
               "
               @change="item.onKeyPress"
@@ -552,7 +558,7 @@
               controls-position="right"
               @keypress="
                 ($event) => {
-                  onKeyPress($event, item);
+                  onKeyPress($event, item)
                 }
               "
               @change="item.onKeyPress"
@@ -560,7 +566,7 @@
               @focus="item.focus"
               @keyup.delete="
                 ($event) => {
-                  item.onKeyPress && item.onKeyPress($event, item);
+                  item.onKeyPress && item.onKeyPress($event, item)
                 }
               "
             />
@@ -575,6 +581,18 @@
               v-show="!item.hidden"
               :placeholder="$ts(item.placeholder || item.title)"
             />
+
+            <!-- 自定义批量搜索组件，录入包含英文逗号或回车的内容 -->
+            <hd-multiple-input
+              v-else-if="item.type == 'multipleInput'"
+              :size="size"
+              v-model="formFields[item.field]"
+              :value="formFields[item.field]"
+              :disabled="item.readonly || item.disabled"
+              v-show="!item.hidden"
+              :placeholder="$ts(item.placeholder || item.title)"
+            ></hd-multiple-input>
+
             <!-- 2021.11.18修复el-input没有默认enter事件时回车异常 -->
             <el-input
               :size="size"
@@ -588,7 +606,7 @@
               v-model="formFields[item.field]"
               @keypress="
                 ($event) => {
-                  onKeyPress($event, item);
+                  onKeyPress($event, item)
                 }
               "
               @keyup.delete.native="item.onKeyPress"
@@ -597,6 +615,7 @@
               @blur="item.blur"
               @focus="item.focus"
             ></el-input>
+
             <el-input
               :size="size"
               clearable
@@ -612,10 +631,7 @@
             ></el-input>
 
             <div class="form-extra" v-if="item.extra">
-              <form-expand
-                v-if="item.extra.render"
-                :render="item.extra.render"
-              ></form-expand>
+              <form-expand v-if="item.extra.render" :render="item.extra.render"></form-expand>
               <a
                 v-else-if="item.extra.click"
                 :style="item.extra.style"
@@ -651,23 +667,23 @@ import {
   //
   //
   //
-  computed,
-} from "vue";
+  computed
+} from 'vue'
 
-import FormExpand from "./VolForm/VolFormRender";
-import VolUpload from "@/components/basic/VolUpload.vue";
-const VolWangEditor = defineAsyncComponent(() =>
-  import("@/components/editor/VolWangEditor.vue")
-);
+import FormExpand from './VolForm/VolFormRender'
+import VolUpload from '@/components/basic/VolUpload.vue'
+import HdMultipleInput from '@/components/basic/HdMultipleInput/index.vue'
 
-import formProps from "./VolForm/VolFormProps.js";
-import getItemRule from "./VolForm/VolFormItemRule.js";
+const VolWangEditor = defineAsyncComponent(() => import('@/components/editor/VolWangEditor.vue'))
+
+import formProps from './VolForm/VolFormProps.js'
+import getItemRule from './VolForm/VolFormItemRule.js'
 import {
   getDateFormat,
   getShortcuts,
   getDateOptions,
-  dateRangeChange,
-} from "./VolForm/VolFormDate.js";
+  dateRangeChange
+} from './VolForm/VolFormDate.js'
 import {
   initDefaultParams,
   getColWidth,
@@ -677,70 +693,63 @@ import {
   getText,
   previewImg,
   dowloadFile,
-  getSrc,
-} from "./VolForm/VolFormProvider.js";
+  getSrc
+} from './VolForm/VolFormProvider.js'
 
-const emit = defineEmits(["dicInited", "tabClick"]);
+const emit = defineEmits(['dicInited', 'tabClick'])
 
-const props = defineProps(formProps());
-const { proxy } = getCurrentInstance();
+const props = defineProps(formProps())
+const { proxy } = getCurrentInstance()
 
-const volform = ref(null);
+const volform = ref(null)
 
 // const remoteCall = ref(true)
 // const span = ref(1)
-const rangeFields = reactive([]);
-const numberFields = reactive([]);
-const tabsGroup = reactive([]);
-const currentGroup = ref();
+const rangeFields = reactive([])
+const numberFields = reactive([])
+const tabsGroup = reactive([])
+const currentGroup = ref()
 
-let defaultImg = new URL("@/assets/imgs/error-img.png", import.meta.url).href;
-let access_token = "";
+let defaultImg = new URL('@/assets/imgs/error-img.png', import.meta.url).href
+let access_token = ''
 //生成文件访问token
-const tk = (proxy.$store.getters.getUserInfo() || { accessToken: "" }).accessToken;
+const tk = (proxy.$store.getters.getUserInfo() || { accessToken: '' }).accessToken
 if (tk) {
-  access_token = "?access_token=" + tk;
+  access_token = '?access_token=' + tk
 }
 
 //默认配置
-initDefaultParams(
-  props.formRules,
-  props.formFields,
-  tabsGroup,
-  numberFields,
-  rangeFields,
-  true
-);
+initDefaultParams(props.formRules, props.formFields, tabsGroup, numberFields, rangeFields, true)
 
 const changeGroup = () => {
   props.formRules.forEach((x) => {
     x.forEach((ops) => {
       if (ops.group) {
-        ops.hidden = ops.group != currentGroup.value;
+        ops.hidden = ops.group != currentGroup.value
       }
-    });
-  });
+    })
+  })
 
-  emit("tabClick", currentGroup.value);
-};
+  emit('tabClick', currentGroup.value)
+}
 const tabClick = (params) => {
-  currentGroup.value = tabsGroup[params.index * 1];
-  changeGroup();
-};
+  currentGroup.value = tabsGroup[params.index * 1]
+  changeGroup()
+}
 const setTab = (name) => {
-  currentGroup.value = name;
-  changeGroup();
-};
+  currentGroup.value = name
+  changeGroup()
+}
 
 if (tabsGroup.length) {
-  currentGroup.value = tabsGroup[0];
-  changeGroup();
+  currentGroup.value = tabsGroup[0]
+  changeGroup()
 }
 
 //初始化字典
 const initSource = (resetData = true) => {
   if (!props.loadKey && !resetData) {
-    return;
+    return
   }
   initDataSource(
     props.formRules,
@@ -749,103 +758,161 @@ const initSource = (resetData = true) => {
     props.select2Count,
     resetData,
     (dicData) => {
-      emit("dicInited", dicData);
+      emit('dicInited', dicData)
     }
-  );
-};
-initSource(false);
+  )
+}
+initSource(false)
 
-let isFirstCheck = true;
+let isFirstCheck = true
 const rules = computed(() => {
-  let ruleResult = {};
+  let ruleResult = {}
   props.formRules.forEach((option, xIndex) => {
     option.forEach((item) => {
-      ruleResult[item.field] = [getItemRule(item, props.formFields, proxy.$ts)];
-    });
-  });
+      ruleResult[item.field] = [getItemRule(item, props.formFields, proxy.$ts)]
+    })
+  })
   if (!isFirstCheck && volform.value) {
     setTimeout(() => {
-      volform.value.clearValidate();
-    }, 50);
+      volform.value.clearValidate()
+    }, 50)
   } else {
-    isFirstCheck = false;
+    isFirstCheck = false
   }
-  return ruleResult;
-});
+  return ruleResult
+})
 
 const handleImageError = ($e) => {
-  $e.target.src = defaultImg;
-};
+  $e.target.src = defaultImg
+}
 const fileOnChange = (files, item) => {
-  volform.value.clearValidate(item.field);
+  volform.value.clearValidate(item.field)
   if (item.onChange) {
-    return item.onChange(files);
+    return item.onChange(files)
   }
-  return true;
-};
+  return true
+}
 
 const onKeyPress = ($event, item) => {
   if ($event.keyCode == 13) {
-    return;
+    return
   }
-  item.onKeypress && item.onKeypress($event);
-  item.onKeyPress && item.onKeyPress($event);
-};
+  item.onKeypress && item.onKeypress($event)
+  item.onKeyPress && item.onKeyPress($event)
+}
 
 const itemChange = (item, value, isClear) => {
   if (isClear) {
-    props.formFields[item.field] = item.type == "select" ? null : [];
+    props.formFields[item.field] = item.type == 'select' ? null : []
   }
-  item.onChange && item.onChange(value, item.data, isClear);
-};
+  item.onChange && item.onChange(value, item.data, isClear)
+}
 
 const validate = async (callback) => {
-  let result = true;
+  let result = true
   await volform.value.validate((valid) => {
     if (!valid) {
-      proxy.$message.error(proxy.$ts("数据验证未通过!"));
-      result = false;
-      return;
+      proxy.$message.error(proxy.$ts('数据验证未通过!'))
+      result = false
+      return
     }
-    if (typeof callback === "function") {
+    if (typeof callback === 'function') {
       try {
-        callback(valid);
+        callback(valid)
       } catch (error) {
-        let msg = `表单验证回调方法异常：${error.message}`;
-        proxy.$message.error(msg);
-        console.log(msg);
+        let msg = `表单验证回调方法异常：${error.message}`
+        proxy.$message.error(msg)
+        console.log(msg)
       }
     }
-  });
-  return result;
-};
+  })
+  return result
+}
 //重置表单
 const reset = (sourceObj) => {
   // 重置表单时，禁用远程查询
-  volform.value.resetFields();
+  volform.value.resetFields()
   if (rangeFields.length) {
     rangeFields.forEach((key) => {
-      props.formFields[key].splice(0);
-      props.formFields[key] = [null, null];
-    });
+      props.formFields[key].splice(0)
+      props.formFields[key] = [null, null]
+    })
   }
-  if (!sourceObj) return;
+  if (!sourceObj) return
   for (const key in props.formFields) {
     if (!sourceObj.hasOwnProperty(key)) {
-      continue;
+      continue
     }
-    props.formFields[key] = sourceObj[key];
+    props.formFields[key] = sourceObj[key]
     if (numberFields.indexOf(key) != -1) {
-      let newVal = sourceObj[key];
-      if ((newVal && newVal !== "0") || newVal + "" === "0") {
-        newVal = newVal * 1.0 || 0;
+      let newVal = sourceObj[key]
+      if ((newVal && newVal !== '0') || newVal + '' === '0') {
+        newVal = newVal * 1.0 || 0
       } else {
-        newVal = null;
+        newVal = null
       }
-      props.formFields[key] = newVal;
+      props.formFields[key] = newVal
     }
   }
-};
+}
+
+const getExtComparation = (item) => {
+  let comparationList = [
+    { key: 'EMPTY', value: '空' },
+    { key: 'NOT_EMPTY', value: '非空' }
+  ]
+  let defaultKey = item.type
+  let defaultValue = findSearchDataTypeValue(item.type)
+  comparationList.unshift({ key: defaultKey, value: defaultValue })
+  // console.log(comparationList);
+  item['comparationList'] = comparationList
+  // return comparationList;
+}
+
+const findSearchDataTypeValue = (key) => {
+  return searchDataType.find((d) => d.key == key)?.value
+}
+
+const comparationItemClick = (dataItem, compareItem) => {
+  dataItem.type = compareItem.key
+  if (['EMPTY', 'NOT_EMPTY'].includes(compareItem.key)) {
+    dataItem.readonly = true
+    props.formFields[dataItem.field] = compareItem.key
+  } else {
+    dataItem.readonly = false
+    props.formFields[dataItem.field] = null
+  }
+}
+
+const searchDataType = [
+  { key: '=', value: '等于' },
+  { key: '!=', value: '不等于' },
+  { key: 'like', value: '模糊查询(包含)' },
+  { key: 'likeStart', value: '模糊查询(左包含)' },
+  { key: 'likeEnd', value: '模糊查询(右包含)' },
+  { key: 'textarea', value: 'textarea' },
+  { key: 'switch', value: 'switch' },
+  { key: 'select', value: 'select' },
+  { key: 'selectList', value: 'select多选' },
+  { key: 'year', value: '年' },
+  { key: 'date', value: 'date(年月日)' },
+  { key: 'datetime', value: 'datetime(年月日时分秒)' },
+  { key: 'month', value: 'year_month' },
+  { key: 'time', value: 'time' },
+  { key: 'cascader', value: '级联' },
+  { key: 'treeSelect', value: '树形级联tree-select' },
+  { key: 'selectTable', value: '下拉框Table搜索' },
+  { key: 'checkbox', value: 'checkbox' },
+  { key: 'radio', value: 'radio' },
+  { key: 'range', value: '区间查询' },
+  { key: 'mail', value: 'mail' },
+  { key: 'number', value: 'number' },
+  { key: 'decimal', value: 'decimal' },
+  { key: 'multipleInput', value: '批量查询' },
+  { key: 'EMPTY', value: '空' },
+  { key: 'NOT_EMPTY', value: '非空' }
+  // { key: 'phone', value: 'phone' }
+]
 
 defineExpose({
   initSource,
@@ -853,8 +920,9 @@ defineExpose({
   reset,
   currentGroup,
   setTab,
-});
+  searchDataType
+})
 </script>
 <style lang="less" scoped>
-@import "./VolForm/VolForm.less";
+@import './VolForm/VolForm.less';
 </style>

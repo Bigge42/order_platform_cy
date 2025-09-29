@@ -13,17 +13,19 @@
         <div class="left-panel">
           <div class="panel-header">
             <h4>部门</h4>
-            <el-input
-              v-model="orgSearchText"
-              placeholder="搜索部门"
-              size="small"
-              clearable
-              class="search-input"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
+            <div class="input-container">
+              <el-input
+                v-model="orgSearchText"
+                placeholder="搜索部门"
+                size="small"
+                clearable
+                class="search-input"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </div>
           </div>
           <div class="tree-container">
             <div v-if="orgLoading" class="loading-container">
@@ -62,17 +64,19 @@
         <div class="middle-panel">
           <div class="panel-header">
             <h4>人员</h4>
-            <el-input
-              v-model="personSearchText"
-              placeholder="搜索人员"
-              size="small"
-              clearable
-              class="search-input"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
+            <div class="input-container">
+              <el-input
+                v-model="personSearchText"
+                placeholder="搜索人员"
+                size="small"
+                clearable
+                class="search-input"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </div>
           </div>
           <div class="person-list-container">
             <div v-if="personLoading" class="loading-container">
@@ -113,23 +117,39 @@
         <!-- 右侧已选人员区域 -->
         <div class="right-panel">
           <div class="panel-header">
-            <h4>已选择人员</h4>
+            <h4>已选择人员 ({{ selectedPersons.length }})</h4>
+            <el-button
+              v-if="selectedPersons.length > 0"
+              type="danger"
+              link
+              size="small"
+              @click="clearSelection"
+              class="clear-all-btn"
+            >
+              清空全部
+            </el-button>
           </div>
           <div class="selected-person-list">
-            <div v-if="selectedPerson" class="selected-person-item">
+            <div v-for="person in selectedPersons" :key="person.id" class="selected-person-item">
               <div class="person-avatar">
-                <el-icon :style="{ color: selectedPerson.avatarColor, fontSize: '16px' }">
+                <el-icon :style="{ color: person.avatarColor, fontSize: '16px' }">
                   <Avatar />
                 </el-icon>
               </div>
               <div class="person-detail">
-                <span class="person-name">{{ selectedPerson.name }}</span>
+                <span class="person-name">{{ person.name }}</span>
               </div>
-              <el-button type="danger" link size="small" @click="clearSelection" class="remove-btn">
+              <el-button
+                type="danger"
+                link
+                size="small"
+                @click="removePerson(person)"
+                class="remove-btn"
+              >
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
-            <div v-else class="empty-selection">
+            <div v-if="selectedPersons.length === 0" class="empty-selection">
               <el-icon><User /></el-icon>
               <span>暂未选择人员</span>
             </div>
@@ -171,7 +191,11 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
-  selectedPersonId: {
+  selectedPersonIds: {
+    type: String,
+    default: ''
+  },
+  selectedPersonNames: {
     type: String,
     default: ''
   }
@@ -205,7 +229,7 @@ const orgList = ref([])
 const personList = ref([])
 
 // 已选择的人员数据（独立维护，不受切换部门影响）
-const selectedPersonData = ref(null)
+const selectedPersonData = ref([])
 
 // 头像颜色池
 const avatarColors = [
@@ -239,7 +263,7 @@ const filteredPersons = computed(() => {
   return persons
 })
 
-const selectedPerson = computed(() => {
+const selectedPersons = computed(() => {
   return selectedPersonData.value
 })
 
@@ -374,8 +398,9 @@ const fetchPersonsByDepartment = async (departmentId) => {
 
       if (Array.isArray(users)) {
         // 处理人员数据，添加头像颜色和选中状态
+        const selectedIds = selectedPersonId.value ? selectedPersonId.value.split(',') : []
         personList.value = users.map((user, index) => {
-          const isSelected = user.userName === selectedPersonId.value
+          const isSelected = selectedIds.includes(user.userName)
           const personData = {
             id: user.userName, // 使用userName作为唯一标识
             name: user.userTrueName, // 显示格式：只显示userTrueName
@@ -387,11 +412,6 @@ const fetchPersonsByDepartment = async (departmentId) => {
             deptId: departmentId, // 使用传入的部门ID
             avatarColor: avatarColors[index % avatarColors.length],
             selected: isSelected // 对比已选中的数据来设置选中状态
-          }
-
-          // 如果这个人员是已选中的，更新selectedPersonData
-          if (isSelected) {
-            selectedPersonData.value = { ...personData }
           }
 
           return personData
@@ -439,13 +459,25 @@ const handleNodeClick = async (data) => {
 }
 
 const selectPerson = (person) => {
-  // 先清除所有人员的选中状态
-  personList.value.forEach((p) => (p.selected = false))
-  // 设置当前人员为选中状态
-  person.selected = true
-  selectedPersonId.value = person.id
-  // 保存已选择的人员数据
-  selectedPersonData.value = { ...person }
+  // 切换人员的选中状态
+  person.selected = !person.selected
+
+  if (person.selected) {
+    // 添加到已选择列表
+    const existingIndex = selectedPersonData.value.findIndex((p) => p.id === person.id)
+    if (existingIndex === -1) {
+      selectedPersonData.value.push({ ...person })
+    }
+  } else {
+    // 从已选择列表中移除
+    const index = selectedPersonData.value.findIndex((p) => p.id === person.id)
+    if (index > -1) {
+      selectedPersonData.value.splice(index, 1)
+    }
+  }
+
+  // 更新selectedPersonId为逗号分隔的字符串
+  selectedPersonId.value = selectedPersonData.value.map((p) => p.id).join(',')
 }
 
 const clearSelection = () => {
@@ -453,7 +485,24 @@ const clearSelection = () => {
   personList.value.forEach((p) => (p.selected = false))
   selectedPersonId.value = ''
   // 清除已选择的人员数据
-  selectedPersonData.value = null
+  selectedPersonData.value = []
+}
+
+const removePerson = (person) => {
+  // 从已选择列表中移除指定人员
+  const index = selectedPersonData.value.findIndex((p) => p.id === person.id)
+  if (index > -1) {
+    selectedPersonData.value.splice(index, 1)
+  }
+
+  // 更新人员列表中的选中状态
+  const personInList = personList.value.find((p) => p.id === person.id)
+  if (personInList) {
+    personInList.selected = false
+  }
+
+  // 更新selectedPersonId
+  selectedPersonId.value = selectedPersonData.value.map((p) => p.id).join(',')
 }
 
 const handleClose = (value) => {
@@ -468,18 +517,14 @@ const handleCancel = () => {
 }
 
 const handleConfirm = () => {
-  const selectedData = selectedPerson.value
-    ? {
-        id: selectedPerson.value.id, // userName
-        name: selectedPerson.value.name, // userTrueName
-        userName: selectedPerson.value.userName,
-        userTrueName: selectedPerson.value.userTrueName,
-        phoneNo: selectedPerson.value.phoneNo,
-        email: selectedPerson.value.email,
-        userId: selectedPerson.value.userId,
-        deptId: selectedPerson.value.deptId
-      }
-    : null
+  const selectedData =
+    selectedPersons.value.length > 0
+      ? {
+          ids: selectedPersons.value.map((p) => p.id).join(','), // 逗号分隔的userName
+          names: selectedPersons.value.map((p) => p.name).join(','), // 逗号分隔的userTrueName
+          persons: selectedPersons.value // 完整的人员数据数组
+        }
+      : null
 
   emit('confirm', selectedData)
   visible.value = false
@@ -498,24 +543,62 @@ watch(
   () => props.modelValue,
   (newVal) => {
     visible.value = newVal
+
+    // 当弹窗打开时，如果有选中的人员ID和姓名，立即显示历史选中的人员
+    if (newVal && props.selectedPersonIds && props.selectedPersonNames) {
+      const ids = props.selectedPersonIds.split(',').filter((id) => id.trim())
+      const names = props.selectedPersonNames.split(',').filter((name) => name.trim())
+
+      selectedPersonData.value = ids.map((id, index) => {
+        const name = names[index] || id
+        const avatarColorIndex = Math.abs(id.charCodeAt(0)) % avatarColors.length
+        return {
+          id: id.trim(),
+          name: name.trim(),
+          userName: id.trim(),
+          userTrueName: name.trim(),
+          avatarColor: avatarColors[avatarColorIndex],
+          selected: true
+        }
+      })
+    }
   }
 )
 
 watch(
-  () => props.selectedPersonId,
-  (newVal) => {
-    selectedPersonId.value = newVal || ''
-    // 更新人员列表中的选中状态
-    personList.value.forEach((person) => {
-      person.selected = person.id === (newVal || '')
-      // 如果找到匹配的人员，保存到selectedPersonData
-      if (person.selected) {
-        selectedPersonData.value = { ...person }
-      }
-    })
-    // 如果没有选中的人员，清空selectedPersonData
-    if (!newVal) {
-      selectedPersonData.value = null
+  () => [props.selectedPersonIds, props.selectedPersonNames],
+  ([newIds, newNames]) => {
+    selectedPersonId.value = newIds || ''
+
+    // 如果有新的选中人员ID和姓名，立即显示
+    if (newIds && newNames) {
+      const ids = newIds.split(',').filter((id) => id.trim())
+      const names = newNames.split(',').filter((name) => name.trim())
+
+      selectedPersonData.value = ids.map((id, index) => {
+        const name = names[index] || id
+        const avatarColorIndex = Math.abs(id.charCodeAt(0)) % avatarColors.length
+        return {
+          id: id.trim(),
+          name: name.trim(),
+          userName: id.trim(),
+          userTrueName: name.trim(),
+          avatarColor: avatarColors[avatarColorIndex],
+          selected: true
+        }
+      })
+
+      // 更新人员列表中的选中状态（如果人员列表已加载）
+      personList.value.forEach((person) => {
+        person.selected = ids.includes(person.id)
+      })
+    } else {
+      // 如果没有选中的人员，清空selectedPersonData
+      selectedPersonData.value = []
+      // 清除人员列表中的选中状态
+      personList.value.forEach((person) => {
+        person.selected = false
+      })
     }
   },
   { immediate: true }
@@ -566,13 +649,31 @@ onMounted(async () => {
   background-color: #fafbfc;
   border-top-left-radius: 6px;
   border-top-right-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .panel-header h4 {
-  margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+}
+
+.panel-header .input-container {
+  flex: 1;
+  margin-left: 20px;
+}
+
+.clear-all-btn {
+  color: #f56c6c;
+  padding: 0 !important;
+  margin-top: -2px;
+  font-size: 12px;
+}
+
+.clear-all-btn:hover {
+  color: #f78989;
 }
 
 .search-input {

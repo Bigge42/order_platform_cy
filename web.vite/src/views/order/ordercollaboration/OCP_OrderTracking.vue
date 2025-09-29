@@ -473,10 +473,10 @@
             // 构建提交数据，添加必要字段
             const submitData = {
                 ...reminderData,
-                // 行号
-                LineNumber: currentRow.LineNumber || '',
+                // 行号 - 该表没有行号字段，使用空值
+                Seq: '',
                 // 计划跟踪号
-                PlanTraceNo: currentRow.PlanTraceNo || '',
+                PlanTraceNo: currentRow.MtoNo || '',
                 // 单据编号
                 BillNo: currentRow.BillNo || currentRow.OrderNo || '',
                 // 默认负责人姓名 - 取默认负责人的name
@@ -599,10 +599,10 @@
             // 构建提交数据，添加与催单相同的字段
             const submitData = {
                 ...negotiationData,
-                // 行号
-                LineNumber: currentRow.LineNumber || '',
+                // 行号 - 该表没有行号字段，使用空值
+                Seq: '',
                 // 计划跟踪号
-                PlanTraceNo: currentRow.PlanTraceNo || '',
+                PlanTraceNo: currentRow.MtoNo || '',
                 // 单据编号
                 BillNo: currentRow.BillNo || currentRow.OrderNo || '',
                 // 默认负责人姓名 - 取默认负责人的name

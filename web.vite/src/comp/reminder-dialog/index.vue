@@ -26,21 +26,13 @@
                 style="width: 100%"
               />
             </el-form-item>
-            
+
             <el-form-item label="默认负责人" prop="DefaultResPerson">
-              <el-input
-                v-model="formData.DefaultResPerson"
-                placeholder="默认负责人"
-                readonly
-              />
+              <el-input v-model="formData.DefaultResPerson" placeholder="默认负责人" readonly />
             </el-form-item>
-            
+
             <el-form-item label="紧急等级" prop="UrgencyLevel">
-              <el-select
-                v-model="formData.UrgencyLevel"
-                placeholder="请选择紧急等级"
-                clearable
-              >
+              <el-select v-model="formData.UrgencyLevel" placeholder="请选择紧急等级" clearable>
                 <el-option
                   v-for="item in urgentLevelOptions"
                   :key="item.value"
@@ -49,7 +41,7 @@
                 />
               </el-select>
             </el-form-item>
-            
+
             <el-form-item label="指定回复时间" prop="AssignedReplyTime">
               <el-input
                 v-model="formData.AssignedReplyTime"
@@ -60,11 +52,7 @@
                 clearable
               >
                 <template #append>
-                  <el-select 
-                    v-model="formData.TimeUnit" 
-                    placeholder="单位" 
-                    style="width: 80px"
-                  >
+                  <el-select v-model="formData.TimeUnit" placeholder="单位" style="width: 80px">
                     <el-option label="分钟" value="1" />
                     <el-option label="小时" value="2" />
                     <el-option label="天" value="3" />
@@ -72,7 +60,7 @@
                 </template>
               </el-input>
             </el-form-item>
-            
+
             <el-form-item label="指定负责人">
               <div class="assigned-persons-container">
                 <el-tag
@@ -85,24 +73,19 @@
                 >
                   {{ formData.AssignedResPerson.name }}
                 </el-tag>
-                <el-button
-                  size="small"
-                  type="primary"
-                  @click="openPersonSelector"
-                  :icon="User"
-                >
+                <el-button size="small" type="primary" @click="openPersonSelector" :icon="User">
                   {{ formData.AssignedResPerson ? '重新选择' : '选择人员' }}
                 </el-button>
               </div>
             </el-form-item>
-            
+
             <el-form-item label="催单类型" prop="UrgentType">
               <el-radio-group v-model="formData.UrgentType">
                 <el-radio :label="0">催交期</el-radio>
                 <el-radio :label="1">催进度</el-radio>
               </el-radio-group>
             </el-form-item>
-            
+
             <el-form-item label="催单内容" prop="UrgentContent">
               <el-input
                 v-model="formData.UrgentContent"
@@ -116,22 +99,15 @@
           </el-form>
         </div>
       </template>
-      
+
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="handleCancel">
-            取消
-          </el-button>
-          <el-button 
-            type="primary" 
-            @click="handleSend"
-          >
-            发送
-          </el-button>
+          <el-button @click="handleCancel"> 取消 </el-button>
+          <el-button type="primary" @click="handleSend"> 发送 </el-button>
         </div>
       </template>
     </CompDialog>
-    
+
     <!-- 人员选择器 -->
     <PersonSelector
       v-model="personSelectorVisible"
@@ -208,24 +184,24 @@ const loadBusinessTypeOptions = async () => {
     const params = {
       page: 1,
       rows: 30,
-      sort: "OrderNo,CreateDate",
-      order: "desc",
-      wheres: "[]",
+      sort: 'OrderNo,CreateDate',
+      order: 'desc',
+      wheres: '[]',
       value: 109,
       tableName: null,
       isCopyClick: false
     }
-    
+
     const result = await proxy.http.post('api/Sys_Dictionary/getDetailPage', params, false)
-    
+
     if (result && result.rows) {
       businessTypeOptions.value = result.rows
-        .filter(item => item.Enable === 1) // 只显示启用的选项
-        .map(item => ({
+        .filter((item) => item.Enable === 1) // 只显示启用的选项
+        .map((item) => ({
           value: item.DicValue,
           label: item.DicName
         }))
-      
+
       console.log('业务类型选项加载成功:', businessTypeOptions.value)
     } else {
       console.log('业务类型选项加载失败: 无数据返回')
@@ -239,15 +215,18 @@ const loadBusinessTypeOptions = async () => {
 // 根据业务类型key获取对应的label
 const getBusinessTypeLabel = (businessTypeKey) => {
   console.log('getBusinessTypeLabel 调用:', businessTypeKey, businessTypeOptions.value)
-  
+
   if (!businessTypeKey || !businessTypeOptions.value.length) {
-    console.log('getBusinessTypeLabel 返回空:', { businessTypeKey, optionsLength: businessTypeOptions.value.length })
+    console.log('getBusinessTypeLabel 返回空:', {
+      businessTypeKey,
+      optionsLength: businessTypeOptions.value.length
+    })
     return ''
   }
-  
-  const option = businessTypeOptions.value.find(item => item.value === businessTypeKey)
+
+  const option = businessTypeOptions.value.find((item) => item.value === businessTypeKey)
   const result = option ? option.label : businessTypeKey
-  
+
   console.log('getBusinessTypeLabel 结果:', result)
   return result
 }
@@ -261,34 +240,41 @@ const defaultResponsibleInfo = ref({
 // 根据业务类型获取默认负责人
 const loadDefaultResponsible = async (params = {}) => {
   const { businessType, supplierCode = null, materialCode = null } = params
-  
+
   if (!businessType) return
-  
+
   try {
     // 如果BusinessType为PO，调用新接口
     if (businessType === 'PO' || businessType === 'WW') {
       const requestParams = {
         businessType,
-        "businessId": params.TrackID   // 跟踪表的主键ID
+        businessId: params.TrackID // 跟踪表的主键ID
       }
-      
-      const result = await proxy.http.post('api/OCP_PurchaseSupplierMapping/GetSupplierResponsible', requestParams, false)
-      
-        defaultResponsibleInfo.value = {
-          name: result?.data?.responsiblePersonName,
-          loginName: result?.data?.responsiblePersonLoginName
-        }
 
-        formData.value.DefaultResPerson = result?.data?.responsiblePersonName
+      const result = await proxy.http.post(
+        'api/OCP_PurchaseSupplierMapping/GetSupplierResponsible',
+        requestParams,
+        false
+      )
 
+      defaultResponsibleInfo.value = {
+        name: result?.data?.responsiblePersonName,
+        loginName: result?.data?.responsiblePersonLoginName
+      }
+
+      formData.value.DefaultResPerson = result?.data?.responsiblePersonName
     } else if (businessType === 'JS') {
       // 如果BusinessType为JS，调用技术管理接口
       const requestParams = {
         MaterialCode: materialCode || ''
       }
-      
-      const result = await proxy.http.post('api/OCP_TechManagement/GetTechManagerByMaterialCode', requestParams, false)
-      
+
+      const result = await proxy.http.post(
+        'api/OCP_TechManagement/GetTechManagerByMaterialCode',
+        requestParams,
+        false
+      )
+
       if (result && result.status && result.data) {
         formData.value.DefaultResPerson = result.data.ownerUserTrueName
         defaultResponsibleInfo.value = {
@@ -304,14 +290,18 @@ const loadDefaultResponsible = async (params = {}) => {
       const requestParams = {
         page: 1,
         rows: 30,
-        sort: "CreateDate",
-        order: "desc",
+        sort: 'CreateDate',
+        order: 'desc',
         wheres: `[{"name":"BusinessType","value":"${businessType}"}]`,
         resetPage: true
       }
-      
-      const result = await proxy.http.post('api/OCP_BusinessTypeResponsible/getPageData', requestParams, false)
-      
+
+      const result = await proxy.http.post(
+        'api/OCP_BusinessTypeResponsible/getPageData',
+        requestParams,
+        false
+      )
+
       if (result && result.rows && result.rows.length > 0) {
         const row = result.rows[0]
         formData.value.DefaultResPerson = row.DefaultResponsibleName
@@ -333,12 +323,8 @@ const loadDefaultResponsible = async (params = {}) => {
 
 // 表单验证规则
 const formRules = ref({
-  UrgencyLevel: [
-    { required: true, message: '请选择紧急等级', trigger: 'change' }
-  ],
-  UrgentContent: [
-    { required: true, message: '请输入催单内容', trigger: 'blur' }
-  ]
+  UrgencyLevel: [{ required: true, message: '请选择紧急等级', trigger: 'change' }],
+  UrgentContent: [{ required: true, message: '请输入催单内容', trigger: 'blur' }]
 })
 
 // 下拉框选项
@@ -397,7 +383,7 @@ watch(
     if (newVal) {
       // 弹窗打开时加载业务类型数据
       await loadBusinessTypeOptions()
-      
+
       // 加载完成后，如果有业务类型数据，则更新显示标签
       // 默认负责人的获取统一在props.data的watch中处理
       if (formData.value.BusinessType) {
@@ -413,14 +399,11 @@ watch(
 )
 
 // 监听内部visible变化，同步到外部
-watch(
-  visible,
-  (newVal) => {
-    if (newVal !== props.modelValue) {
-      emit('update:modelValue', newVal)
-    }
+watch(visible, (newVal) => {
+  if (newVal !== props.modelValue) {
+    emit('update:modelValue', newVal)
   }
-)
+})
 
 watch(
   () => props.data,
@@ -428,7 +411,7 @@ watch(
     if (newData && Object.keys(newData).length > 0) {
       // 保存原始数据
       originalData.value = { ...newData }
-      
+
       // 填充表单数据
       formData.value = {
         BusinessType: newData.BusinessType || '',
@@ -441,11 +424,11 @@ watch(
         UrgentContent: newData.UrgentContent || '',
         MaterialCode: newData.MaterialCode || props.materialCode || ''
       }
-      
+
       // 延迟设置业务类型显示标签，确保业务类型选项数据已加载
       nextTick(() => {
         const businessTypeValue = newData.BusinessType
-        
+
         if (businessTypeValue && businessTypeOptions.value.length > 0) {
           businessTypeLabel.value = getBusinessTypeLabel(businessTypeValue)
           console.log('业务类型标签设置为:', businessTypeLabel.value)
@@ -482,7 +465,9 @@ const handleClose = () => {
 }
 
 const openPersonSelector = () => {
-  selectedPersonId.value = formData.value.AssignedResPerson ? formData.value.AssignedResPerson.id : ''
+  selectedPersonId.value = formData.value.AssignedResPerson
+    ? formData.value.AssignedResPerson.id
+    : ''
   personSelectorVisible.value = true
 }
 
@@ -508,7 +493,7 @@ const handleSend = async () => {
   } catch (error) {
     return
   }
-  
+
   // 如果没有选择指定负责人，则使用默认负责人的登录名
   const sendData = { ...formData.value }
   if (!sendData.AssignedResPerson) {
@@ -519,7 +504,7 @@ const handleSend = async () => {
       userTrueName: defaultResponsibleInfo.value.name
     }
   }
-  
+
   // 合并原始数据中的额外字段（如currentRowData、mainOrderData等）
   const finalSendData = {
     ...originalData.value,
@@ -527,18 +512,18 @@ const handleSend = async () => {
     // 添加默认负责人的loginName
     DefaultResPersonLoginName: defaultResponsibleInfo.value.loginName || ''
   }
-  
+
   console.log('催单发送数据:', finalSendData)
   console.log('发送数据中的指定负责人:', finalSendData.AssignedResPerson)
   console.log('默认负责人信息:', defaultResponsibleInfo.value)
   console.log('原始数据:', originalData.value)
-  
+
   // 先发送数据给外部
   emit('send', finalSendData)
-  
+
   // 关闭弹窗
   handleClose()
-  
+
   // 延迟重置状态，确保外部已接收到数据
   nextTick(() => {
     resetFormData()
@@ -563,7 +548,7 @@ const resetFormData = () => {
   originalData.value = {}
   businessTypeLabel.value = ''
   defaultResponsibleInfo.value = { name: '', loginName: '' }
-  
+
   // 清除表单验证状态
   nextTick(() => {
     if (formRef.value) {

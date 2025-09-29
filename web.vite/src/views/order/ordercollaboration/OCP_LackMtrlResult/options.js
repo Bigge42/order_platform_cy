@@ -15,7 +15,7 @@ export default function(){
     const tableCNName = table.cnName;
     const newTabEdit = false;
     const key = table.key;
-    const editFormFields = {"SOBillNo":"","MtoNo":"","TopMaterialNumber":"","Urgency":"","TopSpecification":"","ProductCategory":"","MaterialNumber":"","MaterialName":"","Specification":"","ErpClsid":"","NeedQty":"","InventoryQty":"","PlanedQty":"","UnPlanedQty":"","BillNo":"","BillType":"","POQty":"","SupplierName":"","PurchaserName":"","PlanStartDate":"","PlanEndDate":"","CGSQAuditDate":"","WWReleaseDate":"","PickMtrlDate":"","StartDate":"","MOCreateDate":"","FinishDate":"","POCreateDate":"","POAuditDate":"","PlanDeliveryDate":""};
+    const editFormFields = {"SOBillNo":"","MtoNo":"","TopMaterialNumber":"","Urgency":"","TopSpecification":"","ProductCategory":"","MaterialNumber":"","MaterialName":"","Specification":"","ErpClsid":"","NeedQty":"","InventoryQty":"","PlanedQty":"","UnPlanedQty":"","BillNo":"","BillType":"","POQty":"","SupplierName":"","PurchaserName":"","PlanStartDate":"","PlanEndDate":"","CGSQAuditDate":"","WWReleaseDate":"","PickMtrlDate":"","StartDate":"","MOCreateDate":"","FinishDate":"","POCreateDate":"","POAuditDate":"","PlanDeliveryDate":"","F_ORA_DATETIME":"","F_BLN_HFJHRQ":"","F_RLRP_CDRQ":""};
     const editFormOptions = [[{"title":"销售单据号","field":"SOBillNo"},
                                {"title":"计划跟踪号","field":"MtoNo"},
                                {"title":"整机物料编码","field":"TopMaterialNumber"}],
@@ -24,7 +24,9 @@ export default function(){
                               [{"title":"物料编码","field":"MaterialNumber"},
                                {"title":"物料名称","field":"MaterialName"},
                                {"title":"产品型号","field":"ProductCategory"}],
-                              [{"title":"物料属性","field":"ErpClsid"},
+                              [{"dataKey":"物料属性","data":[],"title":"物料属性","field":"ErpClsid","type":"select","comparationList":[{"key":"select","value":"select"},
+                               {"key":"EMPTY","value":"空"},
+                               {"key":"NOT_EMPTY","value":"不空"}]},
                                {"title":"规格型号","field":"Specification"},
                                {"title":"需求数量","field":"NeedQty","type":"decimal","comparationList":[{"key":"decimal","value":"decimal"},
                                {"key":"EMPTY","value":"空"},
@@ -77,9 +79,12 @@ export default function(){
                                {"key":"NOT_EMPTY","value":"不空"}]}],
                               [{"title":"计划交货日期","field":"PlanDeliveryDate","type":"datetime","comparationList":[{"key":"datetime","value":"datetime(年月日时分秒)"},
                                {"key":"EMPTY","value":"空"},
-                               {"key":"NOT_EMPTY","value":"不空"}]}]];
-    const searchFormFields = {"Urgency":"","ProductCategory":"","Specification":"","TopSpecification":"","MaterialNumber":"","MaterialName":"","ErpClsid":"","BillNo":""};
-    const searchFormOptions = [[{"title":"销售合同号","field":"ContractNo","type":"multipleInput"},{"title":"销售单据号","field":"SOBillNo","type":"multipleInput"},{"title":"计划跟踪号","field":"MtoNo","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"整机物料编码","field":"TopMaterialNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"紧急等级","field":"Urgency","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"整机规格型号","field":"TopSpecification","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"物料编码","field":"MaterialNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"物料名称","field":"MaterialName","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"产品型号","field":"ProductCategory","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"物料属性","field":"ErpClsid","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"规格型号","field":"Specification","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"单据编号","field":"BillNo","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}]];
+                               {"key":"NOT_EMPTY","value":"不空"}]}],
+                              [{"title":"客户要货日期","field":"F_ORA_DATETIME"},
+                               {"title":"销售订单回复交货日期","field":"F_BLN_HFJHRQ"},
+                               {"title":"插单日期","field":"F_RLRP_CDRQ"}]];
+    const searchFormFields = {"Urgency":"","ProductCategory":"","Specification":"","TopSpecification":"","MaterialNumber":"","MaterialName":"","ErpClsid":[],"BillNo":""};
+    const searchFormOptions = [[{"title":"销售合同号","field":"ContractNo","type":"multipleInput"},{"title":"销售单据号","field":"SOBillNo","type":"multipleInput"},{"title":"计划跟踪号","field":"MtoNo","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"整机物料编码","field":"TopMaterialNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"紧急等级","field":"Urgency","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"整机规格型号","field":"TopSpecification","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"物料编码","field":"MaterialNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"物料名称","field":"MaterialName","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"产品型号","field":"ProductCategory","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"dataKey":"物料属性","data":[],"title":"物料属性","field":"ErpClsid","type":"selectList","comparationList":[{"key":"selectList","value":"select多选"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"规格型号","field":"Specification","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"单据编号","field":"BillNo","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}]];
     const columns = [{field:'ContractNo',title:'销售合同号',type:'string',sort:true,width:120,align:'left'},
                        {field:'SOBillNo',title:'销售单据号',type:'string',sort:true,width:120,align:'left'},
                        {field:'MtoNo',title:'计划跟踪号',type:'string',sort:true,width:120,align:'left'},
@@ -93,7 +98,7 @@ export default function(){
                        {field:'TopSpecification',title:'整机规格型号',type:'string',sort:true,width:220,align:'left'},
                        {field:'MaterialNumber',title:'物料编码',type:'string',sort:true,width:220,align:'left'},
                        {field:'MaterialName',title:'物料名称',type:'string',sort:true,width:220,align:'left'},
-                       {field:'ErpClsid',title:'物料属性',type:'string',sort:true,width:110,align:'left'},
+                       {field:'ErpClsid',title:'物料属性',type:'string',bind:{ key:'物料属性',data:[]},sort:true,width:110,align:'left'},
                        {field:'MaterialCategory',title:'物料分类',type:'string',width:120,align:'left'},
                        {field:'NeedQty',title:'需求数量',type:'decimal',sort:true,width:110,align:'left'},
                        {field:'InventoryQty',title:'库存数量',type:'decimal',sort:true,width:110,align:'left'},
@@ -115,6 +120,9 @@ export default function(){
                        {field:'POCreateDate',title:'采购订单创建日期',type:'date',sort:true,width:160,align:'left'},
                        {field:'POAuditDate',title:'采购订单审核日期',type:'date',sort:true,width:160,align:'left'},
                        {field:'PlanDeliveryDate',title:'计划交货日期',type:'date',sort:true,width:160,align:'left'},
+                       {field:'F_ORA_DATETIME',title:'客户要货日期',type:'datetime',width:150,align:'left'},
+                       {field:'F_BLN_HFJHRQ',title:'销售订单回复交货日期',type:'datetime',width:150,align:'left'},
+                       {field:'F_RLRP_CDRQ',title:'插单日期',type:'datetime',width:150,align:'left'},
                        {field:'CreateDate',title:'运算时间',type:'datetime',width:150,align:'left'},
                        {field:'Creator',title:'运算人',type:'string',width:100,hidden:true,align:'left'},
                        {field:'ID',title:'主建',type:'long',sort:true,width:80,hidden:true,readonly:true,require:true,align:'left'},
