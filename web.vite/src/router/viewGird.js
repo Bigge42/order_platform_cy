@@ -672,6 +672,10 @@ let viewgird = [
         path: '/OCP_AlertRules',
         name: 'OCP_AlertRules',
         component: () => import('@/views/order/ordercollaboration/OCP_AlertRules.vue')
+    }    ,{
+        path: '/MES_SpecialPrintRequest',
+        name: 'MES_SpecialPrintRequest',
+        component: () => import('@/views/mes/mes/MES_SpecialPrintRequest.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

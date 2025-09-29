@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using HDPro.Core.Controllers.Basic;
+using HDPro.MES.IServices;
 
 namespace HDPro.WebApi.Controllers.SRM
 {
@@ -21,13 +22,16 @@ namespace HDPro.WebApi.Controllers.SRM
     {
         private readonly IOCP_UrgentOrderReplyService _urgentOrderReplyService;
         private readonly IOCP_NegotiationReplyService _negotiationReplyService;
-
+        private readonly IMES_SpecialPrintRequestService _SpecialPrintRequestService;
         public SrmIntegrationController(
             IOCP_UrgentOrderReplyService urgentOrderReplyService,
-            IOCP_NegotiationReplyService negotiationReplyService)
+            IOCP_NegotiationReplyService negotiationReplyService,
+            IMES_SpecialPrintRequestService specialPrintRequestService
+            )
         {
             _urgentOrderReplyService = urgentOrderReplyService;
             _negotiationReplyService = negotiationReplyService;
+            _SpecialPrintRequestService = specialPrintRequestService;
         }
 
         /// <summary>
@@ -323,6 +327,120 @@ namespace HDPro.WebApi.Controllers.SRM
                 timestamp = DateTime.Now
             });
         }
+
+        /// <summary>
+        /// 创建自定义打印资料记录
+        /// 需要在请求头中传入 X-App-Id 和 X-App-Secret
+        /// 需要应用具有 "negotiation:reply" 权限
+        /// </summary>
+        /// <param name="request">协商回复请求</param>
+        /// <returns></returns>
+        [HttpPost("TestGetUDFinfo")]
+        [ThirdPartyApi]
+        public async Task<IActionResult> TestGetUDFinfo([FromBody] TestRequestClass request)
+        {
+            try
+            {
+                // 获取当前第三方应用信息
+                var app = HttpContext.Items["ThirdPartyApp"] as Sys_ThirdPartyApp;
+
+                // 数据验证
+                if (request == null)
+                {
+                    return BadRequest(new { success = false, message = "请求数据不能为空" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.RetrospectCode))
+                {
+                    return BadRequest(new { success = false, message = "产品编码不能为空" });
+                }
+
+                // 创建自定义打印资料实体
+                var requestEntity = new MES_SpecialPrintRequest
+                {
+                    RetrospectCode = request.RetrospectCode,
+                    ProductModel = request.ProductModel,
+                    NominalDiameter = request.NominalDiameter,
+                    NominalPressure = request.NominalPressure,
+                    ValveBodyMaterial = request.ValveBodyMaterial,
+                    ActuatorModel = request.ActuatorModel,
+                    FailPosition = request.FailPosition,
+                    AirSupplyPressure = request.AirSupplyPressure,
+                    OperatingTemperature = request.OperatingTemperature,
+                    RatedStroke = request.RatedStroke,
+                    FlowCharacteristic = request.FlowCharacteristic,
+                    FlowCoefficient = request.FlowCoefficient,
+                    UDF_Key1 = request.UDF_Key1,
+                    UDF_Value1 = request.UDF_Value1,
+                    UDF_Key2 = request.UDF_Key2,
+                    UDF_Value2 = request.UDF_Value2,
+                    UDF_Key3 = request.UDF_Key3,
+                    UDF_Value3 = request.UDF_Value3,
+                    UDF_Key4 = request.UDF_Key4,
+                    UDF_Value4 = request.UDF_Value4,
+                    UDF_Key5 = request.UDF_Key5,
+                    UDF_Value5 = request.UDF_Value5,
+                    UDF_Key6 = request.UDF_Key6,
+                    UDF_Value6 = request.UDF_Value6,
+                    UDF_Key7 = request.UDF_Key7,
+                    UDF_Value7 = request.UDF_Value7,
+                    UDF_Key8 = request.UDF_Key8,
+                    UDF_Value8 = request.UDF_Value8,
+                    UDF_Key9 = request.UDF_Key9,
+                    UDF_Value9 = request.UDF_Value9,
+                    UDF_Key10 = request.UDF_Key10,
+                    UDF_Value10 = request.UDF_Value10,
+                    UDF_Key11 = request.UDF_Key11,
+                    UDF_Value11 = request.UDF_Value11,
+                    UDF_Key12 = request.UDF_Key12,
+                    UDF_Value12 = request.UDF_Value12,
+                    UDF_Key13 = request.UDF_Key13,
+                    UDF_Value13 = request.UDF_Value13,
+                    UDF_Key14 = request.UDF_Key14,
+                    UDF_Value14 = request.UDF_Value14,
+                    UDF_Key15 = request.UDF_Key15,
+                    UDF_Value15 = request.UDF_Value15,
+
+                    CreateDate = DateTime.Now,
+                };
+
+                // 保存到数据库
+                var result = await _SpecialPrintRequestService.AddReplyAsync(requestEntity);
+
+                if (result.Status)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "特殊打印资料创建成功",
+                        data = new
+                        {
+                            RetrospectCode = request.RetrospectCode
+                        },
+                        appName = app?.AppName,
+                        timestamp = DateTime.Now
+                    });
+                }
+                else
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = $"特殊打印资料创建失败：{result.Message}",
+                        timestamp = DateTime.Now
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = $"服务器内部错误：{ex.Message}",
+                    timestamp = DateTime.Now
+                });
+            }
+        }
     }
 
     /// <summary>
@@ -430,4 +548,228 @@ namespace HDPro.WebApi.Controllers.SRM
         [MaxLength(500, ErrorMessage = "备注不能超过500个字符")]
         public string Remarks { get; set; }
     }
+
+
+    /// <summary>
+    /// 创建特殊打印推送请求
+    /// </summary>
+    public class TestRequestClass
+    {
+        /// <summary>
+        /// 产品编码
+        /// </summary>
+        [Required(ErrorMessage ="RetrospectCode字段不能为空")]
+        public string RetrospectCode { get; set; }
+
+        /// <summary>
+        ///产品型号
+        /// </summary>
+        public string ProductModel { get; set; }
+
+        /// <summary>
+        ///公称通径
+        /// </summary>
+        public string NominalDiameter { get; set; }
+
+        /// <summary>
+        ///公称压力
+        /// </summary>
+        public string NominalPressure { get; set; }
+
+        /// <summary>
+        ///阀体材质
+        /// </summary>
+        public string ValveBodyMaterial { get; set; }
+
+        /// <summary>
+        ///执行机构
+        /// </summary>
+        public string ActuatorModel { get; set; }
+
+        /// <summary>
+        ///故障位
+        /// </summary>
+        public string FailPosition { get; set; }
+
+        /// <summary>
+        ///气源压力
+        /// </summary>
+        public string AirSupplyPressure { get; set; }
+
+        /// <summary>
+        ///工作温度
+        /// </summary>
+        public string OperatingTemperature { get; set; }
+
+        /// <summary>
+        ///额定行程
+        /// </summary>
+        public string RatedStroke { get; set; }
+
+        /// <summary>
+        ///流量特性
+        /// </summary>
+        public string FlowCharacteristic { get; set; }
+
+        /// <summary>
+        ///流量系数(CV值)
+        /// </summary>
+        public string FlowCoefficient { get; set; }
+
+        /// <summary>
+        ///自定义字段1
+        /// </summary>
+        public string UDF_Key1 { get; set; }
+
+        /// <summary>
+        ///自定义值1
+        /// </summary>
+        public string UDF_Value1 { get; set; }
+
+        /// <summary>
+        ///自定义字段2
+        public string UDF_Key2 { get; set; }
+
+        /// <summary>
+        ///自定义值2
+        /// </summary>
+        public string UDF_Value2 { get; set; }
+
+        /// <summary>
+        ///自定义字段3
+        /// </summary>
+        public string UDF_Key3 { get; set; }
+
+        /// <summary>
+        ///自定义值3
+        /// </summary>
+        public string UDF_Value3 { get; set; }
+
+        /// <summary>
+        ///自定义字段4
+        /// </summary>
+        public string UDF_Key4 { get; set; }
+
+        /// <summary>
+        ///自定义值4
+        /// </summary>
+        public string UDF_Value4 { get; set; }
+
+        /// <summary>
+        ///自定义字段5
+        /// </summary>
+        public string UDF_Key5 { get; set; }
+
+        /// <summary>
+        ///自定义值5
+        /// </summary>
+        public string UDF_Value5 { get; set; }
+
+        /// <summary>
+        ///自定义字段6
+        /// </summary>
+        public string UDF_Key6 { get; set; }
+
+        /// <summary>
+        ///自定义值6
+        /// </summary>
+        public string UDF_Value6 { get; set; }
+
+        /// <summary>
+        ///自定义字段7
+        /// </summary>
+        public string UDF_Key7 { get; set; }
+
+        /// <summary>
+        ///自定义值7
+        /// </summary>
+        public string UDF_Value7 { get; set; }
+
+        /// <summary>
+        ///自定义字段8
+        /// </summary>
+        public string UDF_Key8 { get; set; }
+
+        /// <summary>
+        ///自定义值8
+        /// </summary>
+        public string UDF_Value8 { get; set; }
+
+        /// <summary>
+        ///自定义字段9
+        /// </summary>
+        public string UDF_Key9 { get; set; }
+
+        /// <summary>
+        ///自定义值9
+        /// </summary>
+        public string UDF_Value9 { get; set; }
+
+        /// <summary>
+        ///自定义字段10
+        /// </summary>
+        public string UDF_Key10 { get; set; }
+
+        /// <summary>
+        ///自定义值10
+        /// </summary>
+        public string UDF_Value10 { get; set; }
+
+        /// <summary>
+        ///自定义字段11
+        /// </summary>
+        public string UDF_Key11 { get; set; }
+
+        /// <summary>
+        ///自定义值11
+        /// </summary>
+        public string UDF_Value11 { get; set; }
+
+        /// <summary>
+        ///自定义字段12
+        /// </summary>
+        public string UDF_Key12 { get; set; }
+
+        /// <summary>
+        ///自定义值12
+        /// </summary>
+        public string UDF_Value12 { get; set; }
+
+        /// <summary>
+        ///自定义字段13
+        /// </summary>
+
+        public string UDF_Key13 { get; set; }
+
+        /// <summary>
+        ///自定义值13
+        /// </summary>
+
+        public string UDF_Value13 { get; set; }
+
+        /// <summary>
+        ///自定义字段14
+        /// </summary>
+
+        public string UDF_Key14 { get; set; }
+
+        /// <summary>
+        ///自定义值14
+        /// </summary>
+        public string UDF_Value14 { get; set; }
+
+        /// <summary>
+        ///自定义字段15
+        /// </summary>
+
+        public string UDF_Key15 { get; set; }
+
+        /// <summary>
+        ///自定义值15
+        /// </summary>
+
+        public string UDF_Value15 { get; set; }
+    }
+
+        
 }
