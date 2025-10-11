@@ -8,7 +8,7 @@ using HDPro.Core.EFDbContext;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.IServices.WZ;
-using HDPro.Entity.DomainModels.OrderCollaboration;
+using HDPro.Entity.DomainModels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
