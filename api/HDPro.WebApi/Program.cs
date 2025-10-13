@@ -48,6 +48,11 @@ var builder = WebApplication.CreateBuilder(args);
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 Console.OutputEncoding = Encoding.UTF8;
 
+
+builder.Services.AddHttpClient("WZ", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10); // 按需调大/调小
+});
 // 配置NLog作为日志提供程序
 builder.Logging.ClearProviders();
 builder.Host.UseNLog();

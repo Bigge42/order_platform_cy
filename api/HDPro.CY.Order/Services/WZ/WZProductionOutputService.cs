@@ -8,9 +8,8 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using HDPro.Core.EFDbContext;
-using HDPro.Core.Extensions.AutofacManager;     // IDependency
+using HDPro.Core.Extensions.AutofacManager; // IDependency
 using HDPro.CY.Order.IServices.WZ;
 using HDPro.Entity.DomainModels.OrderCollaboration;
 
@@ -18,18 +17,25 @@ namespace HDPro.CY.Order.Services.WZ
 {
     /// <summary>
     /// 产线产量（热力图数据）服务实现
-    /// 需求要点：
-    /// 1) 手动刷新：清空缓存表 -> 调 ESB -> 聚合(日×阀体×产线) -> 回写
-    /// 2) 查询：按阀体、产线、日期范围返回每日产量
+    /// 刷新（全量重建）语义说明：
+    /// - 输入参数 startDate/endDate 是“订单修改日期窗口”，用于筛 ESB 接口数据；
+    /// - 数据入库以“排产日期（ProductionDate）× 阀体类别（ValveCategory）× 产线（ProductionLine）”为键进行聚合求和；
+    /// - 不对 ProductionDate 做按段过滤；跨段（按修改日分段）重复返回的键进行“累加汇总”，最后一次性入库；
+    /// - 当前实现为“全量重建”：先清空缓存表，再插入本次窗口汇总结果。
+    /// 
+    /// 命名客户端：
+    /// - 请在 Program.cs/Startup.cs 中注册： services.AddHttpClient("WZ", c => { c.Timeout = TimeSpan.FromMinutes(2); });
     /// </summary>
     public partial class WZProductionOutputService : IWZProductionOutputService, IDependency
     {
+        private static readonly SemaphoreSlim _refreshGate = new(1, 1); // 防并发刷新
+        private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
+        private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
+        private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
+
         private readonly ServiceDbContext _db;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<WZProductionOutputService> _logger;
-
-        // ESB 接口地址（产线产能设计接口）
-        private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
 
         public WZProductionOutputService(
             ServiceDbContext dbContext,
@@ -43,109 +49,191 @@ namespace HDPro.CY.Order.Services.WZ
 
         /// <summary>
         /// ESB 返回行（仅取看板需要的关键字段）
+        /// 注意：ESB 筛选依据是“修改日窗口”，但这里不包含修改日字段；ProductionDate 由下方 PickDate 选择。
         /// </summary>
         private sealed class EsbRow
         {
             [JsonProperty("F_ORA_FMLB")] public string ValveCategory { get; set; }   // 阀门类别
             [JsonProperty("F_ORA_SCX")] public string ProductionLine { get; set; }  // 生产线
             [JsonProperty("FQTY")] public decimal? Qty { get; set; }           // 订单数量
-            // 日期字段可能有多个，优先使用 排产日期 F_ORA_DATE1
-            [JsonProperty("F_ORA_DATE1")] public string SchDate { get; set; }
-            [JsonProperty("FDATE")] public string OrderDate { get; set; }
-            [JsonProperty("F_ORA_DATETIME")] public string CustReqDate { get; set; }
+
+            // 日期字段：优先 排产日期 F_ORA_DATE1，其次订单日期 & 要货日期
+            [JsonProperty("F_ORA_DATE1")] public string SchDate { get; set; }         // 排产日期（推荐映射 ProductionDate）
+            [JsonProperty("FDATE")] public string OrderDate { get; set; }       // 订单日期
+            [JsonProperty("F_ORA_DATETIME")] public string CustReqDate { get; set; }     // 客户要货日期
         }
 
+        /// <summary>把日期区间按固定天数切段（闭区间）</summary>
+        private static IEnumerable<(DateTime S, DateTime E)> ChunkDates(DateTime start, DateTime end, int stepDays = ChunkDays)
+        {
+            var s = start.Date; var e = end.Date;
+            while (s <= e)
+            {
+                var chunkEnd = s.AddDays(stepDays - 1);
+                if (chunkEnd > e) chunkEnd = e;
+                yield return (s, chunkEnd);
+                s = chunkEnd.AddDays(1);
+            }
+        }
+
+        /// <summary>字符串规整：Trim + 全/半角等标准化，避免“看起来一样但字符串不同”</summary>
+        private static string NormalizeStr(string s)
+            => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().Normalize(NormalizationForm.FormKC);
+
+        /// <summary>
+        /// 选择用于 ProductionDate 的日期（优先排产日 F_ORA_DATE1 ；否则回落到订单日/要货日）
+        /// </summary>
+        private static DateTime? PickDate(EsbRow r)
+        {
+            if (!string.IsNullOrWhiteSpace(r.SchDate) && DateTime.TryParse(r.SchDate, out var d1)) return d1.Date;  // 排产日
+            if (!string.IsNullOrWhiteSpace(r.OrderDate) && DateTime.TryParse(r.OrderDate, out var d2)) return d2.Date; // 订单日
+            if (!string.IsNullOrWhiteSpace(r.CustReqDate) && DateTime.TryParse(r.CustReqDate, out var d3)) return d3.Date; // 要货日
+            return null;
+        }
+
+        /// <summary>
+        /// 刷新（全量重建）：按“修改日期窗口”从 ESB 分段拉取数据，按“排产日×阀体×产线”聚合，最后一次性清表并入库。
+        /// 返回值：最终写入表中的“键行数”（即不同的 ProductionDate×ValveCategory×ProductionLine 的条目数）。
+        /// </summary>
         public async Task<int> RefreshAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default)
         {
-            if (endDate < startDate)
-                throw new ArgumentException("endDate 不能早于 startDate");
-
-            _logger.LogInformation("WZ 热力图数据刷新开始：{Start} ~ {End}", startDate, endDate);
-
-            // 1) 调 ESB
-            var client = _httpClientFactory.CreateClient();
-            var payload = new
-            {
-                FSTARTDATE = startDate.ToString("yyyy-MM-dd"),
-                FENDDATE = endDate.ToString("yyyy-MM-dd")
-            };
-            var reqContent = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, EsbUrl) { Content = reqContent };
-            using var resp = await client.SendAsync(request, ct);
-            resp.EnsureSuccessStatusCode();
-
-            var json = await resp.Content.ReadAsStringAsync(ct);
-            var jarr = JArray.Parse(json);
-            var rows = jarr.ToObject<List<EsbRow>>() ?? new List<EsbRow>();
-
-            _logger.LogInformation("ESB 返回记录数：{Count}", rows.Count);
-
-            // 2) 聚合：按（日 × 阀体 × 产线）Sum(FQTY)
-            static DateTime? PickDate(EsbRow r)
-            {
-                // 优先排产日期，其次下单/要货日期
-                if (DateTime.TryParse(r.SchDate, out var d1)) return d1.Date;
-                if (DateTime.TryParse(r.OrderDate, out var d2)) return d2.Date;
-                if (DateTime.TryParse(r.CustReqDate, out var d3)) return d3.Date;
-                return null;
-            }
-
-            var aggregates = rows
-                .Select(r => new
-                {
-                    Date = PickDate(r),
-                    Cat = (r.ValveCategory ?? string.Empty).Trim(),
-                    Line = (r.ProductionLine ?? string.Empty).Trim(),
-                    Qty = r.Qty ?? 0m
-                })
-                .Where(x => x.Date.HasValue && !string.IsNullOrEmpty(x.Cat) && !string.IsNullOrEmpty(x.Line))
-                .GroupBy(x => new { x.Date, x.Cat, x.Line })
-                .Select(g => new WZ_ProductionOutput
-                {
-                    ProductionDate = g.Key.Date!.Value,
-                    ValveCategory = g.Key.Cat,
-                    ProductionLine = g.Key.Line,
-                    Quantity = g.Sum(z => z.Qty)
-                })
-                .ToList();
-
-            _logger.LogInformation("聚合后记录数：{Count}", aggregates.Count);
-
-            // 3) 事务：清空表 -> 批量写入
-            using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await _refreshGate.WaitAsync(ct); // 防并发
             try
             {
-                // TRUNCATE 优先，失败回退 DELETE
+                if (endDate < startDate)
+                    throw new ArgumentException("endDate 不能早于 startDate");
+
+                var client = _httpClientFactory.CreateClient("WZ");
+                _logger.LogInformation("【WZ 刷新-全量重建】修改日窗口：{S} ~ {E}", startDate, endDate);
+
+                // —— 全局聚合桶：跨分段累加（键 = 排产日×阀体×产线）
+                var buckets = new Dictionary<(DateTime Date, string Cat, string Line), decimal>();
+
+                // —— 分段按“修改日窗口”拉取
+                foreach (var (S, E) in ChunkDates(startDate, endDate, ChunkDays))
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var payload = new
+                    {
+                        FSTARTDATE = S.ToString("yyyy-MM-dd"),
+                        FENDDATE = E.ToString("yyyy-MM-dd")
+                    };
+
+                    using var req = new HttpRequestMessage(HttpMethod.Post, EsbUrl)
+                    {
+                        Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json")
+                    };
+
+                    using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                    resp.EnsureSuccessStatusCode();
+
+                    var json = await resp.Content.ReadAsStringAsync(ct);
+
+                    // ESB 直接返回数组；若为包裹结构（如 {data:[...]})，这里需加一层模型解析
+                    var rows = JsonConvert.DeserializeObject<List<EsbRow>>(json) ?? new List<EsbRow>();
+
+                    // —— 本段内先做一次分组（按键求和），再汇入全局桶
+                    var aggregates = rows
+                        .Select(r => new
+                        {
+                            Date = PickDate(r), // 排产日（或回落日期）
+                            Cat = NormalizeStr(r.ValveCategory),
+                            Line = NormalizeStr(r.ProductionLine),
+                            Qty = r.Qty ?? 0m
+                        })
+                        .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
+                        .GroupBy(x => new { x.Date, x.Cat, x.Line })
+                        .Select(g => new
+                        {
+                            Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
+                            Sum = g.Sum(z => z.Qty)
+                        })
+                        .ToList();
+
+                    foreach (var a in aggregates)
+                    {
+                        if (buckets.TryGetValue(a.Key, out var cur))
+                            buckets[a.Key] = cur + a.Sum;
+                        else
+                            buckets[a.Key] = a.Sum;
+                    }
+
+                    _logger.LogInformation("  ├─ 段 {S}~{E}：ESB行 {Raw}，聚合键 {Keys}，累计键 {Total}",
+                        S.ToString("yyyy-MM-dd"), E.ToString("yyyy-MM-dd"),
+                        rows.Count, aggregates.Count, buckets.Count);
+                }
+
+                // —— 开启事务：清空 + 分批插入
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
                 try
                 {
-                    await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_ProductionOutput];", ct);
+                    // ① 清空缓存表（TRUNCATE 优先；失败则 DELETE 兜底）
+                    try
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_ProductionOutput];", ct);
+                    }
+                    catch
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_ProductionOutput];", ct);
+                    }
+
+                    // ② 分批插入
+                    var total = buckets.Count;
+                    if (total > 0)
+                    {
+                        var batch = new List<WZ_ProductionOutput>(InsertBatchSize);
+                        int written = 0;
+
+                        foreach (var kv in buckets)
+                        {
+                            batch.Add(new WZ_ProductionOutput
+                            {
+                                ProductionDate = kv.Key.Date,
+                                ValveCategory = kv.Key.Cat,
+                                ProductionLine = kv.Key.Line,
+                                Quantity = kv.Value
+                            });
+
+                            if (batch.Count >= InsertBatchSize)
+                            {
+                                await _db.Set<WZ_ProductionOutput>().AddRangeAsync(batch, ct);
+                                await _db.SaveChangesAsync(ct);
+                                written += batch.Count;
+                                batch.Clear();
+                                _logger.LogInformation("  ├─ 已入库 {Written}/{Total} 行 ...", written, total);
+                            }
+                        }
+
+                        if (batch.Count > 0)
+                        {
+                            await _db.Set<WZ_ProductionOutput>().AddRangeAsync(batch, ct);
+                            await _db.SaveChangesAsync(ct);
+                            written += batch.Count;
+                            _logger.LogInformation("  ├─ 已入库 {Written}/{Total} 行（收尾批）", written, total);
+                        }
+                    }
+
+                    await tx.CommitAsync(ct);
+                    _logger.LogInformation("【WZ 刷新完成】最终入库键数：{N}", total);
+                    return total;
                 }
                 catch
                 {
-                    await _db.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_ProductionOutput];", ct);
-                    // 如需重置自增可开启（SQL Server）：
-                    // await _db.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('WZ_ProductionOutput', RESEED, 0);", ct);
+                    await tx.RollbackAsync(ct);
+                    throw;
                 }
-
-                if (aggregates.Count > 0)
-                {
-                    await _db.Set<WZ_ProductionOutput>().AddRangeAsync(aggregates, ct);
-                    await _db.SaveChangesAsync(ct);
-                }
-
-                await tx.CommitAsync(ct);
-                _logger.LogInformation("WZ 热力图数据刷新完成，入库：{Inserted} 条。", aggregates.Count);
-                return aggregates.Count;
             }
-            catch (Exception ex)
+            finally
             {
-                await tx.RollbackAsync(ct);
-                _logger.LogError(ex, "WZ 热力图数据刷新失败。");
-                throw;
+                _refreshGate.Release();
             }
         }
 
+        /// <summary>
+        /// 查询：按阀体、产线、日期范围返回每日产量（从本地缓存表直接读取）
+        /// 说明：这里的日期范围是针对 ProductionDate（排产日）的业务查询窗口。
+        /// </summary>
         public Task<List<WZ_ProductionOutput>> GetAsync(
             string valveCategory,
             string productionLine,
@@ -166,7 +254,6 @@ namespace HDPro.CY.Order.Services.WZ
             if (!string.IsNullOrWhiteSpace(productionLine))
                 query = query.Where(x => x.ProductionLine == productionLine);
 
-            // 如需稳定排序（日期->产线）
             query = query.OrderBy(x => x.ProductionDate)
                          .ThenBy(x => x.ValveCategory)
                          .ThenBy(x => x.ProductionLine);

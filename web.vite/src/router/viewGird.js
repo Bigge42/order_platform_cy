@@ -680,6 +680,10 @@ let viewgird = [
         path: '/XhckkbRecord',
         name: 'XhckkbRecord',
         component: () => import('@/views/order/xhckkbrecord/XhckkbRecord.vue')
+    }    ,{
+        path: '/WZ_ProductionOutput',
+        name: 'WZ_ProductionOutput',
+        component: () => import('@/views/order/wz_productionoutput/WZ_ProductionOutput.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除
