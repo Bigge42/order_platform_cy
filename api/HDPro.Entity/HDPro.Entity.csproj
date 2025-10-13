@@ -30,6 +30,10 @@
     <EmbeddedResource Remove="System\**" />
     <None Remove="System\**" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="DomainModels\ESB\ESBDailyCapacityRecordData.cs" />
+    <Compile Remove="DomainModels\OrderCollaboration\OCP_DailyCapacityRecord.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Autofac" Version="8.0.0" />
