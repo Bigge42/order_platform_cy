@@ -316,7 +316,20 @@ namespace HDPro.CY.Order.Services
                             prepareMtrlList.Add("技术");
                     }
 
-                    // 构建最终的PrepareMtrl字段值，格式：["外购","委外","部件","金工","计划","技术"] 或空字符串
+                    // 4. 根据订单跟踪表是否有"计划确认日期"，无日期的显示："待计划确认"，有日期就不显示
+                    if (!orderTracking.PlanConfirmDate.HasValue)
+                    {
+                        if (!prepareMtrlList.Contains("待计划确认"))
+                            prepareMtrlList.Add("待计划确认");
+                    }
+
+                    // 5. 以上1-4都无值时，显示"备料完成"
+                    if (prepareMtrlList.Count == 0)
+                    {
+                        prepareMtrlList.Add("备料完成");
+                    }
+
+                    // 构建最终的PrepareMtrl字段值，格式：["外购","委外","部件","金工","计划","技术","待计划确认","备料完成"] 或空字符串
                     orderTracking.PrepareMtrl = prepareMtrlList.Any()
                         ? $"[{string.Join(",", prepareMtrlList.Select(x => $"\"{x}\""))}]"
                         : "";
