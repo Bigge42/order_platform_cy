@@ -3,7 +3,7 @@
 ## 接口概览
 - **URL**：`POST /api/MaterialCallBoard/batch-upload`
 - **请求体**：`List<MaterialCallBoardBatchDto>`
-- **数据模型命名空间**：`HDPro.CY.Order.Services.MaterialCallBoardModels`
+- **数据模型命名空间**：`HDPro.CY.Order.Models.MaterialCallBoardDtos`
 - **返回类型**：`WebResponseContent`
 
 ## 请求参数
@@ -73,4 +73,4 @@
 ## 常见问题
 - **返回 400 且提示字段不能为空**：请检查请求体中对应字段是否缺失或仅包含空白字符。
 - **返回“批量导入失败: ...”**：可能是数据库异常或并发冲突，可根据返回的详细异常信息排查。
-- **无法引用 DTO**：请确认项目引用了 `HDPro.CY.Order` 程序集，并使用命名空间 `HDPro.CY.Order.Services.MaterialCallBoardModels`。
+- **无法引用 DTO**：请确认项目引用了 `HDPro.CY.Order` 程序集，并使用命名空间 `HDPro.CY.Order.Models.MaterialCallBoardDtos`。
