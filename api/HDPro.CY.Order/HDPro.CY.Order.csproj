@@ -7,6 +7,24 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="IRepositories\MaterialCallBoard\**" />
+    <Compile Remove="IServices\MaterialCallBoard\**" />
+    <Compile Remove="Models\MaterialCallBoard\**" />
+    <Compile Remove="Repositories\MaterialCallBoard\**" />
+    <Compile Remove="Services\MaterialCallBoard\**" />
+    <EmbeddedResource Remove="IRepositories\MaterialCallBoard\**" />
+    <EmbeddedResource Remove="IServices\MaterialCallBoard\**" />
+    <EmbeddedResource Remove="Models\MaterialCallBoard\**" />
+    <EmbeddedResource Remove="Repositories\MaterialCallBoard\**" />
+    <EmbeddedResource Remove="Services\MaterialCallBoard\**" />
+    <None Remove="IRepositories\MaterialCallBoard\**" />
+    <None Remove="IServices\MaterialCallBoard\**" />
+    <None Remove="Models\MaterialCallBoard\**" />
+    <None Remove="Repositories\MaterialCallBoard\**" />
+    <None Remove="Services\MaterialCallBoard\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="IRepositories\OrderCollaboration\IOCP_DailyCapacityRecordRepository.cs" />
     <Compile Remove="IServices\OrderCollaboration\OCP_DailyCapacityRecord.cs" />
     <Compile Remove="Repositories\OrderCollaboration\OCP_DailyCapacityRecordRepository.cs" />

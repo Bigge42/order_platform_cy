@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Controllers\Order\MaterialCallBoardController.cs" />
     <Compile Remove="Controllers\Order\OCP_DailyCapacityRecordController.cs" />
   </ItemGroup>
 
