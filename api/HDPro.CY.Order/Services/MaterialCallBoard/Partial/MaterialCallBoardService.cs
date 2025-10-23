@@ -6,11 +6,9 @@
 *用户信息、权限、角色等使用UserContext.Current操作
 *MaterialCallBoardService对增、删、改查、导入、导出、审核业务代码扩展参照ServiceFunFilter
 */
-using HDPro.CY.Order.Services;
-using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.IRepositories;
-using HDPro.CY.Order.Services.MaterialCallBoardModels;
+using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 using HDPro.Entity.DomainModels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
