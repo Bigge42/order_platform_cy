@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.Entity.DomainModels;
-using HDPro.Entity.DomainModels.MaterialCallBoard.dto;
+using HDPro.CY.Order.Services.MaterialCallBoard.Models;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.IServices;
 

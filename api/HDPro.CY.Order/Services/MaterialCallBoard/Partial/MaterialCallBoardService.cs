@@ -8,16 +8,16 @@
 */
 using HDPro.CY.Order.Services;
 using HDPro.Core.Extensions.AutofacManager;
+using HDPro.Core.Utilities;
+using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Services.MaterialCallBoard.Models;
 using HDPro.Entity.DomainModels;
-using HDPro.Entity.DomainModels.MaterialCallBoard.dto;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using HDPro.Core.Utilities;
 using System.Threading.Tasks;
-using System;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Http;
-using HDPro.CY.Order.IRepositories;
 
 namespace HDPro.CY.Order.Services
 {
@@ -38,46 +38,24 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
-        /// 重写CY.Order项目特有的初始化逻辑
-        /// 可在此处添加MaterialCallBoard特有的初始化代码
-        /// </summary>
-        protected override void InitCYOrderSpecific()
-        {
-            base.InitCYOrderSpecific();
-            // 在此处添加MaterialCallBoard特有的初始化逻辑
-        }
-
-        /// <summary>
-        /// 重写CY.Order项目通用数据验证方法
-        /// 可在此处添加MaterialCallBoard特有的数据验证逻辑
-        /// </summary>
-        /// <param name="entity">要验证的实体</param>
-        /// <returns>验证结果</returns>
-        protected override WebResponseContent ValidateCYOrderEntity(MaterialCallBoard entity)
-        {
-            var response = base.ValidateCYOrderEntity(entity);
-
-            // 在此处添加MaterialCallBoard特有的数据验证逻辑
-
-            return response;
-        }
-
-        /// <summary>
         /// 批量新增或更新 MaterialCallBoard 数据
         /// </summary>
         /// <param name="payload">外部系统传入的数据集合</param>
         /// <returns>写入结果</returns>
-        public async Task<WebResponseContent> BatchUpsertAsync(IEnumerable<MaterialCallBoardBatchDto> payload)
+        public Task<WebResponseContent> BatchUpsertAsync(IEnumerable<MaterialCallBoardBatchDto> payload)
         {
             if (payload == null)
             {
-                return WebResponseContent.Instance.Error("请求数据不能为空");
+                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
             }
 
-            var items = payload.Where(item => item != null).ToList();
+            var items = payload
+                .Where(item => item != null)
+                .Select(NormalizePayload)
+                .ToList();
             if (!items.Any())
             {
-                return WebResponseContent.Instance.Error("请求数据不能为空");
+                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
             }
 
             var validationErrors = new List<string>();
@@ -122,21 +100,13 @@ namespace HDPro.CY.Order.Services
 
             if (validationErrors.Any())
             {
-                return WebResponseContent.Instance.ErrorData("数据校验失败", validationErrors);
+                return Task.FromResult(WebResponseContent.Instance.ErrorData("数据校验失败", validationErrors));
             }
 
-            var normalizedItems = new Dictionary<string, MaterialCallBoardBatchDto>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in items)
+            var workOrderNos = items.Select(item => item.WorkOrderNo).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            var response = _repository.DbContextBeginTransaction(() =>
             {
-                normalizedItems[item.WorkOrderNo.Trim()] = NormalizePayload(item);
-            }
-
-            var workOrderNos = normalizedItems.Keys.ToList();
-
-            return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
-            {
-                var response = new WebResponseContent();
-
                 try
                 {
                     var existingEntities = _repository.DbContext.Set<MaterialCallBoard>()
@@ -148,12 +118,11 @@ namespace HDPro.CY.Order.Services
                     var toInsert = new List<MaterialCallBoard>();
                     var toUpdate = new List<MaterialCallBoard>();
 
-                    foreach (var kvp in normalizedItems)
+                    foreach (var dto in items)
                     {
-                        var key = kvp.Key;
-                        var dto = kvp.Value;
+                        var workOrderNo = dto.WorkOrderNo;
 
-                        if (existingMap.TryGetValue(key, out var entity))
+                        if (existingMap.TryGetValue(workOrderNo, out var entity))
                         {
                             entity.PlanTrackNo = dto.PlanTrackNo;
                             entity.ProductCode = dto.ProductCode;
@@ -165,13 +134,18 @@ namespace HDPro.CY.Order.Services
                         {
                             toInsert.Add(new MaterialCallBoard
                             {
-                                WorkOrderNo = key,
+                                WorkOrderNo = workOrderNo,
                                 PlanTrackNo = dto.PlanTrackNo,
                                 ProductCode = dto.ProductCode,
                                 CallerName = dto.CallerName,
                                 CalledAt = dto.CalledAt
                             });
                         }
+                    }
+
+                    if (toInsert.Any())
+                    {
+                        _repository.AddRange(toInsert);
                     }
 
                     if (toUpdate.Any())
@@ -185,23 +159,20 @@ namespace HDPro.CY.Order.Services
                         });
                     }
 
-                    if (toInsert.Any())
-                    {
-                        _repository.AddRange(toInsert);
-                    }
-
                     if (toInsert.Any() || toUpdate.Any())
                     {
                         _repository.SaveChanges();
                     }
 
-                    return response.OK($"批量写入成功，新增 {toInsert.Count} 条，更新 {toUpdate.Count} 条");
+                    return WebResponseContent.Instance.OK($"批量写入成功，新增 {toInsert.Count} 条，更新 {toUpdate.Count} 条");
                 }
                 catch (Exception ex)
                 {
-                    return response.Error($"批量写入失败：{ex.Message}");
+                    return WebResponseContent.Instance.Error($"批量写入失败：{ex.Message}");
                 }
-            }));
+            });
+
+            return Task.FromResult(response);
         }
 
         private static MaterialCallBoardBatchDto NormalizePayload(MaterialCallBoardBatchDto source)
