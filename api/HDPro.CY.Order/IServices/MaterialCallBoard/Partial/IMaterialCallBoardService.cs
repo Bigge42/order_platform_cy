@@ -2,7 +2,7 @@
 *所有关于MaterialCallBoard类的业务代码接口应在此处编写
 */
 using HDPro.Core.Utilities;
-using HDPro.Entity.DomainModels.MaterialCallBoard.dto;
+using HDPro.CY.Order.Services.MaterialCallBoard.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
