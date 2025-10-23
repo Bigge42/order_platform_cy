@@ -1,7 +1,7 @@
 # MaterialCallBoard 批量上传接口使用说明
 
 ## 接口概览
-- **URL**：`POST /api/MaterialCallBoard/batch-upload`
+- **URL**：`POST /api/MaterialCallBoard/batch-upsert`
 - **请求体**：`List<MaterialCallBoardBatchDto>`
 - **数据模型命名空间**：`HDPro.CY.Order.Models.MaterialCallBoardDtos`
 - **返回类型**：`WebResponseContent`
@@ -15,7 +15,15 @@
 | `PlanTrackNo` | `string` | 是 | 计划跟踪号 |
 | `ProductCode` | `string` | 是 | 产品编号 |
 | `CallerName` | `string` | 是 | 叫料人 |
-| `CalledAt` | `DateTime` | 是 | 叫料时间（UTC+8） |
+| `CalledAt` | `DateTime` | 是 | 叫料时间（UTC+8，允许传空，默认当前时间） |
+| `ItemCode` | `string` | 否 | 物料编码（可选） |
+| `ItemName` | `string` | 否 | 物料名称（可选） |
+| `Spec` | `string` | 否 | 规格型号（可选） |
+| `Qty` | `decimal` | 否 | 需求数量（可选） |
+| `PlanDate` | `DateTime` | 否 | 计划日期（可选） |
+| `LineCode` | `string` | 否 | 产线编号（可选） |
+| `StationCode` | `string` | 否 | 工位编号（可选） |
+| `Remark` | `string` | 否 | 备注（可选） |
 
 示例请求：
 
@@ -26,7 +34,15 @@
     "planTrackNo": "PTN-001",
     "productCode": "PRD-1001",
     "callerName": "张三",
-    "calledAt": "2024-05-01T08:30:00"
+    "calledAt": "2024-05-01T08:30:00",
+    "itemCode": "MAT-001",
+    "itemName": "物料一",
+    "spec": "A-01",
+    "qty": 10,
+    "planDate": "2024-05-02",
+    "lineCode": "L01",
+    "stationCode": "S01",
+    "remark": "第一批"
   },
   {
     "workOrderNo": "WO20240102",
@@ -39,7 +55,7 @@
 ```
 
 > 注意：
-> - 数组内每个对象必须提供完整字段。
+> - 数组内必填字段不可缺失，非必填字段可按需传递。
 > - 服务端会自动去除字符串首尾空格，`CalledAt` 为空时默认写入当前时间。
 
 ## 返回示例
