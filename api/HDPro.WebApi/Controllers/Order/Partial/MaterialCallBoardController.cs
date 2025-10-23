@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using HDPro.CY.Order.IServices.MaterialCallBoard;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 
-namespace HDPro.CY.Order.Controllers
+namespace HDPro.WebApi.Controllers.Order
 {
     // 注意：此类必须是 partial，且命名空间、类名与主控制器完全一致
     public partial class MaterialCallBoardController
