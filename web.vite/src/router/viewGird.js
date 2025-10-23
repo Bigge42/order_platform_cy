@@ -684,6 +684,10 @@ let viewgird = [
         path: '/WZ_ProductionOutput',
         name: 'WZ_ProductionOutput',
         component: () => import('@/views/order/wz_productionoutput/WZ_ProductionOutput.vue')
+    }    ,{
+        path: '/MaterialCallBoard',
+        name: 'MaterialCallBoard',
+        component: () => import('@/views/order/materialcallboard/MaterialCallBoard.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除
