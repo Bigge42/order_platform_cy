@@ -1,33 +1,36 @@
-/*
- *接口编写处...
-*如果接口需要做Action的权限验证，请在Action上使用属性
-*如: [ApiActionPermission("MaterialCallBoard",Enums.ActionPermissionOptions.Search)]
- */
 using Microsoft.AspNetCore.Mvc;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Http;
-using HDPro.Entity.DomainModels;
-using HDPro.CY.Order.IServices;
+using HDPro.CY.Order.IServices.MaterialCallBoard;
+using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 
 namespace HDPro.CY.Order.Controllers
 {
+    // 注意：此类必须是 partial，且命名空间、类名与主控制器完全一致
     public partial class MaterialCallBoardController
     {
-        private readonly IMaterialCallBoardService _service;//访问业务代码
-        private readonly IHttpContextAccessor _httpContextAccessor;
-
-        [ActivatorUtilitiesConstructor]
-        public MaterialCallBoardController(
-            IMaterialCallBoardService service,
-            IHttpContextAccessor httpContextAccessor
-        )
-        : base(service)
+        /// <summary>
+        /// 批量新增/更新叫料看板
+        /// </summary>
+        [HttpPost("batch-upsert")]
+        public async Task<IActionResult> BatchUpsert([FromBody] List<MaterialCallBoardBatchDto> rows)
         {
-            _service = service;
-            _httpContextAccessor = httpContextAccessor;
+            if (rows == null || rows.Count == 0)
+                return BadRequest("payload is empty.");
+
+            // Service 属性来自主控制器继承的基类（ApiBaseController<TService>）
+            var result = await Service.BatchUpsertAsync(rows);
+
+            // 某些项目里 WebResponseContent 有 Status/Message；这里兼容性写法：
+            // 若你的返回值没有 Status 字段，也可以直接 return Ok(result);
+            if (result is null) return BadRequest("service returned null.");
+            var statusProp = result.GetType().GetProperty("Status");
+            if (statusProp != null && statusProp.PropertyType == typeof(bool))
+            {
+                bool ok = (bool)statusProp.GetValue(result)!;
+                return ok ? Ok(result) : BadRequest(result);
+            }
+            return Ok(result);
         }
     }
 }

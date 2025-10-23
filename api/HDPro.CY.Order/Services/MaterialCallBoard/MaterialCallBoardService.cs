@@ -5,18 +5,18 @@
  *所有业务编写全部应在Partial文件夹下MaterialCallBoardService与IMaterialCallBoardService中编写
  */
 using HDPro.CY.Order.IRepositories;
-using HDPro.CY.Order.IServices;
+using HDPro.CY.Order.IServices.MaterialCallBoard;
 using HDPro.CY.Order.Services;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Entity.DomainModels;
 
 namespace HDPro.CY.Order.Services
 {
-    public partial class MaterialCallBoardService : CYOrderServiceBase<MaterialCallBoard, IMaterialCallBoardRepository>
-    , IMaterialCallBoardService, IDependency
+    public partial class MaterialCallBoardService : CYOrderServiceBase<MaterialCallBoard, IMaterialCallBoardRepository>, IMaterialCallBoardService, IDependency
     {
-    public static IMaterialCallBoardService Instance
-    {
-      get { return AutofacContainerModule.GetService<IMaterialCallBoardService>(); } }
+        public static IMaterialCallBoardService Instance
+        {
+            get { return AutofacContainerModule.GetService<IMaterialCallBoardService>(); }
+        }
     }
- } 
+}

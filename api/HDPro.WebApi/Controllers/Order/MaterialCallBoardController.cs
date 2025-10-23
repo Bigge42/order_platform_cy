@@ -5,7 +5,7 @@
 using Microsoft.AspNetCore.Mvc;
 using HDPro.Core.Controllers.Basic;
 using HDPro.Entity.AttributeManager;
-using HDPro.CY.Order.IServices;
+using HDPro.CY.Order.IServices.MaterialCallBoard;
 namespace HDPro.CY.Order.Controllers
 {
     [Route("api/MaterialCallBoard")]
@@ -18,4 +18,3 @@ namespace HDPro.CY.Order.Controllers
         }
     }
 }
-
