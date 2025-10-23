@@ -10,7 +10,7 @@ using HDPro.CY.Order.Services;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.IRepositories;
-using HDPro.CY.Order.Services.MaterialCallBoard.Models;
+using HDPro.CY.Order.Services.MaterialCallBoardModels;
 using HDPro.Entity.DomainModels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,109 +80,84 @@ namespace HDPro.CY.Order.Services
                 {
                     validationErrors.Add($"第{rowIndex}条数据的叫料人不能为空");
                 }
-                if (current.CalledAt == default)
-                {
-                    validationErrors.Add($"第{rowIndex}条数据的叫料时间不能为空");
-                }
-            }
-
-            var duplicateWorkOrders = items
-                .Where(item => !string.IsNullOrWhiteSpace(item.WorkOrderNo))
-                .GroupBy(item => item.WorkOrderNo.Trim(), StringComparer.OrdinalIgnoreCase)
-                .Where(group => group.Count() > 1)
-                .Select(group => group.Key)
-                .ToList();
-
-            if (duplicateWorkOrders.Any())
-            {
-                validationErrors.Add($"存在重复的工单号: {string.Join(", ", duplicateWorkOrders)}");
             }
 
             if (validationErrors.Any())
             {
-                return Task.FromResult(WebResponseContent.Instance.ErrorData("数据校验失败", validationErrors));
+                return Task.FromResult(WebResponseContent.Instance.Error(string.Join("；", validationErrors)));
             }
 
-            var workOrderNos = items.Select(item => item.WorkOrderNo).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-            var response = _repository.DbContextBeginTransaction(() =>
+            using var tran = _repository.DbContextBeginTransaction();
+            try
             {
-                try
+                var existing = _repository
+                    .FindAsIQueryable(x => items.Select(i => i.WorkOrderNo).Contains(x.WorkOrderNo), true)
+                    .ToDictionary(x => x.WorkOrderNo, x => x);
+
+                var toInsert = new List<MaterialCallBoard>();
+
+                foreach (var dto in items)
                 {
-                    var existingEntities = _repository.DbContext.Set<MaterialCallBoard>()
-                        .Where(entity => workOrderNos.Contains(entity.WorkOrderNo))
-                        .ToList();
-
-                    var existingMap = existingEntities.ToDictionary(entity => entity.WorkOrderNo, StringComparer.OrdinalIgnoreCase);
-
-                    var toInsert = new List<MaterialCallBoard>();
-                    var toUpdate = new List<MaterialCallBoard>();
-
-                    foreach (var dto in items)
+                    if (existing.TryGetValue(dto.WorkOrderNo, out var entity))
                     {
-                        var workOrderNo = dto.WorkOrderNo;
-
-                        if (existingMap.TryGetValue(workOrderNo, out var entity))
-                        {
-                            entity.PlanTrackNo = dto.PlanTrackNo;
-                            entity.ProductCode = dto.ProductCode;
-                            entity.CallerName = dto.CallerName;
-                            entity.CalledAt = dto.CalledAt;
-                            toUpdate.Add(entity);
-                        }
-                        else
-                        {
-                            toInsert.Add(new MaterialCallBoard
-                            {
-                                WorkOrderNo = workOrderNo,
-                                PlanTrackNo = dto.PlanTrackNo,
-                                ProductCode = dto.ProductCode,
-                                CallerName = dto.CallerName,
-                                CalledAt = dto.CalledAt
-                            });
-                        }
+                        UpdateEntity(entity, dto);
+                        _repository.Update(entity, true);
                     }
-
-                    if (toInsert.Any())
+                    else
                     {
-                        _repository.AddRange(toInsert);
+                        var newEntity = CreateEntity(dto);
+                        toInsert.Add(newEntity);
                     }
-
-                    if (toUpdate.Any())
-                    {
-                        _repository.UpdateRange(toUpdate, new[]
-                        {
-                            nameof(MaterialCallBoard.PlanTrackNo),
-                            nameof(MaterialCallBoard.ProductCode),
-                            nameof(MaterialCallBoard.CallerName),
-                            nameof(MaterialCallBoard.CalledAt)
-                        });
-                    }
-
-                    if (toInsert.Any() || toUpdate.Any())
-                    {
-                        _repository.SaveChanges();
-                    }
-
-                    return WebResponseContent.Instance.OK($"批量写入成功，新增 {toInsert.Count} 条，更新 {toUpdate.Count} 条");
                 }
-                catch (Exception ex)
+
+                if (toInsert.Any())
                 {
-                    return WebResponseContent.Instance.Error($"批量写入失败：{ex.Message}");
+                    _repository.AddRange(toInsert, true);
                 }
-            });
 
-            return Task.FromResult(response);
+                tran.Commit();
+                return Task.FromResult(WebResponseContent.Instance.OK("批量导入成功"));
+            }
+            catch (Exception ex)
+            {
+                tran.Rollback();
+                return Task.FromResult(WebResponseContent.Instance.Error($"批量导入失败: {ex.Message}"));
+            }
         }
 
-        private static MaterialCallBoardBatchDto NormalizePayload(MaterialCallBoardBatchDto source)
+        private static MaterialCallBoardBatchDto NormalizePayload(MaterialCallBoardBatchDto dto)
         {
+            if (dto == null)
+            {
+                return null;
+            }
+
             return new MaterialCallBoardBatchDto
             {
-                WorkOrderNo = source.WorkOrderNo?.Trim(),
-                PlanTrackNo = source.PlanTrackNo?.Trim(),
-                ProductCode = source.ProductCode?.Trim(),
-                CallerName = source.CallerName?.Trim(),
+                WorkOrderNo = dto.WorkOrderNo?.Trim(),
+                PlanTrackNo = dto.PlanTrackNo?.Trim(),
+                ProductCode = dto.ProductCode?.Trim(),
+                CallerName = dto.CallerName?.Trim(),
+                CalledAt = dto.CalledAt == default ? DateTime.Now : dto.CalledAt
+            };
+        }
+
+        private static void UpdateEntity(MaterialCallBoard target, MaterialCallBoardBatchDto source)
+        {
+            target.PlanTrackNo = source.PlanTrackNo;
+            target.ProductCode = source.ProductCode;
+            target.CallerName = source.CallerName;
+            target.CalledAt = source.CalledAt;
+        }
+
+        private static MaterialCallBoard CreateEntity(MaterialCallBoardBatchDto source)
+        {
+            return new MaterialCallBoard
+            {
+                WorkOrderNo = source.WorkOrderNo,
+                PlanTrackNo = source.PlanTrackNo,
+                ProductCode = source.ProductCode,
+                CallerName = source.CallerName,
                 CalledAt = source.CalledAt
             };
         }

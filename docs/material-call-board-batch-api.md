@@ -1,97 +1,76 @@
-# MaterialCallBoard 批量导入接口使用说明
+# MaterialCallBoard 批量上传接口使用说明
 
 ## 接口概览
-- **请求方法**：`POST`
-- **请求地址**：`/api/MaterialCallBoard/batch-upload`
-- **数据格式**：`application/json`
-- **鉴权说明**：沿用现有 `MaterialCallBoard` 控制器的权限策略，如需开放给外部系统，请在网关或调用方补充认证与签名机制。
+- **URL**：`POST /api/MaterialCallBoard/batch-upload`
+- **请求体**：`List<MaterialCallBoardBatchDto>`
+- **数据模型命名空间**：`HDPro.CY.Order.Services.MaterialCallBoardModels`
+- **返回类型**：`WebResponseContent`
 
-该接口用于一次性批量新增或更新 `MaterialCallBoard` 数据。系统会根据工单号（`WorkOrderNo`）判断记录是否存在：
+## 请求参数
+请求体为 `MaterialCallBoardBatchDto` 对象数组，字段如下：
 
-- 数据库中存在相同工单号时执行更新。
-- 不存在时创建新记录。
+| 字段 | 类型 | 是否必填 | 说明 |
+| ---- | ---- | -------- | ---- |
+| `WorkOrderNo` | `string` | 是 | 工单号，唯一标识本次叫料记录 |
+| `PlanTrackNo` | `string` | 是 | 计划跟踪号 |
+| `ProductCode` | `string` | 是 | 产品编号 |
+| `CallerName` | `string` | 是 | 叫料人 |
+| `CalledAt` | `DateTime` | 是 | 叫料时间（UTC+8） |
 
-## 请求体结构
-请求体为 `MaterialCallBoardBatchDto` 对象数组（定义在 `HDPro.CY.Order.Services.MaterialCallBoard.Models` 命名空间中），字段如下：
+示例请求：
 
-| 字段名 | 类型 | 是否必填 | 说明 |
-| --- | --- | --- | --- |
-| `WorkOrderNo` | string | 是 | 工单号，作为幂等键，不能为空且单次请求内需保持唯一。 |
-| `PlanTrackNo` | string | 是 | 计划跟踪号。 |
-| `ProductCode` | string | 是 | 产品编号。 |
-| `CallerName` | string | 是 | 叫料人。 |
-| `CalledAt` | string (ISO 8601) | 是 | 叫料时间，必须能被解析为日期时间。 |
-
-> **注意**：服务端会自动去除字段前后空格。`CalledAt` 建议以 `yyyy-MM-ddTHH:mm:ss`（UTC 或约定时区）格式提交。
-
-### 示例
 ```json
 [
   {
-    "workOrderNo": "WO-20240515001",
-    "planTrackNo": "PT-8899",
-    "productCode": "PRD-10001",
+    "workOrderNo": "WO20240101",
+    "planTrackNo": "PTN-001",
+    "productCode": "PRD-1001",
     "callerName": "张三",
-    "calledAt": "2024-05-15T10:30:00"
+    "calledAt": "2024-05-01T08:30:00"
   },
   {
-    "workOrderNo": "WO-20240515002",
-    "planTrackNo": "PT-9900",
-    "productCode": "PRD-10002",
+    "workOrderNo": "WO20240102",
+    "planTrackNo": "PTN-002",
+    "productCode": "PRD-1002",
     "callerName": "李四",
-    "calledAt": "2024-05-15T10:45:00"
+    "calledAt": "2024-05-01T09:15:00"
   }
 ]
 ```
 
-## 响应
-接口统一返回 `WebResponseContent` 对象的 JSON 表示。
+> 注意：
+> - 数组内每个对象必须提供完整字段。
+> - 服务端会自动去除字符串首尾空格，`CalledAt` 为空时默认写入当前时间。
 
-### 成功响应
+## 返回示例
+
+### 成功
 ```json
 {
   "status": true,
   "code": 200,
-  "msg": "批量写入成功，新增 1 条，更新 1 条",
+  "msg": "批量导入成功",
   "data": null
 }
 ```
 
-- `msg` 中会返回本次批量写入的新增/更新统计。
-
-### 失败响应
-服务端会在以下场景返回失败：
-
-- 请求体为空或所有元素为 `null`。
-- 任意记录缺少必填字段。
-- 单次请求内存在重复工单号。
-- 数据库操作异常。
-
-示例：
+### 失败
 ```json
 {
   "status": false,
   "code": 400,
-  "msg": "数据校验失败",
-  "data": [
-    "第1条数据的工单号不能为空",
-    "存在重复的工单号: WO-20240515001"
-  ]
+  "msg": "第1条数据的工单号不能为空；第2条数据的计划跟踪号不能为空",
+  "data": null
 }
 ```
 
-## 幂等性与数据清洗
-- 接口会自动去除字符串字段前后空格。
-- 若同一工单号在一次请求中出现多次，以最后一条为准。
-- 建议调用方按业务需求自行处理去重与排序，保证提交数据的唯一性与正确性。
+## 验证与业务规则
+1. `WorkOrderNo`、`PlanTrackNo`、`ProductCode`、`CallerName` 均不能为空。
+2. 若数据库中已存在相同 `WorkOrderNo` 的记录，则执行更新；否则插入新记录。
+3. 接口在单次请求内使用数据库事务，保证批量操作的原子性。
+4. 返回结果统一使用 `WebResponseContent`，外部系统可通过 `status` 字段判断执行是否成功。
 
-## 建议调用步骤
-1. 调用前先在调用方系统校验字段完整性与时间格式。
-2. 将待同步的记录转换为上述 JSON 数组并发送 HTTP POST 请求。
-3. 根据返回的 `status` 和 `msg` 判定是否成功，如失败请参考 `data` 中的详细错误。
-4. 若需要追踪调用，可记录接口返回值及请求负载，便于排查问题。
-
-## 调试方法
-- 在开发或测试环境中，可使用 Postman、curl 等工具直接构造请求验证接口行为。
-- 若需要查看服务端日志，请结合 WebAPI 层的日志配置或 APM 工具定位。
-
+## 常见问题
+- **返回 400 且提示字段不能为空**：请检查请求体中对应字段是否缺失或仅包含空白字符。
+- **返回“批量导入失败: ...”**：可能是数据库异常或并发冲突，可根据返回的详细异常信息排查。
+- **无法引用 DTO**：请确认项目引用了 `HDPro.CY.Order` 程序集，并使用命名空间 `HDPro.CY.Order.Services.MaterialCallBoardModels`。
