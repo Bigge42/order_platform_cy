@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.Entity.DomainModels;
+using HDPro.Entity.DomainModels.MaterialCallBoard.dto;
+using HDPro.Core.Utilities;
 using HDPro.CY.Order.IServices;
 
 namespace HDPro.CY.Order.Controllers
@@ -28,6 +30,23 @@ namespace HDPro.CY.Order.Controllers
         {
             _service = service;
             _httpContextAccessor = httpContextAccessor;
+        }
+
+        /// <summary>
+        /// 批量新增或更新 MaterialCallBoard 数据
+        /// </summary>
+        /// <param name="payload">外部系统传入的数据集合</param>
+        /// <returns>处理结果</returns>
+        [HttpPost("batch-upload")]
+        public async Task<IActionResult> BatchUploadAsync([FromBody] List<MaterialCallBoardBatchDto> payload)
+        {
+            if (payload == null)
+            {
+                return Json(WebResponseContent.Instance.Error("请求数据不能为空"));
+            }
+
+            var result = await _service.BatchUpsertAsync(payload);
+            return Json(result);
         }
     }
 }
