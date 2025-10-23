@@ -36,6 +36,10 @@ using HDPro.Core.Utilities;
 using HDPro.CY.Order.Services.OrderCollaboration.ESB;
 using NLog;
 using NLog.Web;
+using HDPro.CY.Order.IServices.MaterialCallBoard;
+using HDPro.CY.Order.Services.MaterialCallBoard;
+using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Repositories;
 
 
 // 早期初始化NLog以便捕获所有日志
@@ -195,6 +199,8 @@ builder.Services.AddSingleton<IObjectModelValidator>(new NullObjectModelValidato
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.WebHost.UseUrls("http://*:9200");
+builder.Services.AddScoped<IMaterialCallBoardRepository, MaterialCallBoardRepository>();
+builder.Services.AddScoped<IMaterialCallBatchService, MaterialCallBatchService>();
 builder.Services.Configure<FormOptions>(x =>
 {
     x.MultipartBodyLengthLimit = 1024 * 1024 * 100;

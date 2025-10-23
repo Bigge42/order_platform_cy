@@ -2,29 +2,18 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using HDPro.CY.Order.IServices.MaterialCallBoard;
-using HDPro.CY.Order.Models.MaterialCallBoardDtos;
+using HDPro.CY.Order.IServices.MaterialCallBoard;     // ← 确保是这个
+using HDPro.CY.Order.Models.MaterialCallBoardDtos;    // ← 确保是这个
 
-namespace HDPro.WebApi.Controllers.Order
+namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
 {
-    /// <summary>
-    /// MaterialCallBoard 批量导入控制器（独立命名，避免与代码生成器冲突）
-    /// 路由保持与需求一致：/api/MaterialCallBoard/batch-upsert
-    /// </summary>
-    [Route("api/[controller]")]
+    [Route("api/MaterialCallBoard")]
     [ApiController]
-    public class MaterialCallBoardController : ControllerBase
+    public class MaterialCallBatchController : ControllerBase
     {
-        private readonly IMaterialCallBatchService _materialCallBatchService;
+        private readonly IMaterialCallBatchService _svc;
+        public MaterialCallBatchController(IMaterialCallBatchService svc) => _svc = svc;
 
-        public MaterialCallBoardController(IMaterialCallBatchService materialCallBatchService)
-        {
-            _materialCallBatchService = materialCallBatchService;
-        }
-
-        /// <summary>
-        /// 批量插入或更新 MaterialCallBoard 数据（无鉴权）
-        /// </summary>
         [HttpPost("batch-upsert")]
         [AllowAnonymous]
         public async Task<IActionResult> BatchUpsertAsync([FromBody] List<MaterialCallBoardBatchDto> payload)
@@ -32,9 +21,8 @@ namespace HDPro.WebApi.Controllers.Order
             if (payload == null || payload.Count == 0)
                 return BadRequest(new { status = false, message = "请求体不能为空" });
 
-            var res = await _materialCallBatchService.BatchUpsertAsync(payload);
-            if (res.Status) return Ok(res);
-            return BadRequest(res);
+            var res = await _svc.BatchUpsertAsync(payload);
+            return res.Status ? Ok(res) : BadRequest(res);
         }
     }
 }
