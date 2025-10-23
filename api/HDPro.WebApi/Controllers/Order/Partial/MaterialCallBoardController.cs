@@ -5,7 +5,7 @@ using HDPro.CY.Order.IServices;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 using Microsoft.AspNetCore.Mvc;
 
-namespace HDPro.CY.Order.Controllers
+namespace HDPro.WebApi.Controllers.Order
 {
     /// <summary>
     /// MaterialCallBoard 业务扩展接口
