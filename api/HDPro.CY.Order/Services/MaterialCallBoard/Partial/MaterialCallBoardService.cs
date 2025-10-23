@@ -6,6 +6,7 @@
 *用户信息、权限、角色等使用UserContext.Current操作
 *MaterialCallBoardService对增、删、改查、导入、导出、审核业务代码扩展参照ServiceFunFilter
 */
+using HDPro.Core.Extensions;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
@@ -40,20 +41,21 @@ namespace HDPro.CY.Order.Services
         /// </summary>
         /// <param name="payload">外部系统传入的数据集合</param>
         /// <returns>写入结果</returns>
-        public Task<WebResponseContent> BatchUpsertAsync(IEnumerable<MaterialCallBoardBatchDto> payload)
+        public async Task<WebResponseContent> BatchUpsertAsync(IEnumerable<MaterialCallBoardBatchDto> payload)
         {
             if (payload == null)
             {
-                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
+                return WebResponseContent.Instance.Error("请求数据不能为空");
             }
 
             var items = payload
                 .Where(item => item != null)
                 .Select(NormalizePayload)
                 .ToList();
+
             if (!items.Any())
             {
-                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
+                return WebResponseContent.Instance.Error("请求数据不能为空");
             }
 
             var validationErrors = new List<string>();
@@ -82,45 +84,64 @@ namespace HDPro.CY.Order.Services
 
             if (validationErrors.Any())
             {
-                return Task.FromResult(WebResponseContent.Instance.Error(string.Join("；", validationErrors)));
+                return WebResponseContent.Instance.Error(string.Join("；", validationErrors));
             }
 
-            using var tran = _repository.DbContextBeginTransaction();
-            try
+            var dedupedItems = items
+                .GroupBy(x => x.WorkOrderNo, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last())
+                .ToList();
+
+            var workOrderNos = dedupedItems.Select(x => x.WorkOrderNo).ToList();
+
+            return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
             {
-                var existing = _repository
-                    .FindAsIQueryable(x => items.Select(i => i.WorkOrderNo).Contains(x.WorkOrderNo), true)
-                    .ToDictionary(x => x.WorkOrderNo, x => x);
+                var response = new WebResponseContent();
 
-                var toInsert = new List<MaterialCallBoard>();
-
-                foreach (var dto in items)
+                try
                 {
-                    if (existing.TryGetValue(dto.WorkOrderNo, out var entity))
-                    {
-                        UpdateEntity(entity, dto);
-                        _repository.Update(entity, true);
-                    }
-                    else
-                    {
-                        var newEntity = CreateEntity(dto);
-                        toInsert.Add(newEntity);
-                    }
-                }
+                    var existing = _repository
+                        .FindAsIQueryable(x => workOrderNos.Contains(x.WorkOrderNo))
+                        .ToDictionary(x => x.WorkOrderNo, x => x, StringComparer.OrdinalIgnoreCase);
 
-                if (toInsert.Any())
+                    var toInsert = new List<MaterialCallBoard>();
+                    var toUpdate = new List<MaterialCallBoard>();
+
+                    foreach (var dto in dedupedItems)
+                    {
+                        if (existing.TryGetValue(dto.WorkOrderNo, out var entity))
+                        {
+                            UpdateEntity(entity, dto);
+                            entity.SetModifyDefaultVal();
+                            toUpdate.Add(entity);
+                        }
+                        else
+                        {
+                            var newEntity = CreateEntity(dto);
+                            newEntity.SetCreateDefaultVal();
+                            toInsert.Add(newEntity);
+                        }
+                    }
+
+                    if (toUpdate.Any())
+                    {
+                        _repository.UpdateRange(toUpdate, false);
+                    }
+
+                    if (toInsert.Any())
+                    {
+                        _repository.AddRange(toInsert, false);
+                    }
+
+                    _repository.SaveChanges();
+
+                    return response.OK($"批量导入成功，更新 {toUpdate.Count} 条，新增 {toInsert.Count} 条");
+                }
+                catch (Exception ex)
                 {
-                    _repository.AddRange(toInsert, true);
+                    return response.Error($"批量导入失败: {ex.Message}");
                 }
-
-                tran.Commit();
-                return Task.FromResult(WebResponseContent.Instance.OK("批量导入成功"));
-            }
-            catch (Exception ex)
-            {
-                tran.Rollback();
-                return Task.FromResult(WebResponseContent.Instance.Error($"批量导入失败: {ex.Message}"));
-            }
+            }));
         }
 
         private static MaterialCallBoardBatchDto NormalizePayload(MaterialCallBoardBatchDto dto)
