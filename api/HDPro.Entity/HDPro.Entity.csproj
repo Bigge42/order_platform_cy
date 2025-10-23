@@ -26,8 +26,11 @@
     <NoWarn>1701;1702;NU1902;NU1903;NU1904;</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="DomainModels\MaterialCallBoard\**" />
     <Compile Remove="System\**" />
+    <EmbeddedResource Remove="DomainModels\MaterialCallBoard\**" />
     <EmbeddedResource Remove="System\**" />
+    <None Remove="DomainModels\MaterialCallBoard\**" />
     <None Remove="System\**" />
   </ItemGroup>
   <ItemGroup>
