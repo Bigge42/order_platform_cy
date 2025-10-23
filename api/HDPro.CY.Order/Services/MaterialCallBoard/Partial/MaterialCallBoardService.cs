@@ -161,19 +161,13 @@ namespace HDPro.CY.Order.Services
                 ProductCode = dto.ProductCode?.Trim(),
                 CallerName = dto.CallerName?.Trim(),
                 CalledAt = dto.CalledAt == default ? DateTime.Now : dto.CalledAt,
-                ItemCode = dto.ItemCode?.Trim(),
-                ItemName = dto.ItemName?.Trim(),
-                Spec = dto.Spec?.Trim(),
-                Qty = dto.Qty,
-                PlanDate = dto.PlanDate,
-                LineCode = dto.LineCode?.Trim(),
-                StationCode = dto.StationCode?.Trim(),
+              
                 Remark = dto.Remark?.Trim()
             };
         }
 
         private static void UpdateEntity(MaterialCallBoard target, MaterialCallBoardBatchDto source)
-        {
+        
             target.PlanTrackNo = source.PlanTrackNo;
             target.ProductCode = source.ProductCode;
             target.CallerName = source.CallerName;
