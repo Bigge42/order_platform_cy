@@ -26,8 +26,4 @@
     <ProjectReference Include="..\HDPro.Utilities\HDPro.Utilities.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Services\MaterialCallBoard\Partial\" />
-  </ItemGroup>
-
 </Project>
