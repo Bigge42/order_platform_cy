@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 
-namespace HDPro.CY.Order.IServices.MaterialCallBoard
+namespace HDPro.CY.Order.IServices
 {
     public partial interface IMaterialCallBoardService
     {

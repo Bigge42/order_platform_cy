@@ -4,7 +4,7 @@
 using HDPro.Core.BaseProvider;
 using HDPro.Entity.DomainModels;
 
-namespace HDPro.CY.Order.IServices.MaterialCallBoard
+namespace HDPro.CY.Order.IServices
 {
     public partial interface IMaterialCallBoardService : IService<MaterialCallBoard>
     {
