@@ -6,7 +6,7 @@ using HDPro.Core.BaseProvider;
 using HDPro.Entity.DomainModels;
 using HDPro.Core.Extensions.AutofacManager;
 
-namespace HDPro.CY.Order.IRepositories.MaterialCallBoard
+namespace HDPro.CY.Order.IRepositories
 {
     public partial interface IMaterialCallBoardRepository : IDependency, IRepository<MaterialCallBoard>
     {

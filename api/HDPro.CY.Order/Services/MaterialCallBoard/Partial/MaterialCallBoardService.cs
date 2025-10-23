@@ -6,15 +6,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HDPro.Core.Utilities;
-using HDPro.CY.Order.IRepositories.MaterialCallBoard;
-using HDPro.CY.Order.IServices.MaterialCallBoard;
+using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.IServices;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 using HDPro.Entity.DomainModels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace HDPro.CY.Order.Services.MaterialCallBoard
+namespace HDPro.CY.Order.Services
 {
     public partial class MaterialCallBoardService
     {
