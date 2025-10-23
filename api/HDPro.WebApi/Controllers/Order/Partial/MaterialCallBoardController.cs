@@ -4,6 +4,7 @@ using HDPro.Core.Filters;
 using HDPro.CY.Order.IServices;
 using HDPro.CY.Order.Models.MaterialCallBoardDtos;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HDPro.WebApi.Controllers.Order
 {
@@ -12,6 +13,16 @@ namespace HDPro.WebApi.Controllers.Order
     /// </summary>
     public partial class MaterialCallBoardController
     {
+        private readonly IMaterialCallBoardService _service;
+
+        [ActivatorUtilitiesConstructor]
+        public MaterialCallBoardController(
+            IMaterialCallBoardService service)
+            : base(service)
+        {
+            _service = service;
+        }
+
         /// <summary>
         /// 批量上传叫料看板数据
         /// </summary>
@@ -20,7 +31,7 @@ namespace HDPro.WebApi.Controllers.Order
         [ApiActionPermission()]
         public async Task<IActionResult> BatchUploadAsync([FromBody] List<MaterialCallBoardBatchDto> payload)
         {
-            var result = await Service.BatchUpsertAsync(payload);
+            var result = await _service.BatchUpsertAsync(payload);
             if (!result.Status)
             {
                 return BadRequest(result);
