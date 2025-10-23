@@ -8,15 +8,16 @@
 */
 using HDPro.CY.Order.Services;
 using HDPro.Core.Extensions.AutofacManager;
-using HDPro.Entity.DomainModels;
-using System.Linq;
 using HDPro.Core.Utilities;
-using System.Linq.Expressions;
-using HDPro.Core.Extensions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Services.MaterialCallBoardModels;
+using HDPro.Entity.DomainModels;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace HDPro.CY.Order.Services
 {
@@ -37,28 +38,128 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
-        /// 重写CY.Order项目特有的初始化逻辑
-        /// 可在此处添加MaterialCallBoard特有的初始化代码
+        /// 批量新增或更新 MaterialCallBoard 数据
         /// </summary>
-        protected override void InitCYOrderSpecific()
+        /// <param name="payload">外部系统传入的数据集合</param>
+        /// <returns>写入结果</returns>
+        public Task<WebResponseContent> BatchUpsertAsync(IEnumerable<MaterialCallBoardBatchDto> payload)
         {
-            base.InitCYOrderSpecific();
-            // 在此处添加MaterialCallBoard特有的初始化逻辑
+            if (payload == null)
+            {
+                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
+            }
+
+            var items = payload
+                .Where(item => item != null)
+                .Select(NormalizePayload)
+                .ToList();
+            if (!items.Any())
+            {
+                return Task.FromResult(WebResponseContent.Instance.Error("请求数据不能为空"));
+            }
+
+            var validationErrors = new List<string>();
+            for (int i = 0; i < items.Count; i++)
+            {
+                var current = items[i];
+                var rowIndex = i + 1;
+
+                if (string.IsNullOrWhiteSpace(current.WorkOrderNo))
+                {
+                    validationErrors.Add($"第{rowIndex}条数据的工单号不能为空");
+                }
+                if (string.IsNullOrWhiteSpace(current.PlanTrackNo))
+                {
+                    validationErrors.Add($"第{rowIndex}条数据的计划跟踪号不能为空");
+                }
+                if (string.IsNullOrWhiteSpace(current.ProductCode))
+                {
+                    validationErrors.Add($"第{rowIndex}条数据的产品编号不能为空");
+                }
+                if (string.IsNullOrWhiteSpace(current.CallerName))
+                {
+                    validationErrors.Add($"第{rowIndex}条数据的叫料人不能为空");
+                }
+            }
+
+            if (validationErrors.Any())
+            {
+                return Task.FromResult(WebResponseContent.Instance.Error(string.Join("；", validationErrors)));
+            }
+
+            using var tran = _repository.DbContextBeginTransaction();
+            try
+            {
+                var existing = _repository
+                    .FindAsIQueryable(x => items.Select(i => i.WorkOrderNo).Contains(x.WorkOrderNo), true)
+                    .ToDictionary(x => x.WorkOrderNo, x => x);
+
+                var toInsert = new List<MaterialCallBoard>();
+
+                foreach (var dto in items)
+                {
+                    if (existing.TryGetValue(dto.WorkOrderNo, out var entity))
+                    {
+                        UpdateEntity(entity, dto);
+                        _repository.Update(entity, true);
+                    }
+                    else
+                    {
+                        var newEntity = CreateEntity(dto);
+                        toInsert.Add(newEntity);
+                    }
+                }
+
+                if (toInsert.Any())
+                {
+                    _repository.AddRange(toInsert, true);
+                }
+
+                tran.Commit();
+                return Task.FromResult(WebResponseContent.Instance.OK("批量导入成功"));
+            }
+            catch (Exception ex)
+            {
+                tran.Rollback();
+                return Task.FromResult(WebResponseContent.Instance.Error($"批量导入失败: {ex.Message}"));
+            }
         }
 
-        /// <summary>
-        /// 重写CY.Order项目通用数据验证方法
-        /// 可在此处添加MaterialCallBoard特有的数据验证逻辑
-        /// </summary>
-        /// <param name="entity">要验证的实体</param>
-        /// <returns>验证结果</returns>
-        protected override WebResponseContent ValidateCYOrderEntity(MaterialCallBoard entity)
+        private static MaterialCallBoardBatchDto NormalizePayload(MaterialCallBoardBatchDto dto)
         {
-            var response = base.ValidateCYOrderEntity(entity);
-            
-            // 在此处添加MaterialCallBoard特有的数据验证逻辑
-            
-            return response;
+            if (dto == null)
+            {
+                return null;
+            }
+
+            return new MaterialCallBoardBatchDto
+            {
+                WorkOrderNo = dto.WorkOrderNo?.Trim(),
+                PlanTrackNo = dto.PlanTrackNo?.Trim(),
+                ProductCode = dto.ProductCode?.Trim(),
+                CallerName = dto.CallerName?.Trim(),
+                CalledAt = dto.CalledAt == default ? DateTime.Now : dto.CalledAt
+            };
         }
-  }
-} 
+
+        private static void UpdateEntity(MaterialCallBoard target, MaterialCallBoardBatchDto source)
+        {
+            target.PlanTrackNo = source.PlanTrackNo;
+            target.ProductCode = source.ProductCode;
+            target.CallerName = source.CallerName;
+            target.CalledAt = source.CalledAt;
+        }
+
+        private static MaterialCallBoard CreateEntity(MaterialCallBoardBatchDto source)
+        {
+            return new MaterialCallBoard
+            {
+                WorkOrderNo = source.WorkOrderNo,
+                PlanTrackNo = source.PlanTrackNo,
+                ProductCode = source.ProductCode,
+                CallerName = source.CallerName,
+                CalledAt = source.CalledAt
+            };
+        }
+    }
+}
