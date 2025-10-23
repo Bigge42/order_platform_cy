@@ -1,33 +1,43 @@
-/*
- *接口编写处...
-*如果接口需要做Action的权限验证，请在Action上使用属性
-*如: [ApiActionPermission("MaterialCallBoard",Enums.ActionPermissionOptions.Search)]
- */
-using Microsoft.AspNetCore.Mvc;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Http;
-using HDPro.Entity.DomainModels;
+using HDPro.Core.Filters;
 using HDPro.CY.Order.IServices;
+using HDPro.CY.Order.Models.MaterialCallBoardDtos;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HDPro.CY.Order.Controllers
 {
+    /// <summary>
+    /// MaterialCallBoard 业务扩展接口
+    /// </summary>
     public partial class MaterialCallBoardController
     {
-        private readonly IMaterialCallBoardService _service;//访问业务代码
-        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IMaterialCallBoardService _service;
 
         [ActivatorUtilitiesConstructor]
         public MaterialCallBoardController(
-            IMaterialCallBoardService service,
-            IHttpContextAccessor httpContextAccessor
-        )
-        : base(service)
+            IMaterialCallBoardService service)
+            : base(service)
         {
             _service = service;
-            _httpContextAccessor = httpContextAccessor;
+        }
+
+        /// <summary>
+        /// 批量上传叫料看板数据
+        /// </summary>
+        /// <param name="payload">待上传数据</param>
+        [HttpPost("batch-upload")]
+        [ApiActionPermission()]
+        public async Task<IActionResult> BatchUploadAsync([FromBody] List<MaterialCallBoardBatchDto> payload)
+        {
+            var result = await _service.BatchUpsertAsync(payload);
+            if (!result.Status)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
         }
     }
 }
