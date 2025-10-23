@@ -183,4 +183,3 @@ WHERE s.name = @schema AND t.name = @table AND c.name = @column;";
         }
     }
 }
-e
