@@ -1,6 +1,6 @@
 using System;
 
-namespace HDPro.CY.Order.Services.MaterialCallBoard.Models
+namespace HDPro.CY.Order.Services.MaterialCallBoardModels
 {
     /// <summary>
     /// 批量写入 MaterialCallBoard 的请求项
