@@ -47,6 +47,8 @@
     <ProjectReference Include="..\HDPro.Sys\HDPro.Sys.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Controllers\Order\MaterialCallBoard\" />
+    <Folder Include="Models\" />
     <Folder Include="plugs\" />
     <Folder Include="ReportTemplate\" />
   </ItemGroup>
