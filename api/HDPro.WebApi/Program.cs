@@ -40,6 +40,9 @@ using HDPro.CY.Order.IServices.MaterialCallBoard;
 using HDPro.CY.Order.Services.MaterialCallBoard;
 using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.Repositories;
+using HDPro.CY.Order.IRepositories.MaterialCallBoard;
+using HDPro.CY.Order.Repositories.MaterialCallBoard;
+
 
 
 // 早期初始化NLog以便捕获所有日志
@@ -211,6 +214,11 @@ builder.Services.Configure<FormOptions>(x =>
 {
     options.MaxRequestBodySize = 1024 * 1024 * 100;
 });
+
+builder.Services.AddScoped<IMaterialCallWorkOrderSetRepository, MaterialCallWorkOrderSetRepository>();
+builder.Services.AddScoped<IMaterialCallWorkOrderSetService, MaterialCallWorkOrderSetService>();
+builder.Services.AddScoped<IMaterialCallWmsSyncService, MaterialCallWmsSyncService>();
+builder.Services.AddHttpClient(nameof(MaterialCallWmsSyncService));
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
