@@ -2,15 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
-using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using HDPro.Core.Utilities;
-using HDPro.Core.Extensions;
-using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Entity.DomainModels;
 using HDPro.CY.Order.IRepositories;
 
@@ -18,13 +17,42 @@ namespace HDPro.CY.Order.Services
 {
     public partial class ORDER_NOTE_FLATService
     {
+        private const string DefaultErpBaseUrl = "http://10.11.0.101:8003";
+        private const string SourceTypeEntry = "ENTRY";
+        private const string SourceTypeChange = "CHANGE";
+
         private readonly IORDER_NOTE_FLATRepository _repository; // 访问数据库仓储
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly string _erpBaseUrl;
+        private readonly string _erpEntryPath;
+        private readonly string _erpChangePath;
+        private readonly TimeSpan _erpTimeout;
 
         [ActivatorUtilitiesConstructor]
-        public ORDER_NOTE_FLATService(IORDER_NOTE_FLATRepository dbRepository, IHttpContextAccessor httpContextAccessor)
+        public ORDER_NOTE_FLATService(
+            IORDER_NOTE_FLATRepository dbRepository,
+            IHttpContextAccessor httpContextAccessor,
+            IConfiguration configuration,
+            IHttpClientFactory httpClientFactory = null)
             : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
+            _httpClientFactory = httpClientFactory;
+
+            var erpSection = configuration?.GetSection("ErpApis");
+            _erpBaseUrl = erpSection?["Base"];
+            _erpEntryPath = erpSection?["EntryPath"] ?? "/gateway/SalEntryBZToDDPT";
+            _erpChangePath = erpSection?["ChangePath"] ?? "/gateway/SalChangeBZToDDPT";
+
+            var timeoutSeconds = erpSection?.GetValue<int?>("TimeoutSeconds");
+            if (timeoutSeconds.HasValue && timeoutSeconds.Value > 0)
+            {
+                _erpTimeout = TimeSpan.FromSeconds(timeoutSeconds.Value);
+            }
+            else
+            {
+                _erpTimeout = TimeSpan.FromSeconds(30);
+            }
             // 多租户场景可在此初始化，普通场景不需要
             // base.Init(dbRepository);
         }
@@ -56,43 +84,39 @@ namespace HDPro.CY.Order.Services
             var response = new WebResponseContent();
             try
             {
-                string urlEntry = "http://10.11.0.101:8003/gateway/SalEntryBZToDDPT";
-                string urlChange = "http://10.11.0.101:8003/gateway/SalChangeBZToDDPT";
-                // 调用 ERP 接口获取 ENTRY 和 CHANGE 备注数据
-                using HttpClient client = new HttpClient();
-                string jsonEntry = await client.GetStringAsync(urlEntry);
-                string jsonChange = await client.GetStringAsync(urlChange);
-                var entryList = JsonConvert.DeserializeObject<List<ErpNoteDto>>(jsonEntry);
-                var changeList = JsonConvert.DeserializeObject<List<ErpNoteDto>>(jsonChange);
+                var entryTask = FetchErpNotesAsync(_erpEntryPath, "ENTRY接口");
+                var changeTask = FetchErpNotesAsync(_erpChangePath, "CHANGE接口");
+
+                await Task.WhenAll(entryTask, changeTask);
+
+                var entryList = entryTask.Result;
+                var changeList = changeTask.Result;
                 // 如果两个接口都没有返回数据
                 if ((entryList == null || entryList.Count == 0) && (changeList == null || changeList.Count == 0))
                 {
                     return response.Error("ERP接口未返回数据");
                 }
-                entryList ??= new List<ErpNoteDto>();
-                changeList ??= new List<ErpNoteDto>();
-                int inserted = 0;
-                int updated = 0;
-                // 处理 ENTRY 接口返回的数据
-                foreach (var note in entryList)
+                var now = DateTime.Now;
+                var pendingNotes = new Dictionary<(string SourceType, long EntryId), ORDER_NOTE_FLAT>();
+
+                void CollectNotes(IEnumerable<ErpNoteDto> source, string sourceType)
                 {
-                    // 根据 source_type="ENTRY" 和 FENTRYID 查找现有记录
-                    var entity = _repository.Find(x => x.source_type == "ENTRY" && x.source_entry_id == note.FENTRYID).FirstOrDefault();
-                    if (entity != null)
+                    if (source == null)
                     {
-                        // 已存在则更新内部备注和原始备注，bz_changed 设为 1（true）
-                        entity.internal_note = note.F_BLN_BZ1;
-                        entity.remark_raw = note.F_BLN_BZ;
-                        entity.bz_changed = true;
-                        entity.updated_at = DateTime.Now;
-                        updated++;
+                        return;
                     }
-                    else
+
+                    foreach (var note in source)
                     {
-                        // 不存在则插入新记录，bz_changed 默认设为 1（true）
-                        var newEntity = new ORDER_NOTE_FLAT
+                        if (note == null)
                         {
-                            source_type = "ENTRY",
+                            continue;
+                        }
+
+                        var key = (sourceType, note.FENTRYID);
+                        pendingNotes[key] = new ORDER_NOTE_FLAT
+                        {
+                            source_type = sourceType,
                             source_entry_id = note.FENTRYID,
                             contract_no = note.F_BLN_CONTACTNONAME,
                             product_model = note.F_BLN_CPXH,
@@ -105,54 +129,37 @@ namespace HDPro.CY.Order.Services
                             note_accessory_debug = null,
                             note_pressure_leak = null,
                             note_packing = null,
-                            created_at = DateTime.Now,
-                            updated_at = DateTime.Now,
+                            created_at = now,
+                            updated_at = now,
                             bz_changed = true
                         };
-                        _repository.Add(newEntity);
-                        inserted++;
                     }
                 }
-                // 处理 CHANGE 接口返回的数据
-                foreach (var note in changeList)
+
+                CollectNotes(entryList, SourceTypeEntry);
+                CollectNotes(changeList, SourceTypeChange);
+
+                var entities = pendingNotes.Values.ToList();
+                if (entities.Count == 0)
                 {
-                    var entity = _repository.Find(x => x.source_type == "CHANGE" && x.source_entry_id == note.FENTRYID).FirstOrDefault();
-                    if (entity != null)
-                    {
-                        entity.internal_note = note.F_BLN_BZ1;
-                        entity.remark_raw = note.F_BLN_BZ;
-                        entity.bz_changed = true;
-                        entity.updated_at = DateTime.Now;
-                        updated++;
-                    }
-                    else
-                    {
-                        var newEntity = new ORDER_NOTE_FLAT
-                        {
-                            source_type = "CHANGE",
-                            source_entry_id = note.FENTRYID,
-                            contract_no = note.F_BLN_CONTACTNONAME,
-                            product_model = note.F_BLN_CPXH,
-                            specification = note.FSPECIFICATION,
-                            mto_no = note.FMTONO,
-                            internal_note = note.F_BLN_BZ1,
-                            remark_raw = note.F_BLN_BZ,
-                            selection_guid = note.F_BLN_FGUID,
-                            note_body_actuator = null,
-                            note_accessory_debug = null,
-                            note_pressure_leak = null,
-                            note_packing = null,
-                            created_at = DateTime.Now,
-                            updated_at = DateTime.Now,
-                            bz_changed = true
-                        };
-                        _repository.Add(newEntity);
-                        inserted++;
-                    }
+                    return response.Error("ERP接口未返回有效数据");
                 }
-                // 将新增和修改的记录保存到数据库
-                _repository.SaveChanges();
+
+                var (inserted, updated) = await _repository.UpsertNotesAsync(entities);
+
                 return response.OK($"同步完成: 新增{inserted}条, 更新{updated}条");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return response.Error(ex.Message);
+            }
+            catch (HttpRequestException ex)
+            {
+                return response.Error($"调用ERP接口失败：{ex.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                return response.Error("调用ERP接口超时，请稍后重试。");
             }
             catch (Exception ex)
             {
@@ -219,6 +226,97 @@ namespace HDPro.CY.Order.Services
             public string FSPECIFICATION { get; set; }
             public string FMTONO { get; set; }
             public string F_BLN_FGUID { get; set; }
+        }
+
+        private async Task<List<ErpNoteDto>> FetchErpNotesAsync(string path, string description)
+        {
+            var json = await GetErpJsonAsync(path, description);
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return new List<ErpNoteDto>();
+            }
+
+            try
+            {
+                var token = JsonConvert.DeserializeObject(json);
+                if (token is JArray array)
+                {
+                    return array.ToObject<List<ErpNoteDto>>() ?? new List<ErpNoteDto>();
+                }
+
+                if (token is JObject obj && obj.TryGetValue("data", out var dataToken) && dataToken is JArray dataArray)
+                {
+                    return dataArray.ToObject<List<ErpNoteDto>>() ?? new List<ErpNoteDto>();
+                }
+
+                return JsonConvert.DeserializeObject<List<ErpNoteDto>>(json) ?? new List<ErpNoteDto>();
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"解析ERP接口({description})返回的数据失败：{ex.Message}");
+            }
+        }
+
+        private async Task<string> GetErpJsonAsync(string path, string description)
+        {
+            var requestUri = BuildErpRequestUri(path);
+            var client = _httpClientFactory?.CreateClient(nameof(ORDER_NOTE_FLATService));
+            var shouldDispose = client == null;
+            if (client == null)
+            {
+                client = new HttpClient();
+            }
+
+            if (_erpTimeout > TimeSpan.Zero)
+            {
+                client.Timeout = _erpTimeout;
+            }
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+                request.Headers.Accept.Clear();
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                var response = await client.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    throw new HttpRequestException($"接口({description})返回异常，状态码 {(int)response.StatusCode} {response.ReasonPhrase}，响应内容：{content}");
+                }
+
+                return await response.Content.ReadAsStringAsync();
+            }
+            finally
+            {
+                if (shouldDispose)
+                {
+                    client.Dispose();
+                }
+            }
+        }
+
+        private Uri BuildErpRequestUri(string path)
+        {
+            if (!string.IsNullOrWhiteSpace(path) && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+            {
+                return absolute;
+            }
+
+            var baseUrl = string.IsNullOrWhiteSpace(_erpBaseUrl) ? DefaultErpBaseUrl : _erpBaseUrl;
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+            {
+                throw new InvalidOperationException($"ERP接口基础地址配置错误：{baseUrl}");
+            }
+
+            var relativePath = (path ?? string.Empty).Trim();
+            if (relativePath.Length > 0)
+            {
+                relativePath = relativePath.TrimStart('/');
+            }
+
+            return new Uri(baseUri, relativePath);
         }
     }
 }
