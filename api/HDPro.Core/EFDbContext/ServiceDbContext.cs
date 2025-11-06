@@ -1,11 +1,11 @@
-﻿using HDPro.Core.DBManager;
+using HDPro.Core.DBManager;
 using HDPro.Core.Extensions.AutofacManager;
+using HDPro.Entity.DomainModels;
 using HDPro.Entity.SystemModels;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Text;
-
 
 namespace HDPro.Core.EFDbContext
 {
@@ -23,13 +23,13 @@ namespace HDPro.Core.EFDbContext
                 return DBServerProvider.ServiceConnectingString;
             }
         }
+
         public ServiceDbContext() : base() { }
 
         public ServiceDbContext(string dbServiceId) : base()
         {
             this.dbServiceId = dbServiceId;
         }
-
 
         public ServiceDbContext(DbContextOptions<BaseDbContext> options) : base(options) { }
 
@@ -40,9 +40,13 @@ namespace HDPro.Core.EFDbContext
             optionsBuilder = optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
             base.OnConfiguring(optionsBuilder);
         }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder, typeof(ServiceEntity));
+
+            modelBuilder.Entity<ORDER_NOTE_FLAT>()
+                .HasKey(x => new { x.source_type, x.source_entry_id });
         }
     }
 }

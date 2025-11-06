@@ -29,7 +29,6 @@ namespace HDPro.Entity.DomainModels
        /// <summary>
        ///
        /// </summary>
-       [Key]
        [Display(Name ="source_entry_id")]
        [Column(TypeName="bigint")]
        [Editable(true)]
