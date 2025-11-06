@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using HDPro.Entity.DomainModels;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
+using Microsoft.AspNetCore.Authorization;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -25,6 +26,7 @@ namespace HDPro.CY.Order.Controllers
         /// 调用 ERP 接口，同步销售订单备注到本地
         /// </summary>
         [HttpPost("syncErpNotes")]
+        [AllowAnonymous]
         public async Task<WebResponseContent> SyncErpNotes()
         {
             // 调用服务层方法执行同步
@@ -35,6 +37,7 @@ namespace HDPro.CY.Order.Controllers
         /// 提交备注拆分结果，更新指定字段并重置变更标记
         /// </summary>
         [HttpPost("updateNoteSplit")]
+        [AllowAnonymous]
         public WebResponseContent UpdateNoteSplit([FromBody] NoteSplitUpdateModel model)
         {
             // 调用服务层方法更新拆分后的备注
@@ -52,6 +55,7 @@ namespace HDPro.CY.Order.Controllers
         /// 获取内部备注和原始备注内容
         /// </summary>
         [HttpGet("{sourceType}/{sourceEntryId}/note")]
+        [AllowAnonymous]
         public WebResponseContent GetNote(string sourceType, long sourceEntryId)
         {
             // 调用服务层方法获取备注字段
