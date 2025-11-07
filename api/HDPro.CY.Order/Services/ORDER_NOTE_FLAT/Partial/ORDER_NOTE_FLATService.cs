@@ -213,5 +213,40 @@ namespace HDPro.CY.Order.Services
             _repository.SaveChanges();
             return resp.OK("更新成功");
         }
+
+        /// <summary>
+        /// 测试：对指定 sourceEntryId 执行一次“CHANGE 更新”
+        /// 若记录不存在会先种一条 ENTRY，再更新两个字段并置 bz_changed=1
+        /// </summary>
+#if DEBUG
+        public WebResponseContent TestChangeUpdate(long sourceEntryId)
+        {
+            var resp = new WebResponseContent();
+            if (sourceEntryId <= 0) return resp.Error("sourceEntryId 无效");
+
+            var before = _repository.Find(x => x.source_entry_id == sourceEntryId)
+                                    .Select(x => new { x.remark_raw, x.internal_note, x.bz_changed })
+                                    .FirstOrDefault();
+
+            bool seeded = _repository.EnsureExistsForTest(sourceEntryId);
+
+            var now = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+            if (!_repository.ApplyChangeForTest(sourceEntryId,
+                $"[CHANGE测试@{now}] 这是备注示例",
+                $"[CHANGE测试内部@{now}] 这是内部信息示例"))
+            {
+                return resp.Error("ApplyChange 失败");
+            }
+
+            _repository.SaveChanges();
+
+            var after = _repository.Find(x => x.source_entry_id == sourceEntryId)
+                                   .Select(x => new { x.remark_raw, x.internal_note, x.bz_changed })
+                                   .FirstOrDefault();
+
+            return resp.OK("CHANGE 测试更新成功", new { source_entry_id = sourceEntryId, seeded, before, after });
+        }
+#endif
+
     }
 }

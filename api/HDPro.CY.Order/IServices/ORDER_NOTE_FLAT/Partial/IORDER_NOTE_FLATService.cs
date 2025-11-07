@@ -12,5 +12,10 @@ namespace HDPro.CY.Order.IServices
                                              string note_accessory_debug,
                                              string note_pressure_leak,
                                              string note_packing);
+#if DEBUG
+        WebResponseContent TestChangeUpdate(long sourceEntryId);
+#endif
+
     }
+
 }

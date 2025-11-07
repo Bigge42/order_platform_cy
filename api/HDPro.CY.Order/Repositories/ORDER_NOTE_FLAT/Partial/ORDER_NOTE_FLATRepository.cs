@@ -74,8 +74,12 @@ namespace HDPro.CY.Order.Repositories
             entity.internal_note = Nz(dto.F_BLN_BZ);
             entity.bz_changed = true;
             entity.updated_at = DateTime.UtcNow;
+
+            // ★ 关键：标记为已修改，确保 SaveChanges() 落库
+            repo.Update(entity, true);
             return true;
         }
+
 
         /// <summary>
         /// 通过 source_entry_id 取简要备注对
@@ -92,10 +96,10 @@ namespace HDPro.CY.Order.Repositories
         /// 更新四段拆分备注字段
         /// </summary>
         public static bool UpdateNoteDetails(this IORDER_NOTE_FLATRepository repo, long sourceEntryId,
-                                             string note_body_actuator,
-                                             string note_accessory_debug,
-                                             string note_pressure_leak,
-                                             string note_packing)
+                                        string note_body_actuator,
+                                        string note_accessory_debug,
+                                        string note_pressure_leak,
+                                        string note_packing)
         {
             var e = repo.Find(x => x.source_entry_id == sourceEntryId).FirstOrDefault();
             if (e == null) return false;
@@ -105,7 +109,55 @@ namespace HDPro.CY.Order.Repositories
             e.note_pressure_leak = note_pressure_leak;
             e.note_packing = note_packing;
             e.updated_at = DateTime.UtcNow;
+
+            // ★ 关键：标记为已修改
+            repo.Update(e, true);
+            return true;
+        }
+#if DEBUG
+        /// <summary>
+        /// 测试用：若不存在则种一条 ENTRY 基线（bz_changed=0），仅含最小字段
+        /// </summary>
+        public static bool EnsureExistsForTest(this IORDER_NOTE_FLATRepository repo, long sourceEntryId)
+        {
+            var exist = repo.Find(x => x.source_entry_id == sourceEntryId).FirstOrDefault();
+            if (exist != null) return false;
+
+            var entity = new ORDER_NOTE_FLAT
+            {
+                source_type = "ENTRY",
+                source_entry_id = sourceEntryId,
+                remark_raw = null,
+                internal_note = null,
+                created_at = DateTime.UtcNow,
+                updated_at = DateTime.UtcNow,
+                bz_changed = false,
+                note_body_actuator = null,
+                note_accessory_debug = null,
+                note_pressure_leak = null,
+                note_packing = null
+            };
+            repo.Add(entity);
+            return true;
+        }
+
+        /// <summary>
+        /// 测试用：套用一笔 CHANGE 更新（只改 remark_raw/internal_note，并置 bz_changed=1）
+        /// </summary>
+        public static bool ApplyChangeForTest(this IORDER_NOTE_FLATRepository repo, long sourceEntryId, string remarkRaw, string internalNote)
+        {
+            var e = repo.Find(x => x.source_entry_id == sourceEntryId).FirstOrDefault();
+            if (e == null) return false;
+
+            e.remark_raw = Nz(remarkRaw);
+            e.internal_note = Nz(internalNote);
+            e.bz_changed = true;
+            e.updated_at = DateTime.UtcNow;
+
+            // ★ 关键：标记为已修改
+            repo.Update(e, true);
             return true;
         }
     }
+#endif
 }
