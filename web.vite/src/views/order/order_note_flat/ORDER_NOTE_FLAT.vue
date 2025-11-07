@@ -229,8 +229,34 @@
 
     const ensureSplitActionColumn = () => {
         const actionField = '__note_split_action__';
-        const exists = columns.some(col => col.field === actionField);
-        if (exists) {
+        const reusableColumn = columns.find(col => col.title === '操作' && (!col.field || col.field === actionField));
+        if (reusableColumn) {
+            reusableColumn.field = actionField;
+            reusableColumn.width = reusableColumn.width || 120;
+            reusableColumn.align = reusableColumn.align || 'center';
+            reusableColumn.fixed = reusableColumn.fixed || 'right';
+            reusableColumn.render = (h, { row }) => (
+                <el-button type="primary"
+                           link
+                           size="small"
+                           onClick={() => openSplitDialog(row)}>
+                    备注拆分
+                </el-button>
+            );
+            return;
+        }
+
+        let hasExisting = false;
+        for (let index = columns.length - 1; index >= 0; index -= 1) {
+            if (columns[index].field === actionField) {
+                if (!hasExisting) {
+                    hasExisting = true;
+                } else {
+                    columns.splice(index, 1);
+                }
+            }
+        }
+        if (hasExisting) {
             return;
         }
         columns.push({
@@ -252,8 +278,50 @@
         });
     };
 
+    const normalizeBoolean = (value) => {
+        if (value === true || value === 'true') return true;
+        if (value === false || value === 'false') return false;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') {
+            const lowered = value.trim().toLowerCase();
+            if (['1', '是', 'y', 'yes', 'true', 't'].includes(lowered)) {
+                return true;
+            }
+            if (['0', '否', 'n', 'no', 'false', 'f'].includes(lowered)) {
+                return false;
+            }
+        }
+        return Boolean(value);
+    };
+
+    const ensureBzChangedStyling = () => {
+        const column = columns.find(col => col.field === 'bz_changed');
+        if (!column || column.__noteSplitStyled) {
+            return;
+        }
+        const originalRender = column.render;
+        column.render = (h, ctx) => {
+            const { row } = ctx;
+            const changed = normalizeBoolean(row?.bz_changed);
+            const classNames = ['bz-changed-flag', changed ? 'is-true' : 'is-false'];
+            const content = originalRender
+                ? originalRender(h, ctx)
+                : (row?.bz_changed === undefined || row?.bz_changed === null
+                    ? ''
+                    : (changed ? '是' : '否'));
+            return (
+                <span class={classNames.join(' ')}>
+                    {content}
+                </span>
+            );
+        };
+        column.align = column.align || 'center';
+        column.__noteSplitStyled = true;
+    };
+
     ensureFieldOrder();
     ensureSplitActionColumn();
+    ensureBzChangedStyling();
 
     //生成对象属性初始化
     const onInit = async ($vm) => {
@@ -322,28 +390,70 @@
 </script>
 
 <style scoped lang="scss">
+.note-split-dialog-wrapper :deep(.el-dialog) {
+    border-radius: 18px;
+    overflow: hidden;
+}
+
 .note-split-dialog-wrapper :deep(.el-dialog__body) {
-    padding: 32px 40px 40px;
+    padding: 40px 56px 0;
+    background-color: #f5f7fa;
+}
+
+.note-split-dialog-wrapper :deep(.el-dialog__footer) {
+    padding: 0 56px 40px;
     background-color: #f5f7fa;
 }
 
 .note-split-dialog {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 28px 32px;
+    gap: 24px;
+    padding: 36px 40px;
     background-color: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 6px 18px rgba(31, 45, 61, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 10px 28px rgba(31, 45, 61, 0.08);
+    border: 1px solid #e4e7ed;
 }
 
 .note-split-section {
     width: 100%;
 }
 
+.note-split-section :deep(.el-form-item) {
+    margin-bottom: 20px;
+}
+
 .dialog-footer {
     display: flex;
     justify-content: flex-end;
     gap: 12px;
+}
+
+:deep(.bz-changed-flag) {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    line-height: 24px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+:deep(.bz-changed-flag.is-false) {
+    background-color: #dff6e2;
+    color: #2f8f3a;
+}
+
+:deep(.bz-changed-flag.is-true) {
+    background-color: #fde4e4;
+    color: #d14343;
+}
+
+:deep(.el-table__row:has(.bz-changed-flag.is-false) > td) {
+    background-color: #f3fbf4;
+}
+
+:deep(.el-table__row:has(.bz-changed-flag.is-true) > td) {
+    background-color: #fef3f3;
 }
 </style>
