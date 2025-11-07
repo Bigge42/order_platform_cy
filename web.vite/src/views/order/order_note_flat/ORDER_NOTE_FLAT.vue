@@ -33,7 +33,7 @@
   <!-- 备注拆分弹窗 -->
   <el-dialog
     v-model="splitDialogVisible"
-    title="备注拆分"
+    title=""
     width="920px"
     top="8vh"
     class="note-split-dialog-wrapper"
@@ -46,13 +46,18 @@
       v-loading="splitDialogFetching"
       element-loading-text="加载备注中..."
     >
-      <!-- 当前用户显示区 -->
+      <!-- 内部卡片头部：左侧显示 备注拆分 + 合同号 + 产品型号；右侧显示用户信息 -->
       <div class="note-split-dialog-header">
-        <span class="note-split-dialog-header__label">当前用户：</span>
-        <span class="note-split-dialog-header__value">{{ userDisplayName }}</span>
-        <span style="margin: 0 8px; color:#c0c4cc;">|</span>
-        <span class="note-split-dialog-header__label">账户用户名：</span>
-        <span class="note-split-dialog-header__value">{{ userAccount }}</span>
+        <div class="note-split-header-left">
+          <span class="note-title">备注拆分</span>
+          <span class="note-meta">合同号：{{ contractNo || '—' }}</span>
+          <span class="note-meta">产品型号：{{ productModel || '—' }}</span>
+        </div>
+        <div class="note-split-header-right">
+          <span class="sep">|</span>
+          <span class="note-split-dialog-header__label">账户用户名：</span>
+          <span class="note-split-dialog-header__value">{{ userAccount }}</span>
+        </div>
       </div>
 
       <!-- 原始备注（只读） -->
@@ -112,16 +117,15 @@
           />
         </el-form-item>
       </el-form>
-    </div>
 
-    <template #footer>
-      <span class="dialog-footer">
+      <!-- 内部右下角操作按钮 -->
+      <div class="note-split-actions">
         <el-button @click="handleSplitDialogCancel" :disabled="splitDialogSubmitting">取消</el-button>
         <el-button type="primary" @click="handleSplitDialogSubmit" :loading="splitDialogSubmitting">
           确认
         </el-button>
-      </span>
-    </template>
+      </div>
+    </div>
   </el-dialog>
 </template>
 
@@ -181,6 +185,10 @@ const splitDialogForm = reactive({
 const splitDialogSourceId = ref(null);
 const activeRowRef = ref(null);
 
+// 合同号 / 产品型号（用于左上角显示）
+const contractNo = computed(() => activeRowRef.value?.contract_no || "");
+const productModel = computed(() => activeRowRef.value?.product_model || "");
+
 const resetSplitDialog = () => {
   splitDialogRemark.remark_raw = "";
   splitDialogRemark.internal_note = "";
@@ -201,13 +209,12 @@ const handleSplitDialogCancel = () => {
   if (!splitDialogSubmitting.value) splitDialogVisible.value = false;
 };
 
-// ============== 保存：按后端新文档携带 modified_by =================
+// ============== 保存：携带 modified_by（必填） =================
 const handleSplitDialogSubmit = async () => {
   if (!splitDialogSourceId.value) {
     proxy.$message.error("缺少 source_entry_id，无法保存");
     return;
   }
-  // modified_by 按接口文档为“张三”这类真实姓名，若无姓名则回退到账号
   const modifiedBy = userRealName.value || userAccount.value || "系统用户";
 
   splitDialogSubmitting.value = true;
@@ -354,7 +361,7 @@ const onInit = async ($vm) => {
   gridRef = $vm;
 };
 const onInited = async () => {
-  // 这里不用再重复插入“备注拆分”列，已在 ensureSplitActionColumn 完成
+  // 按需扩展
 };
 const searchBefore = async () => true;
 const searchAfter = async () => true;
@@ -369,30 +376,72 @@ defineExpose({});
 </script>
 
 <style scoped lang="scss">
+/* 外层弹窗外观与留白 */
 .note-split-dialog-wrapper :deep(.el-dialog) {
   border-radius: 18px;
   overflow: hidden;
 }
 .note-split-dialog-wrapper :deep(.el-dialog__body) {
-  padding: 40px 56px 0;
+  padding: 40px 56px 24px; /* 底部少量留白，内部卡片再放按钮 */
   background-color: #f5f7fa;
 }
-.note-split-dialog-wrapper :deep(.el-dialog__footer) {
-  padding: 0 56px 40px;
-  background-color: #f5f7fa;
-}
+/* 我们不使用外部footer，保持默认无footer即可 */
 
 .note-split-dialog {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 36px 40px;
+  padding: 24px 28px 20px;
   background-color: #ffffff;
   border-radius: 16px;
   box-shadow: 0 10px 28px rgba(31, 45, 61, 0.08);
   border: 1px solid #e4e7ed;
 }
 
+/* 顶部信息行：左右布局 */
+.note-split-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+/* 左侧：备注拆分 + 合同号 + 型号（靠左） */
+.note-split-header-left {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.note-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #303133;
+}
+.note-meta {
+  font-size: 13px;
+  color: #666;
+}
+
+/* 右侧：用户信息（靠右） */
+.note-split-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #606266;
+}
+.note-split-dialog-header__value {
+  font-weight: 600;
+  color: #303133;
+}
+.sep {
+  margin: 0 6px;
+  color: #c0c4cc;
+}
+
+/* 表单与按钮 */
 .note-split-section {
   width: 100%;
 }
@@ -400,27 +449,17 @@ defineExpose({});
   margin-bottom: 20px;
 }
 
-.note-split-dialog-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: #606266;
-  margin-bottom: 12px;
-}
-.note-split-dialog-header__value {
-  font-weight: 600;
-  color: #303133;
-}
-
-.dialog-footer {
+/* 内部右下角操作区 */
+.note-split-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  border-top: 1px solid #f0f2f5;
+  padding-top: 12px;
+  margin-top: 4px;
 }
 
-/* bz_changed 渲染样式 */
+/* bz_changed 渲染样式（保留） */
 :deep(.bz-changed-flag) {
   display: inline-flex;
   align-items: center;
