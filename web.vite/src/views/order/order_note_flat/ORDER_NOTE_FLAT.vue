@@ -264,6 +264,30 @@
     }
     //生成对象属性初始化后,操作明细表配置用到
     const onInited = async () => {
+        if (!gridRef.columns.some(c => c.field === '__note_split__')) {
+            gridRef.columns.push({
+                field: '__note_split__',
+                title: '操作',
+                width: 120,
+                align: 'center',
+                fixed: 'right',
+                render: (h, { row }) => {
+                    return (
+                        <el-button
+                            type="primary"
+                            size="small"
+                            plain
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                openNoteDialog(row)
+                            }}
+                        >
+                            备注拆分
+                        </el-button>
+                    )
+                }
+            })
+        }
     }
     const searchBefore = async (param) => {
         //界面查询前,可以给param.wheres添加查询参数
