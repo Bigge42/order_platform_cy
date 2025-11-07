@@ -41,6 +41,10 @@
         <div class="note-split-dialog"
              v-loading="splitDialogFetching"
              element-loading-text="加载备注中...">
+            <div class="note-split-dialog-header">
+                <span class="note-split-dialog-header__label">当前用户：</span>
+                <span class="note-split-dialog-header__value">{{ userDisplayName }}</span>
+            </div>
             <el-form label-width="140px"
                      class="note-split-section"
                      :model="splitDialogRemark">
@@ -101,13 +105,28 @@
 <script setup lang="jsx">
     import extend from "@/extension/order/order_note_flat/ORDER_NOTE_FLAT.jsx";
     import viewOptions from './ORDER_NOTE_FLAT/options.js'
-    import { ref, reactive, getCurrentInstance } from "vue";
+    import { ref, reactive, getCurrentInstance, computed } from "vue";
+    import { useStore } from 'vuex';
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
+    const store = useStore();
     //http请求，proxy.http.post/get
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
+    const userDisplayName = computed(() => {
+        const getter = store.getters.getUserInfo;
+        const userInfo = typeof getter === 'function' ? getter() : getter;
+        if (!userInfo) {
+            return '未知用户';
+        }
+        const name = userInfo.userTrueName || userInfo.userName || '';
+        const account = userInfo.loginName || '';
+        if (name && account && name !== account) {
+            return `${name}（${account}）`;
+        }
+        return name || account || '未知用户';
+    });
     const splitDialogVisible = ref(false);
     const splitDialogFetching = ref(false);
     const splitDialogSubmitting = ref(false);
@@ -422,6 +441,21 @@
 
 .note-split-section :deep(.el-form-item) {
     margin-bottom: 20px;
+}
+
+.note-split-dialog-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #606266;
+    margin-bottom: 12px;
+}
+
+.note-split-dialog-header__value {
+    font-weight: 600;
+    color: #303133;
 }
 
 .dialog-footer {
