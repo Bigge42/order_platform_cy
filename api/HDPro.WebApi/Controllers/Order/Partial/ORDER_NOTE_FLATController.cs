@@ -1,33 +1,54 @@
-/*
- *接口编写处...
-*如果接口需要做Action的权限验证，请在Action上使用属性
-*如: [ApiActionPermission("ORDER_NOTE_FLAT",Enums.ActionPermissionOptions.Search)]
- */
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Http;
-using HDPro.Entity.DomainModels;
+using HDPro.Core.Utilities;
 using HDPro.CY.Order.IServices;
+using Microsoft.AspNetCore.Authorization;
 
 namespace HDPro.CY.Order.Controllers
 {
     public partial class ORDER_NOTE_FLATController
     {
-        private readonly IORDER_NOTE_FLATService _service;//访问业务代码
-        private readonly IHttpContextAccessor _httpContextAccessor;
+        /// <summary>
+        /// 1) 增量同步（ENTRY: 仅新增；CHANGE: 仅更新）
+        /// </summary>
+        [HttpPost("syncErpNotes")]
+        [AllowAnonymous]
+        public async Task<WebResponseContent> SyncErpNotes([FromServices] IORDER_NOTE_FLATService service)
+            => await service.SyncErpNotes();
 
-        [ActivatorUtilitiesConstructor]
-        public ORDER_NOTE_FLATController(
-            IORDER_NOTE_FLATService service,
-            IHttpContextAccessor httpContextAccessor
-        )
-        : base(service)
+        /// <summary>
+        /// 2) 按 source_entry_id 获取 remark_raw、internal_note
+        /// </summary>
+        [HttpGet("{sourceEntryId:long}/note")]
+        [AllowAnonymous]
+        public WebResponseContent GetNoteById(long sourceEntryId, [FromServices] IORDER_NOTE_FLATService service)
+            => service.GetNoteById(sourceEntryId);
+
+        /// <summary>
+        /// 3) 更新四个拆分字段
+        /// </summary>
+        [HttpPost("updateNoteDetails")]
+        [AllowAnonymous]
+        public WebResponseContent UpdateNoteDetails([FromBody] NoteDetailsUpdateModel model,
+                                                    [FromServices] IORDER_NOTE_FLATService service)
         {
-            _service = service;
-            _httpContextAccessor = httpContextAccessor;
+            if (model == null || model.source_entry_id <= 0)
+                return new WebResponseContent().Error("参数错误：source_entry_id");
+
+            return service.UpdateNoteDetails(model.source_entry_id,
+                                             model.note_body_actuator,
+                                             model.note_accessory_debug,
+                                             model.note_pressure_leak,
+                                             model.note_packing);
+        }
+
+        public class NoteDetailsUpdateModel
+        {
+            public long source_entry_id { get; set; }
+            public string note_body_actuator { get; set; }
+            public string note_accessory_debug { get; set; }
+            public string note_pressure_leak { get; set; }
+            public string note_packing { get; set; }
         }
     }
 }
