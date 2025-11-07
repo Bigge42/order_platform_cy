@@ -93,13 +93,16 @@ namespace HDPro.CY.Order.Repositories
         }
 
         /// <summary>
-        /// 更新四段拆分备注字段
+        /// 更新四段拆分备注字段 + 记录修改人；并将 bz_changed 置为 false
         /// </summary>
-        public static bool UpdateNoteDetails(this IORDER_NOTE_FLATRepository repo, long sourceEntryId,
-                                        string note_body_actuator,
-                                        string note_accessory_debug,
-                                        string note_pressure_leak,
-                                        string note_packing)
+        public static bool UpdateNoteDetails(
+            this IORDER_NOTE_FLATRepository repo,
+            long sourceEntryId,
+            string note_body_actuator,
+            string note_accessory_debug,
+            string note_pressure_leak,
+            string note_packing,
+            string modifiedBy)
         {
             var e = repo.Find(x => x.source_entry_id == sourceEntryId).FirstOrDefault();
             if (e == null) return false;
@@ -108,12 +111,20 @@ namespace HDPro.CY.Order.Repositories
             e.note_accessory_debug = note_accessory_debug;
             e.note_pressure_leak = note_pressure_leak;
             e.note_packing = note_packing;
+
+            // ★ 新增：修改人
+            e.modified_by = Nz(modifiedBy);
+
+            // ★ 新增：提交拆分后，业务要求 bz_changed = false
+            e.bz_changed = false;
+
             e.updated_at = DateTime.UtcNow;
 
-            // ★ 关键：标记为已修改
+            // 关键：标记为已修改，确保 SaveChanges 生效
             repo.Update(e, true);
             return true;
         }
+
 #if DEBUG
         /// <summary>
         /// 测试用：若不存在则种一条 ENTRY 基线（bz_changed=0），仅含最小字段

@@ -156,6 +156,14 @@ namespace HDPro.Entity.DomainModels
        [Required(AllowEmptyStrings=false)]
        public bool bz_changed { get; set; }
 
-       
+        /// <summary>
+        /// 为 ORDER_NOTE_FLAT 扩展“修改人”字段
+        /// </summary>
+   
+        /// <summary>
+        /// 修改人（前端在 updateNoteDetails 时传入）
+        /// </summary>
+        public string modified_by { get; set; }
+  
     }
 }
