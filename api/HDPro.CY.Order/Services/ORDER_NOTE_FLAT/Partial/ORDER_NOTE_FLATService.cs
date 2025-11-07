@@ -191,24 +191,28 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
-        /// 3) 更新四个拆分字段（不改 remark_raw/internal_note/bz_changed）
+        /// 3) 更新四个拆分字段 + 修改人；并设置 bz_changed=false
         /// </summary>
-        public WebResponseContent UpdateNoteDetails(long sourceEntryId,
-                                                    string note_body_actuator,
-                                                    string note_accessory_debug,
-                                                    string note_pressure_leak,
-                                                    string note_packing)
+        public WebResponseContent UpdateNoteDetails(
+            long sourceEntryId,
+            string note_body_actuator,
+            string note_accessory_debug,
+            string note_pressure_leak,
+            string note_packing,
+            string modifiedBy)
         {
             var resp = new WebResponseContent();
 
-            if (!_repository.UpdateNoteDetails(sourceEntryId,
-                                               note_body_actuator,
-                                               note_accessory_debug,
-                                               note_pressure_leak,
-                                               note_packing))
-            {
-                return resp.Error("未找到对应记录");
-            }
+            var ok = _repository.UpdateNoteDetails(
+                sourceEntryId,
+                note_body_actuator,
+                note_accessory_debug,
+                note_pressure_leak,
+                note_packing,
+                modifiedBy
+            );
+
+            if (!ok) return resp.Error("未找到对应记录");
 
             _repository.SaveChanges();
             return resp.OK("更新成功");
