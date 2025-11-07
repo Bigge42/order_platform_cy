@@ -25,21 +25,28 @@ namespace HDPro.CY.Order.Controllers
             => service.GetNoteById(sourceEntryId);
 
         /// <summary>
-        /// 3) 更新四个拆分字段
+        /// 3) 更新四个拆分字段 + 修改人；并将 bz_changed=false
         /// </summary>
         [HttpPost("updateNoteDetails")]
         [AllowAnonymous]
-        public WebResponseContent UpdateNoteDetails([FromBody] NoteDetailsUpdateModel model,
-                                                    [FromServices] IORDER_NOTE_FLATService service)
+        public WebResponseContent UpdateNoteDetails(
+            [FromBody] NoteDetailsUpdateModel model,
+            [FromServices] IORDER_NOTE_FLATService service)
         {
             if (model == null || model.source_entry_id <= 0)
                 return new WebResponseContent().Error("参数错误：source_entry_id");
 
-            return service.UpdateNoteDetails(model.source_entry_id,
-                                             model.note_body_actuator,
-                                             model.note_accessory_debug,
-                                             model.note_pressure_leak,
-                                             model.note_packing);
+            if (string.IsNullOrWhiteSpace(model.modified_by))
+                return new WebResponseContent().Error("参数错误：modified_by 不能为空");
+
+            return service.UpdateNoteDetails(
+                model.source_entry_id,
+                model.note_body_actuator,
+                model.note_accessory_debug,
+                model.note_pressure_leak,
+                model.note_packing,
+                model.modified_by.Trim()
+            );
         }
 
 
@@ -60,6 +67,7 @@ namespace HDPro.CY.Order.Controllers
             public string note_accessory_debug { get; set; }
             public string note_pressure_leak { get; set; }
             public string note_packing { get; set; }
+            public string modified_by { get; set; } 
         }
     }
 }
