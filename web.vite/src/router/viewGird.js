@@ -688,6 +688,14 @@ let viewgird = [
         path: '/MaterialCallBoard',
         name: 'MaterialCallBoard',
         component: () => import('@/views/order/materialcallboard/MaterialCallBoard.vue')
+    }    ,{
+        path: '/vw_OCP_Tech_BOM_Status_Monthly',
+        name: 'vw_OCP_Tech_BOM_Status_Monthly',
+        component: () => import('@/views/order/ocp_bom_completion/vw_OCP_Tech_BOM_Status_Monthly.vue')
+    }    ,{
+        path: '/ORDER_NOTE_FLAT',
+        name: 'ORDER_NOTE_FLAT',
+        component: () => import('@/views/order/order_note_flat/ORDER_NOTE_FLAT.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除
