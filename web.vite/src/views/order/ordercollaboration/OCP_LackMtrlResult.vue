@@ -567,14 +567,18 @@
                 const newData = response.rows || []
                 
                 if (reset) {
-                    
+
                     schemeList.value = newData
                     let defaultScheme = newData.find(item => item.IsDefault === 1)
                     if (defaultScheme) {
                         selectedSchemeId.value = defaultScheme.ComputeID
+                        // 将选中的运算方案ID保存到 sessionStorage,供导出功能使用
+                        sessionStorage.setItem('OCP_LackMtrlResult_selectedSchemeId', defaultScheme.ComputeID)
                         console.log('自动选中默认运算方案:', defaultScheme)
                     } else if (newData.length > 0) {
                         selectedSchemeId.value = newData[0].ComputeID
+                        // 将选中的运算方案ID保存到 sessionStorage,供导出功能使用
+                        sessionStorage.setItem('OCP_LackMtrlResult_selectedSchemeId', newData[0].ComputeID)
                         console.log('自动选中第一个运算方案:', newData[0])
                     }
                 } else {
@@ -642,6 +646,8 @@
     // 选择运算方案
     const selectScheme = (scheme) => {
         selectedSchemeId.value = scheme.ComputeID
+        // 将选中的运算方案ID保存到 sessionStorage,供导出功能使用
+        sessionStorage.setItem('OCP_LackMtrlResult_selectedSchemeId', scheme.ComputeID)
         console.log('选中运算方案:', scheme)
         // 这里可以根据选中的方案更新右侧表格数据
         // 可以触发右侧表格刷新
