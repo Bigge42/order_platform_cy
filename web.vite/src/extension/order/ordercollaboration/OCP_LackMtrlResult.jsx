@@ -40,8 +40,16 @@ let extension = {
       return true;
     },
     exportBefore(param) {
-      //导出前处理，添加供应商字段权限控制参数
+      //导出前处理，添加供应商字段权限控制参数和运算方案条件
       const sourceKey = window.location.hash.split('?')[0];
+
+      // 单据类型映射 - 用于过滤不同类型的缺料数据
+      const BillTypeMap = {
+        '#/OCP_LackMtrlResult_PO': '标准采购',
+        '#/OCP_LackMtrlResult_WO': '标准委外',
+        '#/OCP_LackMtrlResult_MO_JG': '金工车间',
+        '#/OCP_LackMtrlResult_MO_BJ': '部件车间',
+      };
 
       // 业务类型映射 - 用于供应商字段权限控制
       const BusinessTypeMap = {
@@ -51,11 +59,36 @@ let extension = {
         '#/OCP_LackMtrlResult_MO_BJ': 'MO', // 部件车间 - 不需要权限控制
       };
 
+      // 初始化 wheres 数组
+      param.wheres = param.wheres || [];
+
+      // 添加BillType条件
+      if (BillTypeMap[sourceKey]) {
+        param.wheres.push({ name: 'BillType', value: BillTypeMap[sourceKey] });
+      }
+
       // 添加CustomerParams用于供应商字段权限控制
       param.customerParams = param.customerParams || {};
       if (BusinessTypeMap[sourceKey]) {
         param.customerParams.BusinessType = BusinessTypeMap[sourceKey];
         console.log('导出设置BusinessType:', BusinessTypeMap[sourceKey], '用于路由:', sourceKey);
+      }
+
+      // 如果选中了运算方案,将方案ID作为导出条件
+      // 从 sessionStorage 中获取当前选中的运算方案ID
+      const selectedSchemeId = sessionStorage.getItem('OCP_LackMtrlResult_selectedSchemeId');
+      if (selectedSchemeId) {
+        // 检查是否已经存在 ComputeID 条件,避免重复添加
+        const hasComputeId = param.wheres.some(w => w.name === 'ComputeID');
+        if (!hasComputeId) {
+          param.wheres.push({ name: 'ComputeID', value: selectedSchemeId });
+          console.log('导出添加运算方案条件:', selectedSchemeId);
+        }
+      } else {
+        // 如果没有选中运算方案,提示用户并阻止导出
+        console.warn('未选中运算方案,无法导出数据');
+        this.$message.warning('请先选择一个运算方案');
+        return false;
       }
 
       return true;
