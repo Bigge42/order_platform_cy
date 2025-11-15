@@ -2,6 +2,7 @@
  * K3Cloud服务接口
  */
 using HDPro.CY.Order.Services.K3Cloud.Models;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace HDPro.CY.Order.Services.K3Cloud
@@ -83,9 +84,16 @@ namespace HDPro.CY.Order.Services.K3Cloud
         /// <param name="orderString">排序字段</param>
         /// <returns>客户数据列表</returns>
         Task<K3CloudQueryResponse<K3CloudCustomerData>> GetCustomersAsync(
-            int pageIndex = 0, 
-            int pageSize = 1000, 
-            string filterString = null, 
+            int pageIndex = 0,
+            int pageSize = 1000,
+            string filterString = null,
             string orderString = "FNumber");
+
+        /// <summary>
+        /// BOM展开
+        /// </summary>
+        /// <param name="materialNumber">物料编码</param>
+        /// <returns>BOM展开结果</returns>
+        Task<ServiceResult<List<BomExpandItemDto>>> ExpandBomAsync(string materialNumber);
     }
-} 
+}

@@ -47,5 +47,10 @@ namespace HDPro.CY.Order.Services.K3Cloud.Models
         /// 查询接口地址
         /// </summary>
         public string QueryUrl => $"{ServerUrl}/k3cloud/Haodee.K3.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery.common.kdsvc";
+
+        /// <summary>
+        /// BOM展开接口地址
+        /// </summary>
+        public string BomExpandUrl => $"{ServerUrl}/k3cloud/Haodee.K3.WebApi.ServicesStub.BomExpandService.Expand.common.kdsvc";
     }
-} 
+}
