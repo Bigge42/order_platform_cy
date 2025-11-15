@@ -67,6 +67,10 @@ namespace HDPro.Core.Configuration
         /// </summary>
         public static SSOConfig SSOConfig { get; set; }
 
+        /// <summary>
+        /// 应用URL配置
+        /// </summary>
+        public static AppUrls AppUrls { get; set; }
 
         /// <summary>
         /// JWT有效期(分钟=默认120)
@@ -107,6 +111,7 @@ namespace HDPro.Core.Configuration
             services.Configure<ESBConfig>(configuration.GetSection("ESB"));
             services.Configure<SSOConfig>(configuration.GetSection("SSO"));
             services.Configure<TCSystemOptions>(configuration.GetSection("TC"));
+            services.Configure<AppUrls>(configuration.GetSection("AppUrls"));
 
             var provider = services.BuildServiceProvider();
             IWebHostEnvironment environment = provider.GetRequiredService<IWebHostEnvironment>();
@@ -124,6 +129,7 @@ namespace HDPro.Core.Configuration
             Kafka = provider.GetRequiredService<IOptions<Kafka>>().Value ?? new Kafka();
             ESB = provider.GetRequiredService<IOptions<ESBConfig>>().Value ?? new ESBConfig();
             SSOConfig = provider.GetRequiredService<IOptions<SSOConfig>>().Value ?? new SSOConfig();
+            AppUrls = provider.GetRequiredService<IOptions<AppUrls>>().Value ?? new AppUrls();
 
             _connection = provider.GetRequiredService<IOptions<Connection>>().Value;
 
@@ -251,5 +257,16 @@ namespace HDPro.Core.Configuration
     public class Topics
     {
         public string TestTopic { get; set; }
+    }
+
+    /// <summary>
+    /// 应用URL配置
+    /// </summary>
+    public class AppUrls
+    {
+        /// <summary>
+        /// 图纸API地址
+        /// </summary>
+        public string DrawingApiUrl { get; set; }
     }
 }
