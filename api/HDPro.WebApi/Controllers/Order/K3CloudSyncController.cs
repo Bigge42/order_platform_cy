@@ -358,21 +358,21 @@ namespace HDPro.CY.Order.Controllers
             try
             {
                 var testResults = new System.Text.StringBuilder();
-                
+
                 testResults.AppendLine($"K3Cloud服务状态：{(_k3CloudService != null ? "✓ 正常" : "✗ 未注入")}");
                 testResults.AppendLine($"物料服务状态：{(_materialService != null ? "✓ 正常" : "✗ 未注入")}");
                 testResults.AppendLine($"供应商服务状态：{(_supplierService != null ? "✓ 正常" : "✗ 未注入")}");
                 testResults.AppendLine($"客户服务状态：{(_customerService != null ? "✓ 正常" : "✗ 未注入")}");
                 testResults.AppendLine($"日志器状态：{(_logger != null ? "✓ 正常" : "✗ 未注入")}");
-                
+
                 testResults.AppendLine("\n支持的定时任务：");
                 testResults.AppendLine("1. MaterialSync - 物料数据同步");
                 testResults.AppendLine("2. SupplierSync - 供应商数据同步");
                 testResults.AppendLine("3. CustomerSync - 客户数据同步");
                 testResults.AppendLine("4. AllBasicDataSync - 全部基础数据同步");
-                
+
                 var response = new WebResponseContent();
-                return Json(response.OK("K3Cloud同步服务依赖注入测试完成", new { 
+                return Json(response.OK("K3Cloud同步服务依赖注入测试完成", new {
                     TestTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
                     Results = testResults.ToString()
                 }));
@@ -383,6 +383,51 @@ namespace HDPro.CY.Order.Controllers
                 return Json(new WebResponseContent().Error($"测试异常：{ex.Message}"));
             }
         }
+
+        #region BOM展开接口
+
+        /// <summary>
+        /// BOM展开查询
+        /// </summary>
+        /// <param name="materialNumber">物料编码</param>
+        /// <returns>BOM展开结果</returns>
+        [HttpGet("ExpandBom")]
+        public async Task<IActionResult> ExpandBom([FromQuery] string materialNumber)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(materialNumber))
+                {
+                    return Json(new WebResponseContent().Error("物料编码不能为空"));
+                }
+
+                _logger.LogInformation("开始BOM展开查询，物料编码: {MaterialNumber}", materialNumber);
+
+                var result = await _k3CloudService.ExpandBomAsync(materialNumber);
+
+                if (result.IsSuccess)
+                {
+                    _logger.LogInformation("BOM展开查询成功，物料编码: {MaterialNumber}，返回 {Count} 条数据",
+                        materialNumber, result.Data?.Count ?? 0);
+
+                    return Json(new WebResponseContent().OK(result.Message, result.Data));
+                }
+                else
+                {
+                    _logger.LogWarning("BOM展开查询失败，物料编码: {MaterialNumber}，原因: {Message}",
+                        materialNumber, result.Message);
+
+                    return Json(new WebResponseContent().Error(result.Message));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "BOM展开查询发生异常，物料编码: {MaterialNumber}", materialNumber);
+                return Json(new WebResponseContent().Error($"BOM展开查询异常：{ex.Message}"));
+            }
+        }
+
+        #endregion
     }
 
     /// <summary>

@@ -535,5 +535,72 @@ FSOCIALCRECODE as FSOCIALCRECODE",
                 };
             }
         }
+
+        /// <summary>
+        /// BOM展开
+        /// </summary>
+        /// <param name="materialNumber">物料编码</param>
+        /// <returns>BOM展开结果</returns>
+        public async Task<ServiceResult<List<BomExpandItemDto>>> ExpandBomAsync(string materialNumber)
+        {
+            try
+            {
+                // 验证参数
+                if (string.IsNullOrWhiteSpace(materialNumber))
+                {
+                    return ServiceResult<List<BomExpandItemDto>>.Failure("物料编码不能为空！");
+                }
+
+                // 确保已登录
+                var loginResponse = await LoginAsync();
+                if (!loginResponse.IsSuccess)
+                {
+                    return ServiceResult<List<BomExpandItemDto>>.Failure("上下文丢失，请重新登录！");
+                }
+
+                // 构建请求
+                var request = new BomExpandRequestDto
+                {
+                    MaterialNumber = materialNumber
+                };
+
+                var json = JsonConvert.SerializeObject(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                // 设置Cookie
+                var cookieValue = $"ASP.NET_SessionId=m5rgvx01kcrkw31iybroi3ue; kdservice-sessionid={_sessionId}";
+                _httpClient.DefaultRequestHeaders.Remove("Cookie");
+                _httpClient.DefaultRequestHeaders.Add("Cookie", cookieValue);
+
+                _logger.LogInformation("正在执行BOM展开，URL: {BomExpandUrl}，参数: {RequestJson}", _config.BomExpandUrl, json);
+
+                var response = await _httpClient.PostAsync(_config.BomExpandUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _logger.LogInformation("BOM展开响应: {ResponseContent}", responseContent);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonConvert.DeserializeObject<ServiceResult<List<BomExpandItemDto>>>(responseContent);
+
+                    if (result == null)
+                    {
+                        return ServiceResult<List<BomExpandItemDto>>.Failure("BOM展开响应解析失败");
+                    }
+
+                    return result;
+                }
+                else
+                {
+                    _logger.LogError("BOM展开请求失败，状态码: {StatusCode}，响应: {ResponseContent}", response.StatusCode, responseContent);
+                    return ServiceResult<List<BomExpandItemDto>>.Failure($"BOM展开请求失败，状态码: {response.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "BOM展开异常，物料编码: {MaterialNumber}", materialNumber);
+                return ServiceResult<List<BomExpandItemDto>>.Failure($"BOM展开异常: {ex.Message}");
+            }
+        }
     }
-} 
+}
