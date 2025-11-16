@@ -120,8 +120,14 @@
 
         <!-- 图纸预览 -->
         <div class="drawing-preview">
-          <div class="info-title">图纸
-            
+          <div class="info-title">
+            图纸
+              <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
+              {{ currentMaterial.drawingNo }}  
+            </span>
+             <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
+              {{ currentMaterial?.nominalDiameter }}
+            </span>
           </div>
           <div class="drawing-content" v-loading="drawingLoading">
             <iframe
