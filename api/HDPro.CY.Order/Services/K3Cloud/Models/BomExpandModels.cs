@@ -17,6 +17,17 @@ namespace HDPro.CY.Order.Services.K3Cloud.Models
     }
 
     /// <summary>
+    /// BOM展开请求包装类（用于K3Cloud接口）
+    /// </summary>
+    public class BomExpandRequestWrapper
+    {
+        /// <summary>
+        /// 参数数组
+        /// </summary>
+        public List<BomExpandRequestDto> parameters { get; set; }
+    }
+
+    /// <summary>
     /// BOM展开项DTO
     /// </summary>
     public class BomExpandItemDto
