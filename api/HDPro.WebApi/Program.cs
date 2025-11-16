@@ -188,6 +188,12 @@ builder.Services.AddHttpClient()
 builder.Services.AddHttpClient<HDPro.CY.Order.IServices.SRM.ISRMIntegrationService, HDPro.CY.Order.Services.SRM.SRMIntegrationService>();
 builder.Services.AddHttpClient<HDPro.CY.Order.IServices.OA.IOAIntegrationService, HDPro.CY.Order.Services.OA.OAIntegrationService>();
 
+// 添加K3Cloud服务的HttpClient配置 - 设置更长的超时时间以支持大数据量同步
+builder.Services.AddHttpClient<HDPro.CY.Order.Services.K3Cloud.K3CloudService>(client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10); // 设置10分钟超时，支持大数据量同步
+});
+
 builder.Services.AddMvc(options =>
 {
     options.Filters.Add(typeof(ApiAuthorizeFilter));

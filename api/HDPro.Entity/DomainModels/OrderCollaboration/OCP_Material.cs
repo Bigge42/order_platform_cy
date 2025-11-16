@@ -266,6 +266,51 @@ namespace HDPro.Entity.DomainModels
        [Editable(true)]
        public DateTime? ERPModifyDate { get; set; }
 
-       
+       /// <summary>
+       ///法兰标准
+       /// </summary>
+       [Display(Name ="法兰标准")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string FlangeStandard { get; set; }
+
+       /// <summary>
+       ///阀体材质
+       /// </summary>
+       [Display(Name ="阀体材质")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string BodyMaterial { get; set; }
+
+       /// <summary>
+       ///阀内件材质
+       /// </summary>
+       [Display(Name ="阀内件材质")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string TrimMaterial { get; set; }
+
+       /// <summary>
+       ///法兰密封面型式
+       /// </summary>
+       [Display(Name ="法兰密封面型式")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string FlangeSealType { get; set; }
+
+       /// <summary>
+       ///TC发布人
+       /// </summary>
+       [Display(Name ="TC发布人")]
+       [MaxLength(200)]
+       [Column(TypeName="nvarchar(200)")]
+       [Editable(true)]
+       public string TCReleaser { get; set; }
+
+
     }
 }

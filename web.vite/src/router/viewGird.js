@@ -696,6 +696,10 @@ let viewgird = [
         path: '/ORDER_NOTE_FLAT',
         name: 'ORDER_NOTE_FLAT',
         component: () => import('@/views/order/order_note_flat/ORDER_NOTE_FLAT.vue')
+    }    ,{
+        path: '/BomQuery',
+        name: 'BomQuery',
+        component: () => import('@/views/order/ordercollaboration/BomQuery.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

@@ -9,7 +9,6 @@ using HDPro.CY.Order.Services.K3Cloud;
 using HDPro.CY.Order.IRepositories;
 using System;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -203,7 +202,7 @@ namespace HDPro.CY.Order.Controllers
                 }
 
                 // 调用第三方图纸API
-                var apiUrl = $"{drawingApiUrl}?FTMaterialCode={materialCode}";
+                var apiUrl = $"{drawingApiUrl}?code={materialCode}";
                 _logger.LogInformation("调用图纸API: {ApiUrl}", apiUrl);
 
                 var apiResponse = await _httpClientHelper.GetAsync<DrawingApiResponse>(apiUrl, 30);
@@ -215,39 +214,33 @@ namespace HDPro.CY.Order.Controllers
                     return result;
                 }
 
-                if (!apiResponse.Success)
+                // 检查响应代码（200表示成功）
+                if (apiResponse.Code != 200)
                 {
-                    result.Message = apiResponse.Message ?? "图纸API查询失败";
-                    _logger.LogWarning("图纸API查询失败，物料编码: {MaterialCode}，原因: {Message}",
-                        materialCode, result.Message);
+                    result.Message = apiResponse.Msg ?? "图纸API查询失败";
+                    _logger.LogWarning("图纸API查询失败，物料编码: {MaterialCode}，Code: {Code}，原因: {Message}",
+                        materialCode, apiResponse.Code, result.Message);
                     return result;
                 }
 
-                if (apiResponse.Data == null || apiResponse.Data.Count == 0)
+                if (apiResponse.Data == null)
                 {
                     result.Message = "未找到该物料的图纸";
                     _logger.LogWarning("未找到图纸，物料编码: {MaterialCode}", materialCode);
                     return result;
                 }
 
-                // 获取第一个图纸数据
-                var drawingData = apiResponse.Data.First();
-                if (drawingData.DrawingUrls == null || drawingData.DrawingUrls.Count == 0)
+                // 获取图纸数据
+                var drawingData = apiResponse.Data;
+                if (drawingData.Url == null || string.IsNullOrWhiteSpace(drawingData.Url.Url))
                 {
-                    result.Message = "图纸URL为空";
+                    result.Message = "未找到图纸信息";
                     _logger.LogWarning("图纸URL为空，物料编码: {MaterialCode}", materialCode);
                     return result;
                 }
 
-                // 获取第一个PDF文件
-                var pdfUrl = drawingData.DrawingUrls.First().Url;
-                if (string.IsNullOrWhiteSpace(pdfUrl))
-                {
-                    result.Message = "图纸PDF地址为空";
-                    _logger.LogWarning("图纸PDF地址为空，物料编码: {MaterialCode}", materialCode);
-                    return result;
-                }
-
+                // 获取PDF文件URL
+                var pdfUrl = drawingData.Url.Url;
                 _logger.LogInformation("找到图纸PDF，物料编码: {MaterialCode}，URL: {PdfUrl}",
                     materialCode, pdfUrl);
 
@@ -255,7 +248,7 @@ namespace HDPro.CY.Order.Controllers
                 var cachedPath = await DownloadAndCachePdf(pdfUrl, materialCode);
                 if (string.IsNullOrWhiteSpace(cachedPath))
                 {
-                    result.Message = "PDF下载失败";
+                    result.Message = "PDF文件下载失败";
                     return result;
                 }
 
@@ -264,7 +257,7 @@ namespace HDPro.CY.Order.Controllers
                 var baseUrl = $"{request.Scheme}://{request.Host}";
                 result.PreviewUrl = $"{baseUrl}/{cachedPath}";
                 result.DownloadUrl = result.PreviewUrl;
-                result.LastModified = drawingData.LastModified;
+                result.LastModified = drawingData.Url.LastModified;
                 result.Success = true;
                 result.Message = "查询成功";
 
@@ -354,13 +347,24 @@ namespace HDPro.CY.Order.Controllers
     #region DTO模型
 
     /// <summary>
-    /// 图纸API响应模型
+    /// 第三方图纸接口响应模型
     /// </summary>
     public class DrawingApiResponse
     {
-        public bool Success { get; set; }
-        public string Message { get; set; }
-        public System.Collections.Generic.List<DrawingData> Data { get; set; }
+        /// <summary>
+        /// 响应消息
+        /// </summary>
+        public string Msg { get; set; }
+
+        /// <summary>
+        /// 响应代码
+        /// </summary>
+        public int Code { get; set; }
+
+        /// <summary>
+        /// 响应数据
+        /// </summary>
+        public DrawingData Data { get; set; }
     }
 
     /// <summary>
@@ -368,10 +372,20 @@ namespace HDPro.CY.Order.Controllers
     /// </summary>
     public class DrawingData
     {
+        /// <summary>
+        /// 物料编码
+        /// </summary>
         public string MaterialCode { get; set; }
-        public string MaterialName { get; set; }
-        public System.Collections.Generic.List<DrawingUrl> DrawingUrls { get; set; }
-        public string LastModified { get; set; }
+
+        /// <summary>
+        /// 图纸URL信息
+        /// </summary>
+        public DrawingUrl Url { get; set; }
+
+        /// <summary>
+        /// 背景图URL信息
+        /// </summary>
+        public DrawingUrl BGurl { get; set; }
     }
 
     /// <summary>
@@ -379,8 +393,14 @@ namespace HDPro.CY.Order.Controllers
     /// </summary>
     public class DrawingUrl
     {
+        /// <summary>
+        /// 图纸下载URL
+        /// </summary>
         public string Url { get; set; }
-        public string FileName { get; set; }
+
+        /// <summary>
+        /// 最后修改时间
+        /// </summary>
         public string LastModified { get; set; }
     }
 

@@ -293,6 +293,11 @@ F_BLN_TLXS,
 F_BLN_FLLJFS,
 F_BLN_ZXJGXH,
 F_BLN_ZXJGXC,
+F_BLN_Flbz,
+F_BLN_Ftcz,
+F_BLN_Fljcz,
+F_BLN_Flmfmxs,
+F_TC_RELEASER,
 FStockId.FNumber as FStockNumber,
 FWorkShopId.FName as FWorkShopId,
 FIsBOM,
@@ -558,13 +563,19 @@ FSOCIALCRECODE as FSOCIALCRECODE",
                     return ServiceResult<List<BomExpandItemDto>>.Failure("上下文丢失，请重新登录！");
                 }
 
-                // 构建请求
-                var request = new BomExpandRequestDto
+                // 构建请求（使用K3Cloud要求的格式）
+                var requestWrapper = new BomExpandRequestWrapper
                 {
-                    MaterialNumber = materialNumber
+                    parameters = new List<BomExpandRequestDto>
+                    {
+                        new BomExpandRequestDto
+                        {
+                            MaterialNumber = materialNumber
+                        }
+                    }
                 };
 
-                var json = JsonConvert.SerializeObject(request);
+                var json = JsonConvert.SerializeObject(requestWrapper);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 // 设置Cookie
