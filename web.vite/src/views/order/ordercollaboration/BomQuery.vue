@@ -130,12 +130,28 @@
             </span>
           </div>
           <div class="drawing-content" v-loading="drawingLoading">
+            <!-- 图纸iframe -->
             <iframe
               v-if="drawingUrl"
               :src="drawingUrl + '#toolbar=0&navpanes=0&scrollbar=0'"
               frameborder="0"
               class="drawing-iframe"
             ></iframe>
+            <!-- 错误提示 -->
+            <el-empty
+              v-else-if="drawingError"
+              :image-size="100"
+            >
+              <template #description>
+                <div class="drawing-error">
+                  <el-icon :size="20" color="#f56c6c" style="margin-bottom: 8px;">
+                    <WarningFilled />
+                  </el-icon>
+                  <div class="error-message">{{ drawingError }}</div>
+                </div>
+              </template>
+            </el-empty>
+            <!-- 暂无图纸 -->
             <el-empty
               v-else
               description="暂无图纸"
@@ -150,6 +166,7 @@
 
 <script setup>
 import { ref, getCurrentInstance, nextTick } from 'vue'
+import { WarningFilled } from '@element-plus/icons-vue'
 
 const { proxy } = getCurrentInstance()
 
@@ -161,6 +178,7 @@ const hasData = ref(false)
 const bomTreeData = ref([])
 const currentMaterial = ref(null)
 const drawingUrl = ref('')
+const drawingError = ref('') // 图纸加载错误信息
 const treeRef = ref(null)
 
 // 树形结构配置
@@ -275,6 +293,7 @@ const loadMaterialInfo = async (materialCode) => {
 const loadDrawing = async (materialCode) => {
   drawingLoading.value = true
   drawingUrl.value = ''
+  drawingError.value = '' // 清空之前的错误信息
 
   try {
     const result = await proxy.http.get(
@@ -285,14 +304,18 @@ const loadDrawing = async (materialCode) => {
 
     if (result.success && result.data && result.data.previewUrl) {
       drawingUrl.value = result.data.previewUrl
+      drawingError.value = ''
       console.log('设置图纸URL:', drawingUrl.value)
     } else {
       drawingUrl.value = ''
-      console.log('未找到图纸URL')
+      // 设置错误信息
+      drawingError.value = result.message || '未找到图纸'
+      console.log('图纸加载失败:', drawingError.value)
     }
   } catch (error) {
     console.error('图纸加载失败:', error)
     drawingUrl.value = ''
+    drawingError.value = error.message || '图纸加载异常'
   } finally {
     drawingLoading.value = false
   }
@@ -477,6 +500,22 @@ const loadDrawing = async (materialCode) => {
           :deep(.el-empty) {
             padding: 20px;
             margin: auto;
+          }
+
+          .drawing-error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #606266;
+
+            .error-message {
+              font-size: 14px;
+              color: #f56c6c;
+              margin-top: 4px;
+              text-align: center;
+              line-height: 1.5;
+            }
           }
         }
       }
