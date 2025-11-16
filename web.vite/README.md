@@ -1875,3 +1875,210 @@ _logger.LogInformation($"第 {pageIndex + 1} 页查询耗时: {stopwatch.Elapsed
 ### 总结
 
 通过为K3CloudService配置HttpClient超时时间，成功解决了物料同步时的超时问题。现在系统可以稳定地同步大量物料数据，不会因为超时而中断。
+
+---
+
+## 2025-11-16 - BOM查询图纸加载错误提示优化
+
+### 需求描述
+
+当BOM查询页面调用图纸接口失败时（如`api/BomQuery/GetDrawing?materialCode=06000030`返回`{"success":false,"message":"未找到 TZ 子目录：06000030"}`），需要在图纸显示区域显示友好的错误提示信息，而不是仅显示"暂无图纸"。
+
+### 实现方案
+
+#### 1. **添加错误状态管理**
+
+在组件中添加`drawingError`状态，用于存储图纸加载错误信息：
+
+```vue
+const drawingError = ref('') // 图纸加载错误信息
+```
+
+#### 2. **修改图纸加载逻辑**
+
+在`loadDrawing`方法中，当接口返回失败时，保存错误信息：
+
+```vue
+const loadDrawing = async (materialCode) => {
+  drawingLoading.value = true
+  drawingUrl.value = ''
+  drawingError.value = '' // 清空之前的错误信息
+
+  try {
+    const result = await proxy.http.get(
+      `api/BomQuery/GetDrawing?materialCode=${materialCode}`
+    )
+
+    if (result.success && result.data && result.data.previewUrl) {
+      drawingUrl.value = result.data.previewUrl
+      drawingError.value = ''
+    } else {
+      drawingUrl.value = ''
+      // 设置错误信息
+      drawingError.value = result.message || '未找到图纸'
+    }
+  } catch (error) {
+    drawingUrl.value = ''
+    drawingError.value = error.message || '图纸加载异常'
+  } finally {
+    drawingLoading.value = false
+  }
+}
+```
+
+#### 3. **优化图纸显示区域**
+
+使用三种状态显示不同内容：
+
+```vue
+<div class="drawing-content" v-loading="drawingLoading">
+  <!-- 1. 图纸加载成功：显示iframe -->
+  <iframe
+    v-if="drawingUrl"
+    :src="drawingUrl + '#toolbar=0&navpanes=0&scrollbar=0'"
+    frameborder="0"
+    class="drawing-iframe"
+  ></iframe>
+
+  <!-- 2. 图纸加载失败：显示错误提示 -->
+  <el-empty
+    v-else-if="drawingError"
+    :image-size="100"
+  >
+    <template #description>
+      <div class="drawing-error">
+        <el-icon :size="20" color="#f56c6c">
+          <WarningFilled />
+        </el-icon>
+        <div class="error-message">{{ drawingError }}</div>
+      </div>
+    </template>
+  </el-empty>
+
+  <!-- 3. 未选择物料：显示暂无图纸 -->
+  <el-empty
+    v-else
+    description="暂无图纸"
+    :image-size="100"
+  ></el-empty>
+</div>
+```
+
+#### 4. **添加错误提示样式**
+
+```scss
+.drawing-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #606266;
+
+  .error-message {
+    font-size: 14px;
+    color: #f56c6c;
+    margin-top: 4px;
+    text-align: center;
+    line-height: 1.5;
+  }
+}
+```
+
+### 显示效果
+
+#### 1. **图纸加载成功**
+- 显示PDF图纸iframe
+- 隐藏工具栏和导航面板
+
+#### 2. **图纸加载失败**
+- 显示红色警告图标（WarningFilled）
+- 显示错误信息（如"未找到 TZ 子目录：06000030"）
+- 错误信息使用红色字体（#f56c6c）
+
+#### 3. **未选择物料**
+- 显示默认的空状态图标
+- 显示"暂无图纸"文字
+
+### 错误信息示例
+
+| 场景 | 错误信息 |
+|------|----------|
+| 未找到TZ子目录 | "未找到 TZ 子目录：06000030" |
+| 图纸文件不存在 | "图纸文件不存在" |
+| 网络请求失败 | "图纸加载异常" |
+| 接口返回失败但无message | "未找到图纸" |
+
+### 技术要点
+
+#### 1. **状态优先级**
+
+使用`v-if`、`v-else-if`、`v-else`实现三种状态的互斥显示：
+
+1. **最高优先级**：`drawingUrl`存在 → 显示图纸
+2. **中等优先级**：`drawingError`存在 → 显示错误
+3. **最低优先级**：都不存在 → 显示空状态
+
+#### 2. **错误信息来源**
+
+```javascript
+// 优先使用接口返回的message
+drawingError.value = result.message || '未找到图纸'
+
+// 异常情况使用error.message
+drawingError.value = error.message || '图纸加载异常'
+```
+
+#### 3. **状态清理**
+
+每次加载图纸前，清空之前的错误信息：
+
+```javascript
+drawingError.value = '' // 清空之前的错误信息
+```
+
+### 修改的文件
+
+1. **web.vite/src/views/order/ordercollaboration/BomQuery.vue**
+   - 添加`drawingError`状态
+   - 修改`loadDrawing`方法，保存错误信息
+   - 优化图纸显示区域，添加错误提示
+   - 导入`WarningFilled`图标
+   - 添加错误提示样式
+
+2. **web.vite\README.md**
+   - 添加图纸错误提示优化说明
+
+### 用户体验优化
+
+#### 优化前
+- ❌ 图纸加载失败时，只显示"暂无图纸"
+- ❌ 用户不知道是什么原因导致图纸无法显示
+- ❌ 无法区分"未选择物料"和"图纸加载失败"
+
+#### 优化后
+- ✅ 图纸加载失败时，显示具体错误信息
+- ✅ 用户可以看到失败原因（如"未找到 TZ 子目录：06000030"）
+- ✅ 使用红色警告图标，视觉上更明显
+- ✅ 清晰区分三种状态：成功、失败、空状态
+
+### 后续优化建议
+
+1. **错误信息国际化**：
+   - 可以将错误信息映射为更友好的中文提示
+   - 例如："未找到 TZ 子目录" → "该物料暂无图纸文件"
+
+2. **添加重试按钮**：
+   - 在错误提示下方添加"重新加载"按钮
+   - 允许用户手动重试加载图纸
+
+3. **错误日志上报**：
+   - 将图纸加载失败的错误上报到日志系统
+   - 便于运维人员排查问题
+
+4. **缓存优化**：
+   - 对成功加载的图纸URL进行缓存
+   - 避免重复请求相同的图纸
+
+### 总结
+
+通过添加图纸加载错误状态管理和友好的错误提示UI，显著提升了BOM查询页面的用户体验。用户现在可以清楚地知道图纸加载失败的具体原因，而不是看到模糊的"暂无图纸"提示。
