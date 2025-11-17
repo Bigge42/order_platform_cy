@@ -22,8 +22,17 @@
     <!-- 主体内容区域 -->
     <div class="bom-content">
       <!-- 左侧BOM树 -->
-      <div class="bom-left">
-        <div class="bom-tree-title">BOM结构</div>
+      <div class="bom-left" v-show="!bomTreeCollapsed">
+        <div class="bom-tree-title">
+          BOM结构
+          <el-button
+            text
+            :icon="ArrowLeft"
+            @click="bomTreeCollapsed = true"
+            title="收起BOM树"
+            class="collapse-btn"
+          />
+        </div>
         <el-scrollbar class="bom-tree-scrollbar">
           <el-tree
             v-if="hasData"
@@ -52,15 +61,34 @@
         </el-scrollbar>
       </div>
 
+      <!-- BOM树收起后的展开按钮 -->
+      <div class="bom-left-collapsed" v-show="bomTreeCollapsed">
+        <el-button
+          text
+          :icon="ArrowRight"
+          @click="bomTreeCollapsed = false"
+          title="展开BOM树"
+          class="expand-btn"
+        />
+      </div>
+
       <!-- 右侧物料信息和图纸 -->
       <div class="bom-right">
         <!-- 物料信息 -->
-        <div class="material-info">
+        <div class="material-info" v-show="!materialInfoCollapsed">
           <div class="info-title">
             物料信息
             <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
               {{ currentMaterial.number || currentMaterial.materialCode }}
             </span>
+            <el-button
+              text
+              :icon="ArrowUp"
+              @click="materialInfoCollapsed = true"
+              title="收起物料信息"
+              class="collapse-btn"
+              style="float: right;"
+            />
           </div>
           <el-descriptions :column="4" border size="small">
             <el-descriptions-item label="物料名称" :span="1">
@@ -118,24 +146,46 @@
           </el-descriptions>
         </div>
 
+        <!-- 物料信息收起后的展开按钮 -->
+        <div class="material-info-collapsed" v-show="materialInfoCollapsed">
+          <el-button
+            text
+            :icon="ArrowDown"
+            @click="materialInfoCollapsed = false"
+            title="展开物料信息"
+            class="expand-btn"
+          >
+            物料信息
+          </el-button>
+        </div>
+
         <!-- 图纸预览 -->
         <div class="drawing-preview">
           <div class="info-title">
             图纸
               <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
-              {{ currentMaterial.drawingNo }}  
+              {{ currentMaterial.drawingNo }}
             </span>
              <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
               {{ currentMaterial?.nominalDiameter }}
             </span>
+            <el-button
+              text
+              :icon="FullScreen"
+              @click="toggleFullScreen"
+              title="全屏查看图纸"
+              class="fullscreen-btn"
+              style="float: right;"
+            />
           </div>
-          <div class="drawing-content" v-loading="drawingLoading">
+          <div class="drawing-content" v-loading="drawingLoading" ref="drawingContentRef">
             <!-- 图纸iframe -->
             <iframe
               v-if="drawingUrl"
               :src="drawingUrl + '#toolbar=0&navpanes=0&scrollbar=0'"
               frameborder="0"
               class="drawing-iframe"
+              ref="drawingIframeRef"
             ></iframe>
             <!-- 错误提示 -->
             <el-empty
@@ -166,7 +216,7 @@
 
 <script setup>
 import { ref, getCurrentInstance, nextTick } from 'vue'
-import { WarningFilled } from '@element-plus/icons-vue'
+import { WarningFilled, FullScreen, ArrowLeft, ArrowRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 
 const { proxy } = getCurrentInstance()
 
@@ -180,6 +230,12 @@ const currentMaterial = ref(null)
 const drawingUrl = ref('')
 const drawingError = ref('') // 图纸加载错误信息
 const treeRef = ref(null)
+const drawingContentRef = ref(null) // 图纸容器ref
+const drawingIframeRef = ref(null) // 图纸iframe ref
+
+// 折叠状态
+const bomTreeCollapsed = ref(false) // BOM树折叠状态
+const materialInfoCollapsed = ref(false) // 物料信息折叠状态
 
 // 树形结构配置
 const treeProps = {
@@ -321,6 +377,40 @@ const loadDrawing = async (materialCode) => {
   }
 }
 
+// 全屏切换
+const toggleFullScreen = () => {
+  const element = drawingContentRef.value
+
+  if (!element) {
+    proxy.$message.warning('图纸容器未找到')
+    return
+  }
+
+  if (!document.fullscreenElement) {
+    // 进入全屏
+    if (element.requestFullscreen) {
+      element.requestFullscreen()
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen()
+    } else if (element.mozRequestFullScreen) {
+      element.mozRequestFullScreen()
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen()
+    }
+  } else {
+    // 退出全屏
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen()
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen()
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen()
+    }
+  }
+}
+
 
 </script>
 
@@ -383,6 +473,14 @@ const loadDrawing = async (materialCode) => {
         font-size: 16px;
         border-bottom: 1px solid #dcdfe6;
         flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .collapse-btn {
+          padding: 4px;
+          font-size: 16px;
+        }
       }
 
       .bom-tree-scrollbar {
@@ -414,6 +512,28 @@ const loadDrawing = async (materialCode) => {
       }
     }
 
+    // BOM树收起后的展开按钮
+    .bom-left-collapsed {
+      width: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #dcdfe6;
+      border-radius: 4px;
+      background: #fff;
+      flex-shrink: 0;
+
+      .expand-btn {
+        padding: 8px;
+        font-size: 20px;
+        color: #409eff;
+
+        &:hover {
+          color: #66b1ff;
+        }
+      }
+    }
+
     .bom-right {
       flex: 1;
       display: flex;
@@ -435,6 +555,14 @@ const loadDrawing = async (materialCode) => {
           background: #f5f7fa;
           border-bottom: 1px solid #dcdfe6;
           margin: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+
+          .collapse-btn {
+            padding: 4px;
+            font-size: 16px;
+          }
         }
 
         :deep(.el-descriptions) {
@@ -453,6 +581,26 @@ const loadDrawing = async (materialCode) => {
 
         :deep(.el-descriptions__cell) {
           padding: 4px 8px;
+        }
+      }
+
+      // 物料信息收起后的展开按钮
+      .material-info-collapsed {
+        margin-bottom: 8px;
+        border: 1px solid #dcdfe6;
+        border-radius: 4px;
+        background: #fff;
+        padding: 8px;
+        text-align: center;
+        flex-shrink: 0;
+
+        .expand-btn {
+          color: #409eff;
+          font-size: 14px;
+
+          &:hover {
+            color: #66b1ff;
+          }
         }
       }
 
@@ -475,6 +623,19 @@ const loadDrawing = async (materialCode) => {
           border-bottom: 1px solid #dcdfe6;
           margin: 0;
           flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+
+          .fullscreen-btn {
+            padding: 4px;
+            font-size: 16px;
+            color: #409eff;
+
+            &:hover {
+              color: #66b1ff;
+            }
+          }
         }
 
         .drawing-content {
@@ -515,6 +676,39 @@ const loadDrawing = async (materialCode) => {
               margin-top: 4px;
               text-align: center;
               line-height: 1.5;
+            }
+          }
+
+          // 全屏模式下的样式
+          &:fullscreen {
+            background: #000;
+
+            .drawing-iframe {
+              background: #fff;
+            }
+          }
+
+          &:-webkit-full-screen {
+            background: #000;
+
+            .drawing-iframe {
+              background: #fff;
+            }
+          }
+
+          &:-moz-full-screen {
+            background: #000;
+
+            .drawing-iframe {
+              background: #fff;
+            }
+          }
+
+          &:-ms-fullscreen {
+            background: #000;
+
+            .drawing-iframe {
+              background: #fff;
             }
           }
         }
