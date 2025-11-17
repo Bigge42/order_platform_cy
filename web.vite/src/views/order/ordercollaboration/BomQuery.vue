@@ -179,6 +179,19 @@
             />
           </div>
           <div class="drawing-content" v-loading="drawingLoading" ref="drawingContentRef">
+            <!-- 全屏模式下的退出按钮 -->
+            <div v-if="isFullscreen" class="fullscreen-exit-btn">
+              <el-button
+                type="danger"
+                :icon="Close"
+                @click="exitFullScreen"
+                size="large"
+                round
+              >
+                退出全屏 (ESC)
+              </el-button>
+            </div>
+
             <!-- 图纸iframe -->
             <iframe
               v-if="drawingUrl"
@@ -215,8 +228,8 @@
 </template>
 
 <script setup>
-import { ref, getCurrentInstance, nextTick } from 'vue'
-import { WarningFilled, FullScreen, ArrowLeft, ArrowRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { ref, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
+import { WarningFilled, FullScreen, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Close } from '@element-plus/icons-vue'
 
 const { proxy } = getCurrentInstance()
 
@@ -236,6 +249,7 @@ const drawingIframeRef = ref(null) // 图纸iframe ref
 // 折叠状态
 const bomTreeCollapsed = ref(false) // BOM树折叠状态
 const materialInfoCollapsed = ref(false) // 物料信息折叠状态
+const isFullscreen = ref(false) // 全屏状态
 
 // 树形结构配置
 const treeProps = {
@@ -399,17 +413,44 @@ const toggleFullScreen = () => {
     }
   } else {
     // 退出全屏
-    if (document.exitFullscreen) {
-      document.exitFullscreen()
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen()
-    } else if (document.mozCancelFullScreen) {
-      document.mozCancelFullScreen()
-    } else if (document.msExitFullscreen) {
-      document.msExitFullscreen()
-    }
+    exitFullScreen()
   }
 }
+
+// 退出全屏
+const exitFullScreen = () => {
+  if (document.exitFullscreen) {
+    document.exitFullscreen()
+  } else if (document.webkitExitFullscreen) {
+    document.webkitExitFullscreen()
+  } else if (document.mozCancelFullScreen) {
+    document.mozCancelFullScreen()
+  } else if (document.msExitFullscreen) {
+    document.msExitFullscreen()
+  }
+}
+
+// 监听全屏状态变化
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+// 生命周期钩子
+onMounted(() => {
+  // 监听全屏状态变化事件
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+  document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+  document.addEventListener('msfullscreenchange', handleFullscreenChange)
+})
+
+onUnmounted(() => {
+  // 移除全屏状态变化事件监听
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+  document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
+  document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+})
 
 
 </script>
@@ -648,6 +689,19 @@ const toggleFullScreen = () => {
           padding: 0;
           min-height: 0;
           position: relative;
+
+          .fullscreen-exit-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+
+            .el-button {
+              box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
+              font-size: 16px;
+              padding: 12px 24px;
+            }
+          }
 
           .drawing-iframe {
             position: absolute;

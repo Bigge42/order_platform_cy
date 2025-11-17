@@ -2525,3 +2525,242 @@ materialInfoCollapsed = false
 ### 总结
 
 通过添加全屏查看、BOM树收起/展开、物料信息收起/展开三大功能，显著提升了BOM查询页面的灵活性和用户体验。用户现在可以根据实际需求自由调整页面布局，获得最佳的图纸查看效果。
+
+---
+
+## 2025-11-17 - 修复全屏退出问题
+
+### 问题描述
+
+全屏查看图纸时，按ESC键退出全屏有时会失效，特别是在点击了图纸内容（PDF iframe）之后。
+
+### 问题原因
+
+当用户点击PDF图纸内容后，焦点进入了iframe内部。此时按ESC键，键盘事件被iframe捕获而不是外部页面捕获，导致退出全屏失效。
+
+### 解决方案
+
+#### 1. **添加全屏状态监听**
+
+监听浏览器的全屏状态变化事件，实时更新全屏状态：
+
+```javascript
+// 全屏状态
+const isFullscreen = ref(false)
+
+// 监听全屏状态变化
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+// 生命周期钩子
+onMounted(() => {
+  // 监听全屏状态变化事件（支持多种浏览器）
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+  document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+  document.addEventListener('msfullscreenchange', handleFullscreenChange)
+})
+
+onUnmounted(() => {
+  // 移除事件监听
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+  document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
+  document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+})
+```
+
+#### 2. **添加退出全屏按钮**
+
+在全屏模式下显示一个明显的退出按钮，用户可以直接点击退出：
+
+```vue
+<div class="drawing-content" ref="drawingContentRef">
+  <!-- 全屏模式下的退出按钮 -->
+  <div v-if="isFullscreen" class="fullscreen-exit-btn">
+    <el-button
+      type="danger"
+      :icon="Close"
+      @click="exitFullScreen"
+      size="large"
+      round
+    >
+      退出全屏 (ESC)
+    </el-button>
+  </div>
+
+  <!-- 图纸iframe -->
+  <iframe v-if="drawingUrl" :src="drawingUrl" />
+</div>
+```
+
+#### 3. **退出全屏方法**
+
+提取退出全屏逻辑为独立方法，供按钮和ESC键共用：
+
+```javascript
+// 退出全屏
+const exitFullScreen = () => {
+  if (document.exitFullscreen) {
+    document.exitFullscreen()
+  } else if (document.webkitExitFullscreen) {
+    document.webkitExitFullscreen()
+  } else if (document.mozCancelFullScreen) {
+    document.mozCancelFullScreen()
+  } else if (document.msExitFullscreen) {
+    document.msExitFullscreen()
+  }
+}
+```
+
+#### 4. **退出按钮样式**
+
+```scss
+.fullscreen-exit-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 9999; // 确保在最上层
+
+  .el-button {
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3); // 阴影效果
+    font-size: 16px;
+    padding: 12px 24px;
+  }
+}
+```
+
+### 使用的新图标
+
+```javascript
+import { Close } from '@element-plus/icons-vue'
+```
+
+### 优化效果
+
+#### 优化前 ❌
+- ESC键退出全屏在点击PDF后失效
+- 用户不知道如何退出全屏
+- 需要点击浏览器外部区域才能使ESC键生效
+
+#### 优化后 ✅
+- ✅ **明显的退出按钮**：全屏模式下右上角显示红色退出按钮
+- ✅ **双重退出方式**：既可以按ESC键，也可以点击按钮
+- ✅ **状态实时同步**：监听全屏状态变化，按钮显示/隐藏自动切换
+- ✅ **友好的提示**：按钮文字"退出全屏 (ESC)"提示用户可用快捷键
+- ✅ **醒目的设计**：红色圆角按钮 + 阴影效果，易于发现
+
+### 退出全屏的方式
+
+| 方式 | 说明 | 可用性 |
+|------|------|--------|
+| ESC键 | 浏览器原生快捷键 | ✅ 始终可用（焦点在iframe外） |
+| 点击退出按钮 | 右上角红色按钮 | ✅ 始终可用 |
+| F11键 | 浏览器全屏（非API全屏） | ⚠️ 不适用于本场景 |
+
+### 技术要点
+
+#### 1. **全屏状态监听事件**
+
+不同浏览器的全屏状态变化事件名称不同：
+
+| 浏览器 | 事件名称 |
+|--------|----------|
+| Chrome/Edge | `fullscreenchange` |
+| Safari | `webkitfullscreenchange` |
+| Firefox | `mozfullscreenchange` |
+| IE11 | `msfullscreenchange` |
+
+#### 2. **v-if vs v-show**
+
+退出按钮使用`v-if`而不是`v-show`：
+- ✅ 全屏模式下才渲染，非全屏时不占用DOM
+- ✅ 避免非全屏时的z-index层级问题
+
+#### 3. **z-index层级**
+
+退出按钮设置`z-index: 9999`，确保在iframe之上显示。
+
+#### 4. **生命周期管理**
+
+使用`onMounted`和`onUnmounted`钩子管理事件监听器，避免内存泄漏。
+
+### 修改的文件
+
+1. **web.vite/src/views/order/ordercollaboration/BomQuery.vue**
+   - 导入`Close`图标和`onMounted`、`onUnmounted`钩子
+   - 添加`isFullscreen`状态变量
+   - 添加`exitFullScreen`方法
+   - 添加`handleFullscreenChange`事件处理函数
+   - 在`onMounted`中添加全屏状态监听
+   - 在`onUnmounted`中移除全屏状态监听
+   - 添加全屏退出按钮UI
+   - 添加退出按钮样式
+
+2. **web.vite\README.md**
+   - 添加全屏退出问题修复说明
+
+### 用户体验提升
+
+#### 场景1：正常使用ESC键
+```
+用户点击全屏按钮
+    ↓
+进入全屏模式
+    ↓
+右上角显示"退出全屏 (ESC)"按钮
+    ↓
+用户按ESC键
+    ↓
+成功退出全屏
+    ↓
+退出按钮自动隐藏
+```
+
+#### 场景2：点击PDF后使用按钮退出
+```
+用户点击全屏按钮
+    ↓
+进入全屏模式
+    ↓
+用户点击PDF图纸内容（焦点进入iframe）
+    ↓
+用户按ESC键 → 无效（焦点在iframe内）
+    ↓
+用户看到右上角红色退出按钮
+    ↓
+点击退出按钮
+    ↓
+成功退出全屏 ✅
+```
+
+### 视觉设计
+
+#### 退出按钮特点
+- **颜色**：红色（`type="danger"`），表示退出操作
+- **形状**：圆角按钮（`round`），更友好
+- **尺寸**：大号（`size="large"`），易于点击
+- **位置**：右上角，符合用户习惯
+- **阴影**：`box-shadow`，增强立体感
+- **图标**：Close图标，清晰表达关闭含义
+- **文字**：提示ESC快捷键，教育用户
+
+### 后续优化建议
+
+1. **自动隐藏退出按钮**：
+   - 鼠标移动时显示
+   - 3秒无操作后自动隐藏
+   - 鼠标移动到顶部区域时显示
+
+2. **添加全屏提示**：
+   - 首次进入全屏时显示提示："按ESC或点击右上角按钮退出全屏"
+   - 3秒后自动消失
+
+3. **记住用户偏好**：
+   - 记录用户是否使用过全屏功能
+   - 下次自动进入全屏模式
+
+### 总结
+
+通过添加全屏状态监听和退出按钮，彻底解决了ESC键退出全屏失效的问题。用户现在有两种可靠的方式退出全屏：按ESC键或点击右上角的退出按钮，无论焦点在哪里都能正常退出全屏。
