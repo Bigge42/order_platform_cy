@@ -2082,3 +2082,446 @@ drawingError.value = '' // 清空之前的错误信息
 ### 总结
 
 通过添加图纸加载错误状态管理和友好的错误提示UI，显著提升了BOM查询页面的用户体验。用户现在可以清楚地知道图纸加载失败的具体原因，而不是看到模糊的"暂无图纸"提示。
+
+---
+
+## 2025-11-16 - BOM查询页面交互优化
+
+### 需求描述
+
+优化BOM查询页面的用户交互体验，增加以下功能：
+
+1. **图纸预览增加全屏按钮**：允许用户全屏查看图纸
+2. **左侧BOM树支持收起/展开**：节省屏幕空间，提供更大的图纸查看区域
+3. **物料信息支持收起/展开**：灵活控制物料信息显示，最大化图纸显示区域
+
+### 实现方案
+
+#### 1. **图纸预览全屏功能**
+
+##### 添加全屏按钮
+
+在图纸标题栏右侧添加全屏按钮：
+
+```vue
+<div class="info-title">
+  图纸
+  <span>{{ currentMaterial.drawingNo }}</span>
+  <el-button
+    text
+    :icon="FullScreen"
+    @click="toggleFullScreen"
+    title="全屏查看图纸"
+    class="fullscreen-btn"
+    style="float: right;"
+  />
+</div>
+```
+
+##### 全屏切换逻辑
+
+实现跨浏览器的全屏API调用：
+
+```javascript
+const toggleFullScreen = () => {
+  const element = drawingContentRef.value
+
+  if (!document.fullscreenElement) {
+    // 进入全屏
+    if (element.requestFullscreen) {
+      element.requestFullscreen()
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen()
+    } else if (element.mozRequestFullScreen) {
+      element.mozRequestFullScreen()
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen()
+    }
+  } else {
+    // 退出全屏
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen()
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen()
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen()
+    }
+  }
+}
+```
+
+##### 全屏样式
+
+```scss
+.drawing-content {
+  // 全屏模式下的样式
+  &:fullscreen {
+    background: #000;
+
+    .drawing-iframe {
+      background: #fff;
+    }
+  }
+
+  // 兼容不同浏览器
+  &:-webkit-full-screen { /* Chrome, Safari */ }
+  &:-moz-full-screen { /* Firefox */ }
+  &:-ms-fullscreen { /* IE11 */ }
+}
+```
+
+#### 2. **BOM树收起/展开功能**
+
+##### 添加折叠状态
+
+```javascript
+const bomTreeCollapsed = ref(false) // BOM树折叠状态
+```
+
+##### BOM树区域
+
+```vue
+<!-- 展开状态 -->
+<div class="bom-left" v-show="!bomTreeCollapsed">
+  <div class="bom-tree-title">
+    BOM结构
+    <el-button
+      text
+      :icon="ArrowLeft"
+      @click="bomTreeCollapsed = true"
+      title="收起BOM树"
+      class="collapse-btn"
+    />
+  </div>
+  <el-scrollbar class="bom-tree-scrollbar">
+    <el-tree ... />
+  </el-scrollbar>
+</div>
+
+<!-- 收起状态 -->
+<div class="bom-left-collapsed" v-show="bomTreeCollapsed">
+  <el-button
+    text
+    :icon="ArrowRight"
+    @click="bomTreeCollapsed = false"
+    title="展开BOM树"
+    class="expand-btn"
+  />
+</div>
+```
+
+##### 样式设计
+
+```scss
+.bom-left {
+  width: 300px; // 展开时宽度
+
+  .bom-tree-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.bom-left-collapsed {
+  width: 40px; // 收起时宽度
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .expand-btn {
+    font-size: 20px;
+    color: #409eff;
+  }
+}
+```
+
+#### 3. **物料信息收起/展开功能**
+
+##### 添加折叠状态
+
+```javascript
+const materialInfoCollapsed = ref(false) // 物料信息折叠状态
+```
+
+##### 物料信息区域
+
+```vue
+<!-- 展开状态 -->
+<div class="material-info" v-show="!materialInfoCollapsed">
+  <div class="info-title">
+    物料信息
+    <span>{{ currentMaterial.number }}</span>
+    <el-button
+      text
+      :icon="ArrowUp"
+      @click="materialInfoCollapsed = true"
+      title="收起物料信息"
+      class="collapse-btn"
+      style="float: right;"
+    />
+  </div>
+  <el-descriptions ... />
+</div>
+
+<!-- 收起状态 -->
+<div class="material-info-collapsed" v-show="materialInfoCollapsed">
+  <el-button
+    text
+    :icon="ArrowDown"
+    @click="materialInfoCollapsed = false"
+    title="展开物料信息"
+    class="expand-btn"
+  >
+    物料信息
+  </el-button>
+</div>
+```
+
+##### 样式设计
+
+```scss
+.material-info {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.material-info-collapsed {
+  margin-bottom: 8px;
+  padding: 8px;
+  text-align: center;
+  flex-shrink: 0;
+
+  .expand-btn {
+    color: #409eff;
+    font-size: 14px;
+  }
+}
+```
+
+### 使用的图标
+
+从`@element-plus/icons-vue`导入以下图标：
+
+```javascript
+import {
+  WarningFilled,  // 错误警告图标
+  FullScreen,     // 全屏图标
+  ArrowLeft,      // 向左箭头（收起BOM树）
+  ArrowRight,     // 向右箭头（展开BOM树）
+  ArrowUp,        // 向上箭头（收起物料信息）
+  ArrowDown       // 向下箭头（展开物料信息）
+} from '@element-plus/icons-vue'
+```
+
+### 交互流程
+
+#### 1. **图纸全屏查看**
+
+```
+用户点击全屏按钮
+    ↓
+调用toggleFullScreen()
+    ↓
+检测当前是否全屏
+    ↓
+是 → 退出全屏
+否 → 进入全屏
+    ↓
+图纸占满整个屏幕
+用户按ESC键退出全屏
+```
+
+#### 2. **BOM树收起/展开**
+
+```
+初始状态：BOM树展开（300px宽）
+    ↓
+用户点击收起按钮（DArrowLeft）
+    ↓
+bomTreeCollapsed = true
+    ↓
+BOM树隐藏，显示展开按钮（40px宽）
+    ↓
+图纸区域增加260px宽度
+    ↓
+用户点击展开按钮（DArrowRight）
+    ↓
+bomTreeCollapsed = false
+    ↓
+BOM树重新显示
+```
+
+#### 3. **物料信息收起/展开**
+
+```
+初始状态：物料信息展开
+    ↓
+用户点击收起按钮（DArrowUp）
+    ↓
+materialInfoCollapsed = true
+    ↓
+物料信息隐藏，显示展开按钮
+    ↓
+图纸区域高度增加
+    ↓
+用户点击展开按钮（DArrowDown）
+    ↓
+materialInfoCollapsed = false
+    ↓
+物料信息重新显示
+```
+
+### 空间优化效果
+
+#### 场景1：默认状态
+- BOM树：300px宽
+- 物料信息：约150px高
+- 图纸区域：剩余空间
+
+#### 场景2：收起BOM树
+- BOM树：40px宽（收起按钮）
+- 物料信息：约150px高
+- 图纸区域：**增加260px宽度**
+
+#### 场景3：收起物料信息
+- BOM树：300px宽
+- 物料信息：约40px高（收起按钮）
+- 图纸区域：**增加约110px高度**
+
+#### 场景4：同时收起BOM树和物料信息
+- BOM树：40px宽
+- 物料信息：约40px高
+- 图纸区域：**最大化显示**
+
+#### 场景5：全屏模式
+- 图纸占满整个屏幕
+- 隐藏所有其他元素
+- **极致的图纸查看体验**
+
+### 技术要点
+
+#### 1. **v-show vs v-if**
+
+使用`v-show`而不是`v-if`：
+- ✅ 保持DOM元素存在，只切换display属性
+- ✅ 切换速度更快，无需重新渲染
+- ✅ 保持组件状态（如树的展开状态）
+
+#### 2. **全屏API兼容性**
+
+支持以下浏览器：
+- ✅ Chrome/Edge: `requestFullscreen` / `exitFullscreen`
+- ✅ Safari: `webkitRequestFullscreen` / `webkitExitFullscreen`
+- ✅ Firefox: `mozRequestFullScreen` / `mozCancelFullScreen`
+- ✅ IE11: `msRequestFullscreen` / `msExitFullscreen`
+
+#### 3. **Flexbox布局**
+
+使用flex布局实现自适应：
+```scss
+.bom-content {
+  display: flex;
+  gap: 12px;
+
+  .bom-left {
+    width: 300px; // 固定宽度
+    flex-shrink: 0; // 不缩小
+  }
+
+  .bom-left-collapsed {
+    width: 40px; // 收起后宽度
+    flex-shrink: 0;
+  }
+
+  .bom-right {
+    flex: 1; // 占据剩余空间
+  }
+}
+```
+
+#### 4. **按钮样式统一**
+
+所有折叠/展开按钮使用统一样式：
+- 文本按钮（`text`属性）
+- 蓝色主题色（#409eff）
+- 悬停时变浅（#66b1ff）
+- 合适的图标尺寸（16-20px）
+
+### 修改的文件
+
+1. **web.vite/src/views/order/ordercollaboration/BomQuery.vue**
+   - 添加全屏按钮和`toggleFullScreen`方法
+   - 添加BOM树收起/展开功能
+   - 添加物料信息收起/展开功能
+   - 导入新图标组件
+   - 添加折叠状态管理
+   - 添加相关样式
+
+2. **web.vite\README.md**
+   - 添加交互优化功能说明
+
+### 用户体验提升
+
+#### 优化前 ❌
+- 图纸显示区域固定，无法调整
+- BOM树始终占据300px宽度
+- 物料信息始终占据约150px高度
+- 无法全屏查看图纸
+
+#### 优化后 ✅
+- **灵活的空间分配**：可以根据需要收起BOM树或物料信息
+- **最大化图纸显示**：同时收起BOM树和物料信息，图纸区域最大化
+- **全屏查看**：点击全屏按钮，图纸占满整个屏幕
+- **快速切换**：一键收起/展开，操作便捷
+- **保持状态**：收起后再展开，树的展开状态保持不变
+
+### 使用场景
+
+#### 场景1：查看复杂图纸
+- 收起BOM树和物料信息
+- 或直接全屏查看
+- 获得最大的图纸显示区域
+
+#### 场景2：对比物料信息
+- 展开物料信息
+- 收起BOM树
+- 专注于物料参数
+
+#### 场景3：浏览BOM结构
+- 展开BOM树
+- 收起物料信息
+- 专注于BOM层级关系
+
+#### 场景4：正常使用
+- 全部展开
+- 平衡显示所有信息
+
+### 快捷键支持
+
+- **ESC键**：退出全屏模式（浏览器原生支持）
+
+### 后续优化建议
+
+1. **记住用户偏好**：
+   - 使用localStorage保存折叠状态
+   - 下次打开页面时恢复用户的偏好设置
+
+2. **添加快捷键**：
+   - `F`键：切换全屏
+   - `B`键：切换BOM树
+   - `M`键：切换物料信息
+
+3. **动画效果**：
+   - 添加平滑的展开/收起动画
+   - 提升视觉体验
+
+4. **响应式设计**：
+   - 在小屏幕上自动收起BOM树
+   - 在移动设备上优化布局
+
+### 总结
+
+通过添加全屏查看、BOM树收起/展开、物料信息收起/展开三大功能，显著提升了BOM查询页面的灵活性和用户体验。用户现在可以根据实际需求自由调整页面布局，获得最佳的图纸查看效果。
