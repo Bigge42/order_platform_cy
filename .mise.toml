@@ -1,0 +1,3 @@
+[tools]
+dotnet = "8"
+node = "22"
