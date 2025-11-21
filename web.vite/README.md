@@ -2764,3 +2764,358 @@ import { Close } from '@element-plus/icons-vue'
 ### 总结
 
 通过添加全屏状态监听和退出按钮，彻底解决了ESC键退出全屏失效的问题。用户现在有两种可靠的方式退出全屏：按ESC键或点击右上角的退出按钮，无论焦点在哪里都能正常退出全屏。
+
+---
+
+## 2025-11-18 - BOM展开优化：无BOM物料返回根节点
+
+### 需求描述
+
+当查询的物料没有BOM结构时，`ExpandBom`接口应该返回当前物料的信息作为根节点，而不是返回错误或空结果。这样可以确保BOM树始终有一个根节点显示。
+
+### 问题场景
+
+**优化前**：
+```
+用户查询物料编码：06000030
+    ↓
+调用K3Cloud BOM展开接口
+    ↓
+该物料无BOM结构
+    ↓
+返回错误："未在ERP中找到该物料的BOM" ❌
+    ↓
+前端显示错误，无法查看物料信息
+```
+
+**优化后**：
+```
+用户查询物料编码：06000030
+    ↓
+调用K3Cloud BOM展开接口
+    ↓
+该物料无BOM结构
+    ↓
+从物料表查询该物料信息
+    ↓
+构建根节点BOM项
+    ↓
+返回包含根节点的BOM列表 ✅
+    ↓
+前端显示物料信息和图纸
+```
+
+### 实现方案
+
+#### 修改ExpandBom方法逻辑
+
+在`BomQueryController.cs`的`ExpandBom`方法中添加降级处理：
+
+```csharp
+[HttpGet("ExpandBom")]
+public async Task<IActionResult> ExpandBom([FromQuery] string materialNumber)
+{
+    try
+    {
+        // 1. 调用K3Cloud BOM展开接口
+        var result = await _k3CloudService.ExpandBomAsync(materialNumber);
+
+        // 2. 如果成功且有数据，直接返回
+        if (result.IsSuccess && result.Data != null && result.Data.Count > 0)
+        {
+            return Json(new WebResponseContent().OK(result.Message, result.Data));
+        }
+
+        // 3. BOM展开失败或无数据，从物料表查询
+        var material = await _materialRepository.FindAsyncFirst(
+            m => m.MaterialCode == materialNumber
+        );
+
+        if (material == null)
+        {
+            return Json(new WebResponseContent().Error($"未找到物料信息：{materialNumber}"));
+        }
+
+        // 4. 构建根节点BOM项
+        var rootBomItem = new BomExpandItemDto
+        {
+            BomLevel = 0,                           // 顶层
+            Number = material.MaterialCode,         // 物料编码
+            Name = material.MaterialName,           // 物料名称
+            Numerator = 1,                          // 分子
+            Denominator = 1,                        // 分母
+            Specification = material.Specification, // 规格型号
+            ParentEntryId = "",                     // 无父级
+            EntryId = "1",                          // 分录ID
+            UnitNumber = material.BaseUnitNumber,   // 单位编码
+            UnitName = material.BaseUnitName        // 单位名称
+        };
+
+        var bomList = new List<BomExpandItemDto> { rootBomItem };
+
+        // 5. 返回根节点
+        return Json(new WebResponseContent().OK("查询成功（该物料无BOM结构）", bomList));
+    }
+    catch (Exception ex)
+    {
+        return Json(new WebResponseContent().Error($"BOM展开查询异常：{ex.Message}"));
+    }
+}
+```
+
+### 数据映射
+
+从`OCP_Material`实体映射到`BomExpandItemDto`：
+
+| BomExpandItemDto字段 | OCP_Material字段 | 说明 |
+|---------------------|------------------|------|
+| BomLevel | 固定值：0 | 根节点层级为0 |
+| Number | MaterialCode | 物料编码 |
+| Name | MaterialName | 物料名称 |
+| Numerator | 固定值：1 | 用量分子 |
+| Denominator | 固定值：1 | 用量分母 |
+| Specification | Specification | 规格型号 |
+| ParentEntryId | 固定值："" | 根节点无父级 |
+| EntryId | 固定值："1" | 分录ID |
+| UnitNumber | BaseUnitNumber | 基本单位编码 |
+| UnitName | BaseUnitName | 基本单位名称 |
+
+### 处理流程
+
+```
+ExpandBom接口调用
+    ↓
+验证物料编码不为空
+    ↓
+调用K3Cloud BOM展开
+    ↓
+┌─────────────────┐
+│ 是否成功且有数据？│
+└─────────────────┘
+    ↓           ↓
+   是          否
+    ↓           ↓
+返回BOM数据   从物料表查询
+              ↓
+         ┌─────────────┐
+         │ 物料是否存在？│
+         └─────────────┘
+              ↓       ↓
+             是      否
+              ↓       ↓
+         构建根节点  返回错误
+              ↓
+         返回根节点BOM
+```
+
+### 返回数据示例
+
+#### 场景1：有BOM结构的物料
+
+**请求**：
+```http
+GET /api/BomQuery/ExpandBom?materialNumber=aaaa
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "BOM展开成功",
+  "data": [
+    {
+      "bomLevel": 0,
+      "number": "aaaa",
+      "name": "产品A",
+      "numerator": 1.0,
+      "denominator": 1.0,
+      "specification": "标准型",
+      "parentEntryId": "",
+      "entryId": "1001",
+      "unitNumber": "Pcs",
+      "unitName": "个"
+    },
+    {
+      "bomLevel": 1,
+      "number": "bbbb",
+      "name": "零件B",
+      "numerator": 2.0,
+      "denominator": 1.0,
+      "specification": "M8",
+      "parentEntryId": "1001",
+      "entryId": "1002",
+      "unitNumber": "Pcs",
+      "unitName": "个"
+    }
+  ]
+}
+```
+
+#### 场景2：无BOM结构的物料（优化后）
+
+**请求**：
+```http
+GET /api/BomQuery/ExpandBom?materialNumber=06000030
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "查询成功（该物料无BOM结构）",
+  "data": [
+    {
+      "bomLevel": 0,
+      "number": "06000030",
+      "name": "法兰球阀",
+      "numerator": 1.0,
+      "denominator": 1.0,
+      "specification": "DN50 PN16",
+      "parentEntryId": "",
+      "entryId": "1",
+      "unitNumber": "Pcs",
+      "unitName": "个"
+    }
+  ]
+}
+```
+
+#### 场景3：物料不存在
+
+**请求**：
+```http
+GET /api/BomQuery/ExpandBom?materialNumber=NOTEXIST
+```
+
+**响应**：
+```json
+{
+  "success": false,
+  "message": "未找到物料信息：NOTEXIST",
+  "data": null
+}
+```
+
+### 日志记录
+
+优化后的日志输出：
+
+```
+[INFO] 开始BOM展开查询，物料编码: 06000030
+[WARN] BOM展开查询未返回数据，物料编码: 06000030，原因: 未在ERP中找到该物料的BOM，尝试从物料表查询
+[INFO] 从物料表构建根节点成功，物料编码: 06000030，物料名称: 法兰球阀
+```
+
+### 技术要点
+
+#### 1. **降级策略**
+
+采用两级查询策略：
+1. **优先**：从K3Cloud BOM展开接口查询
+2. **降级**：从本地物料表查询并构建根节点
+
+#### 2. **数据一致性**
+
+确保从物料表构建的根节点数据结构与K3Cloud返回的数据结构一致，前端无需特殊处理。
+
+#### 3. **用户体验**
+
+通过消息提示区分两种情况：
+- 有BOM：`"BOM展开成功"`
+- 无BOM：`"查询成功（该物料无BOM结构）"`
+
+#### 4. **错误处理**
+
+三层错误处理：
+1. K3Cloud接口失败 → 尝试从物料表查询
+2. 物料表查询失败 → 返回明确错误信息
+3. 异常捕获 → 记录日志并返回友好错误
+
+### 修改的文件
+
+1. **api\HDPro.WebApi\Controllers\Order\BomQueryController.cs**
+   - 修改`ExpandBom`方法，添加降级查询逻辑
+   - 添加`using System.Collections.Generic;`引用
+   - 添加从物料表构建根节点的代码
+   - 优化日志记录
+
+2. **web.vite\README.md**
+   - 添加BOM展开优化说明
+
+### 优化效果
+
+#### 优化前 ❌
+
+| 场景 | 结果 |
+|------|------|
+| 有BOM的物料 | ✅ 正常显示BOM树 |
+| 无BOM的物料 | ❌ 显示错误，无法查看物料信息 |
+| 不存在的物料 | ❌ 显示错误 |
+
+#### 优化后 ✅
+
+| 场景 | 结果 |
+|------|------|
+| 有BOM的物料 | ✅ 正常显示BOM树 |
+| 无BOM的物料 | ✅ 显示根节点，可查看物料信息和图纸 |
+| 不存在的物料 | ❌ 显示明确错误信息 |
+
+### 用户体验提升
+
+#### 场景：查询无BOM的物料
+
+**优化前**：
+```
+用户输入物料编码：06000030
+    ↓
+点击查询
+    ↓
+显示错误："未在ERP中找到该物料的BOM" ❌
+    ↓
+无法查看物料信息
+无法查看图纸
+用户困惑：物料是否存在？
+```
+
+**优化后**：
+```
+用户输入物料编码：06000030
+    ↓
+点击查询
+    ↓
+显示BOM树（只有根节点） ✅
+    ↓
+显示物料信息（16个字段）
+显示图纸预览
+提示："查询成功（该物料无BOM结构）"
+用户清楚：物料存在，但无BOM
+```
+
+### 业务价值
+
+1. **完整性**：所有物料都能查询，无论是否有BOM
+2. **一致性**：统一的数据结构，前端无需特殊处理
+3. **可用性**：无BOM物料也能查看详细信息和图纸
+4. **友好性**：明确的提示信息，用户不会困惑
+
+### 后续优化建议
+
+1. **缓存优化**：
+   - 缓存物料基本信息，减少数据库查询
+   - 设置合理的缓存过期时间
+
+2. **批量查询**：
+   - 支持批量查询多个物料的BOM
+   - 提高查询效率
+
+3. **BOM层级限制**：
+   - 添加BOM展开层级限制参数
+   - 避免超深层级导致性能问题
+
+4. **物料图片**：
+   - 在根节点中添加物料图片URL
+   - 提升视觉体验
+
+### 总结
+
+通过添加降级查询逻辑，当BOM展开接口未返回数据时，自动从物料表查询并构建根节点返回。这样确保了所有物料都能被查询和展示，显著提升了系统的完整性和用户体验。无BOM的物料也能正常显示物料信息和图纸，用户不会因为"未找到BOM"的错误而困惑。
