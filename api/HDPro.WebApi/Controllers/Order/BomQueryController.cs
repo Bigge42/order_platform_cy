@@ -100,11 +100,11 @@ namespace HDPro.CY.Order.Controllers
                         Name = material.MaterialName,
                         Numerator = 1,
                         Denominator = 1,
-                        Specification = material.Specification,
+                        Specification = material.SpecModel,
                         ParentEntryId = "",
                         EntryId = "1",
-                        UnitNumber = material.BaseUnitNumber,
-                        UnitName = material.BaseUnitName
+                        UnitNumber = material.BasicUnit,
+                        UnitName = material.BasicUnit
                     };
 
                     var bomList = new List<HDPro.CY.Order.Services.K3Cloud.Models.BomExpandItemDto> { rootBomItem };
