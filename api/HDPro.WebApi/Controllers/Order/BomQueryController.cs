@@ -8,6 +8,7 @@ using HDPro.Core.Configuration;
 using HDPro.CY.Order.Services.K3Cloud;
 using HDPro.CY.Order.IRepositories;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
@@ -67,22 +68,51 @@ namespace HDPro.CY.Order.Controllers
                 }
 
                 _logger.LogInformation("开始BOM展开查询，物料编码: {MaterialNumber}", materialNumber);
-                
+
                 var result = await _k3CloudService.ExpandBomAsync(materialNumber);
-                
-                if (result.IsSuccess)
+
+                if (result.IsSuccess && result.Data != null && result.Data.Count > 0)
                 {
-                    _logger.LogInformation("BOM展开查询成功，物料编码: {MaterialNumber}，返回 {Count} 条数据", 
-                        materialNumber, result.Data?.Count ?? 0);
-                    
+                    _logger.LogInformation("BOM展开查询成功，物料编码: {MaterialNumber}，返回 {Count} 条数据",
+                        materialNumber, result.Data.Count);
+
                     return Json(new WebResponseContent().OK(result.Message, result.Data));
                 }
                 else
                 {
-                    _logger.LogWarning("BOM展开查询失败，物料编码: {MaterialNumber}，原因: {Message}", 
+                    _logger.LogWarning("BOM展开查询未返回数据，物料编码: {MaterialNumber}，原因: {Message}，尝试从物料表查询",
                         materialNumber, result.Message);
-                    
-                    return Json(new WebResponseContent().Error(result.Message));
+
+                    // BOM展开失败或无数据，从物料表查询当前物料作为根节点返回
+                    var material = await _materialRepository.FindAsyncFirst(m => m.MaterialCode == materialNumber);
+
+                    if (material == null)
+                    {
+                        _logger.LogWarning("物料表中也未找到该物料，物料编码: {MaterialNumber}", materialNumber);
+                        return Json(new WebResponseContent().Error($"未找到物料信息：{materialNumber}"));
+                    }
+
+                    // 构建根节点BOM项
+                    var rootBomItem = new HDPro.CY.Order.Services.K3Cloud.Models.BomExpandItemDto
+                    {
+                        BomLevel = 0,
+                        Number = material.MaterialCode,
+                        Name = material.MaterialName,
+                        Numerator = 1,
+                        Denominator = 1,
+                        Specification = material.Specification,
+                        ParentEntryId = "",
+                        EntryId = "1",
+                        UnitNumber = material.BaseUnitNumber,
+                        UnitName = material.BaseUnitName
+                    };
+
+                    var bomList = new List<HDPro.CY.Order.Services.K3Cloud.Models.BomExpandItemDto> { rootBomItem };
+
+                    _logger.LogInformation("从物料表构建根节点成功，物料编码: {MaterialNumber}，物料名称: {MaterialName}",
+                        materialNumber, material.MaterialName);
+
+                    return Json(new WebResponseContent().OK("查询成功（该物料无BOM结构）", bomList));
                 }
             }
             catch (Exception ex)
