@@ -25,35 +25,37 @@
                :rowClick="rowClick"
                :modelOpenBefore="modelOpenBefore"
                :modelOpenAfter="modelOpenAfter">
-        <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
-        <template #gridHeader>
-            <el-space>
-                <el-button type="primary" :loading="syncLoading" @click="handleSyncFromOrderTracking">同步未排产数据</el-button>
+        <template #btnLeft>
+            <div class="wz-ordercyclebase-action">
                 <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
-            </el-space>
+            </div>
         </template>
     </view-grid>
 
     <el-dialog v-model="progressVisible"
+               class="wz-progress-dialog"
                title="智能体优化进度"
                width="520px"
+               :body-style="{ padding: '16px 20px' }"
                :close-on-click-modal="false">
-        <el-progress :percentage="progressPercent"
-                     :indeterminate="ruleLoading && progressSummary.total === 0"
-                     :status="progressStatus"
-                     stroke-width="14"></el-progress>
-        <el-descriptions :column="1" style="margin-top: 12px" border>
-            <el-descriptions-item label="总数">{{ progressSummary.total }}</el-descriptions-item>
-            <el-descriptions-item label="成功">{{ progressSummary.succeeded }}</el-descriptions-item>
-            <el-descriptions-item label="失败">{{ progressSummary.failed }}</el-descriptions-item>
-            <el-descriptions-item label="已更新">{{ progressSummary.updated }}</el-descriptions-item>
-            <el-descriptions-item label="分批次数">{{ progressSummary.batchCount }}</el-descriptions-item>
-            <el-descriptions-item v-if="progressSummary.logFiles.length" label="日志">
-                <div class="log-list">
-                    <div v-for="(log, index) in progressSummary.logFiles" :key="index">{{ log }}</div>
-                </div>
-            </el-descriptions-item>
-        </el-descriptions>
+        <div class="wz-progress-dialog__content">
+            <el-progress :percentage="progressPercent"
+                         :indeterminate="ruleLoading && progressSummary.total === 0"
+                         :status="progressStatus"
+                         stroke-width="14"></el-progress>
+            <el-descriptions :column="1" border>
+                <el-descriptions-item label="总数">{{ progressSummary.total }}</el-descriptions-item>
+                <el-descriptions-item label="成功">{{ progressSummary.succeeded }}</el-descriptions-item>
+                <el-descriptions-item label="失败">{{ progressSummary.failed }}</el-descriptions-item>
+                <el-descriptions-item label="已更新">{{ progressSummary.updated }}</el-descriptions-item>
+                <el-descriptions-item label="分批次数">{{ progressSummary.batchCount }}</el-descriptions-item>
+                <el-descriptions-item v-if="progressSummary.logFiles.length" label="日志">
+                    <div class="log-list">
+                        <div v-for="(log, index) in progressSummary.logFiles" :key="index">{{ log }}</div>
+                    </div>
+                </el-descriptions-item>
+            </el-descriptions>
+        </div>
         <template #footer>
             <el-button @click="progressVisible = false" :disabled="ruleLoading">关闭</el-button>
         </template>
@@ -62,14 +64,13 @@
 <script setup lang="jsx">
     import extend from "@/extension/order//wz_ordercyclebase/WZ_OrderCycleBase.jsx";
     import viewOptions from './WZ_OrderCycleBase/options.js'
-    import { ref, reactive, getCurrentInstance, watch, onMounted, computed } from "vue";
+    import { ref, reactive, getCurrentInstance, computed } from "vue";
     import { ElMessage } from 'element-plus'
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
     //http请求，proxy.http.post/get
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
-    const syncLoading = ref(false);
     const ruleLoading = ref(false);
     const progressVisible = ref(false);
     const progressSummary = reactive({
@@ -149,29 +150,6 @@
         progressSummary.logFiles = [];
     };
 
-    const handleSyncFromOrderTracking = async () => {
-        if (syncLoading.value) {
-            return;
-        }
-
-        syncLoading.value = true;
-        try {
-            const response = await proxy.http.post('/api/WZ_OrderCycleBase/sync-from-order-tracking');
-            if (response.status) {
-                ElMessage.success(response.message || '同步成功');
-                if (gridRef && gridRef.search) {
-                    gridRef.search();
-                }
-            } else {
-                ElMessage.error(response.message || '同步失败');
-            }
-        } catch (error) {
-            ElMessage.error('同步失败');
-        } finally {
-            syncLoading.value = false;
-        }
-    };
-
     const handleOptimize = async () => {
         if (ruleLoading.value) {
             return;
@@ -211,3 +189,30 @@
     //对外暴露数据
     defineExpose({})
 </script>
+
+<style scoped>
+.wz-ordercyclebase-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: #fff;
+    border-radius: 4px;
+}
+
+.wz-progress-dialog__content {
+    background-color: #fff;
+    border-radius: 4px;
+    padding: 8px 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    word-break: break-all;
+}
+</style>
