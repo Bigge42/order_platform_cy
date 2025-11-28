@@ -30,22 +30,19 @@ namespace HDPro.CY.Order.Services
         private readonly IWZ_OrderCycleBaseRepository _repository;//访问数据库
         private readonly IOCP_OrderTrackingRepository _orderTrackingRepository;
         private readonly IOCP_MaterialRepository _materialRepository;
-        private readonly ILogger<WZ_OrderCycleBaseService> _logger;
 
         [ActivatorUtilitiesConstructor]
         public WZ_OrderCycleBaseService(
             IWZ_OrderCycleBaseRepository dbRepository,
             IHttpContextAccessor httpContextAccessor,
             IOCP_OrderTrackingRepository orderTrackingRepository,
-            IOCP_MaterialRepository materialRepository,
-            ILogger<WZ_OrderCycleBaseService> logger
+            IOCP_MaterialRepository materialRepository
             )
         : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
             _orderTrackingRepository = orderTrackingRepository;
             _materialRepository = materialRepository;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -82,136 +79,104 @@ namespace HDPro.CY.Order.Services
         /// <returns>同步的总行数</returns>
         public async Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default)
         {
-            try
-            {
-                var orderTrackingContext = _orderTrackingRepository?.DbContext
-                    ?? throw new InvalidOperationException("订单跟踪仓储未正确初始化");
-                var materialContext = _materialRepository?.DbContext
-                    ?? throw new InvalidOperationException("物料仓储未正确初始化");
-                var orderCycleContext = _repository?.DbContext
-                    ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+            var orderTrackingContext = _orderTrackingRepository?.DbContext
+                ?? throw new InvalidOperationException("订单跟踪仓储未正确初始化");
+            var materialContext = _materialRepository?.DbContext
+                ?? throw new InvalidOperationException("物料仓储未正确初始化");
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-                var orderTrackingQuery = orderTrackingContext.Set<OCP_OrderTracking>()
+            var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
+                .AsNoTracking()
+                .Where(p => p.PrdScheduleDate == null)
+                .ToListAsync(cancellationToken);
+
+            if (orderTrackingList.Count == 0)
+            {
+                return 0;
+            }
+
+            var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
+                .Select(p => p.MaterialNumber)
+                .Distinct()
+                .ToList();
+
+            var materialDict = materialNumbers.Count == 0
+                ? new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase)
+                : (await materialContext.Set<OCP_Material>()
                     .AsNoTracking()
-                    .Where(p => p.PrdScheduleDate == null);
+                    .Where(p => materialNumbers.Contains(p.MaterialCode))
+                    .ToListAsync(cancellationToken))
+                    .GroupBy(p => p.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-                var orderTrackingList = await orderTrackingQuery.ToListAsync(cancellationToken);
-                _logger.LogInformation("【订单周期同步】待同步订单数：{Count}", orderTrackingList.Count);
+            var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.SOBillNo))
+                .Select(p => p.SOBillNo)
+                .Distinct()
+                .ToList();
 
-                if (orderTrackingList.Count == 0)
-                {
-                    return 0;
-                }
+            var planTrackingNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MtoNo))
+                .Select(p => p.MtoNo)
+                .Distinct()
+                .ToList();
 
-                var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
-                    .Select(p => p.MaterialNumber)
-                    .Distinct()
-                    .ToList();
+            var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
+                .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
+                .ToListAsync(cancellationToken);
 
-                var materialDict = materialNumbers.Count == 0
-                    ? new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase)
-                    : (await materialContext.Set<OCP_Material>()
-                        .AsNoTracking()
-                        .Where(p => materialNumbers.Contains(p.MaterialCode))
-                        .ToListAsync(cancellationToken))
-                        .GroupBy(p => p.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-
-                var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.SOBillNo))
-                    .Select(p => p.SOBillNo)
-                    .Distinct()
-                    .ToList();
-
-                var planTrackingNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MtoNo))
-                    .Select(p => p.MtoNo)
-                    .Distinct()
-                    .ToList();
-
-                var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
-                    .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
-                    .ToListAsync(cancellationToken);
-
-                var existingDict = new Dictionary<string, WZ_OrderCycleBase>(StringComparer.OrdinalIgnoreCase);
-                foreach (var record in existingRecords)
-                {
-                    var key = $"{record.SalesOrderNo}__{record.PlanTrackingNo}";
-                    if (existingDict.ContainsKey(key))
-                    {
-                        _logger.LogWarning("【订单周期同步】发现重复键，已按首次出现保留：{Key}", key);
-                        continue;
-                    }
-
-                    existingDict[key] = record;
-                }
-
-                var toInsert = new List<WZ_OrderCycleBase>();
-                var updatedCount = 0;
-                var skippedCount = 0;
-
-                foreach (var orderTracking in orderTrackingList)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (orderTracking == null)
-                    {
-                        skippedCount++;
-                        _logger.LogWarning("【订单周期同步】遇到空的订单跟踪记录，已跳过");
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
-                    {
-                        skippedCount++;
-                        _logger.LogWarning("【订单周期同步】缺少业务主键，已跳过：SO={SO},Plan={Plan}", orderTracking.SOBillNo, orderTracking.MtoNo);
-                        continue;
-                    }
-
-                    materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
-
-                    var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
-
-                    try
-                    {
-                        if (existingDict.TryGetValue(key, out var existing))
-                        {
-                            MapFields(orderTracking, materialInfo, existing);
-                            updatedCount++;
-                            continue;
-                        }
-
-                        var newEntity = new WZ_OrderCycleBase();
-                        MapFields(orderTracking, materialInfo, newEntity);
-                        toInsert.Add(newEntity);
-                    }
-                    catch (Exception ex) when (ex is NullReferenceException || ex is InvalidOperationException)
-                    {
-                        _logger.LogError(ex, "【订单周期同步】处理单据失败：SO={SO},Plan={Plan},Material={Material}", orderTracking.SOBillNo, orderTracking.MtoNo, orderTracking.MaterialNumber);
-                        skippedCount++;
-                    }
-                }
-
-                if (toInsert.Count > 0)
-                {
-                    _repository.AddRange(toInsert);
-                }
-
-                if (updatedCount == 0 && toInsert.Count == 0)
-                {
-                    _logger.LogInformation("【订单周期同步】无可写入数据，已结束。跳过：{Skipped}", skippedCount);
-                    return 0;
-                }
-
-                await orderCycleContext.SaveChangesAsync(cancellationToken);
-
-                var total = updatedCount + toInsert.Count;
-                _logger.LogInformation("【订单周期同步】完成，插入：{Inserted}，更新：{Updated}，跳过：{Skipped}", toInsert.Count, updatedCount, skippedCount);
-                return total;
-            }
-            catch (Exception ex)
+            var existingDict = new Dictionary<string, WZ_OrderCycleBase>(StringComparer.OrdinalIgnoreCase);
+            foreach (var record in existingRecords)
             {
-                _logger.LogError(ex, "【订单周期同步】执行失败：{Message}", ex.Message);
-                throw;
+                var key = $"{record.SalesOrderNo}__{record.PlanTrackingNo}";
+                if (existingDict.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                existingDict[key] = record;
             }
+
+            var toInsert = new List<WZ_OrderCycleBase>();
+            var updatedCount = 0;
+
+            foreach (var orderTracking in orderTrackingList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
+                {
+                    continue;
+                }
+
+                materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
+
+                var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
+
+                if (existingDict.TryGetValue(key, out var existing))
+                {
+                    MapFields(orderTracking, materialInfo, existing);
+                    updatedCount++;
+                    continue;
+                }
+
+                var newEntity = new WZ_OrderCycleBase();
+                MapFields(orderTracking, materialInfo, newEntity);
+                toInsert.Add(newEntity);
+            }
+
+            if (toInsert.Count > 0)
+            {
+                _repository.AddRange(toInsert);
+            }
+
+            if (updatedCount == 0 && toInsert.Count == 0)
+            {
+                return 0;
+            }
+
+            await orderCycleContext.SaveChangesAsync(cancellationToken);
+
+            return updatedCount + toInsert.Count;
         }
 
         private static void MapFields(OCP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
