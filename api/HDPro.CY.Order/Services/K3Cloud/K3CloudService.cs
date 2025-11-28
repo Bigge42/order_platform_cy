@@ -2,8 +2,10 @@
  * K3Cloud服务实现类
  */
 using HDPro.CY.Order.Services.K3Cloud.Models;
+using HDPro.CY.Order.IRepositories;
 using HDPro.Core.Utilities;
 using HDPro.Core.Extensions.AutofacManager;
+using HDPro.Entity.DomainModels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -12,6 +14,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using HDPro.Core.ManageUser;
 
 namespace HDPro.CY.Order.Services.K3Cloud
 {
@@ -60,12 +63,71 @@ namespace HDPro.CY.Order.Services.K3Cloud
         }
 
         /// <summary>
+        /// 记录API调用日志到数据库
+        /// </summary>
+        protected async Task LogApiCallAsync(
+            string apiName,
+            string apiPath,
+            string httpMethod,
+            string requestParams,
+            long? responseLength,
+            int? statusCode,
+            int status,
+            string errorMessage,
+            DateTime startTime,
+            DateTime endTime,
+            long elapsedMs,
+            int? dataCount = null,
+            string responseResult = null,
+            string remark = null)
+        {
+            try
+            {
+                var currentUser = UserContext.Current;
+                var apiLog = new OCP_ApiLog
+                {
+                    ApiName = apiName?.Length > 200 ? apiName.Substring(0, 200) : apiName,
+                    ApiPath = apiPath?.Length > 200 ? apiPath.Substring(0, 200) : apiPath,
+                    HttpMethod = httpMethod?.Length > 20 ? httpMethod.Substring(0, 20) : httpMethod,
+                    RequestParams = requestParams,
+                    ResponseLength = responseLength,
+                    StatusCode = statusCode,
+                    Status = status,
+                    ErrorMessage = errorMessage,
+                    StartTime = startTime,
+                    EndTime = endTime,
+                    ElapsedMs = elapsedMs,
+                    DataCount = dataCount,
+                    ResponseResult = responseResult,
+                    Remark = remark?.Length > 500 ? remark.Substring(0, 500) : remark,
+                    CreateDate = DateTime.Now,
+                    CreateID = currentUser?.UserId ?? 0,
+                    Creator = currentUser?.UserName ?? "系统",
+                    ModifyDate = DateTime.Now,
+                    ModifyID = currentUser?.UserId ?? 0,
+                    Modifier = currentUser?.UserName ?? "系统"
+                };
+
+                var repository = AutofacContainerModule.GetService<IOCP_ApiLogRepository>();
+                if (repository != null)
+                {
+                    await repository.AddAsync(apiLog);
+                    await repository.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "保存K3Cloud API调用日志到数据库失败: {ErrorMessage}", ex.Message);
+            }
+        }
+
+        /// <summary>
         /// 检查会话是否有效
         /// </summary>
         /// <returns></returns>
         private bool IsSessionValid()
         {
-            return !string.IsNullOrEmpty(_sessionId) && 
+            return !string.IsNullOrEmpty(_sessionId) &&
                    DateTime.Now - _loginTime < _sessionTimeout;
         }
 
@@ -75,6 +137,12 @@ namespace HDPro.CY.Order.Services.K3Cloud
         /// <returns></returns>
         public async Task<K3CloudLoginResponse> LoginAsync()
         {
+            var startTime = DateTime.Now;
+            var endTime = DateTime.Now;
+            int? statusCode = null;
+            string responseContent = null;
+            string requestJson = null;
+
             try
             {
                                  // 如果会话仍然有效，直接返回成功
@@ -96,36 +164,94 @@ namespace HDPro.CY.Order.Services.K3Cloud
                     lcid = _config.Lcid
                 };
 
-                var json = JsonConvert.SerializeObject(loginRequest);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                requestJson = JsonConvert.SerializeObject(loginRequest);
+                var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
                 _logger.LogInformation($"正在登录K3Cloud，URL: {_config.LoginUrl}");
-                
+
+                startTime = DateTime.Now;
                 var response = await _httpClient.PostAsync(_config.LoginUrl, content);
-                var responseContent = await response.Content.ReadAsStringAsync();
+                responseContent = await response.Content.ReadAsStringAsync();
+                endTime = DateTime.Now;
+                statusCode = (int)response.StatusCode;
 
                 _logger.LogInformation($"K3Cloud登录响应: {responseContent}");
 
                 if (response.IsSuccessStatusCode)
                 {
                     var loginResponse = JsonConvert.DeserializeObject<K3CloudLoginResponse>(responseContent);
-                    
+
                     if (loginResponse.IsSuccess)
                     {
                         _sessionId = loginResponse.KDSVCSessionId;
                         _loginTime = DateTime.Now;
                         _logger.LogInformation($"K3Cloud登录成功，SessionId: {_sessionId}");
+
+                        // 记录成功日志
+                        await LogApiCallAsync(
+                            "K3Cloud登录",
+                            _config.LoginUrl,
+                            "POST",
+                            requestJson,
+                            responseContent?.Length,
+                            statusCode,
+                            1,
+                            null,
+                            startTime,
+                            endTime,
+                            (long)(endTime - startTime).TotalMilliseconds,
+                            null,
+                            null,
+                            $"用户: {_config.Username}"
+                        );
                     }
                     else
                     {
                         _logger.LogError($"K3Cloud登录失败: {loginResponse.Message}");
+
+                        // 记录失败日志
+                        await LogApiCallAsync(
+                            "K3Cloud登录",
+                            _config.LoginUrl,
+                            "POST",
+                            requestJson,
+                            responseContent?.Length,
+                            statusCode,
+                            0,
+                            loginResponse.Message,
+                            startTime,
+                            endTime,
+                            (long)(endTime - startTime).TotalMilliseconds,
+                            null,
+                            null,
+                            $"用户: {_config.Username}"
+                        );
                     }
-                    
+
                     return loginResponse;
                 }
                 else
                 {
                     _logger.LogError($"K3Cloud登录请求失败，状态码: {response.StatusCode}，响应: {responseContent}");
+
+                    // 记录失败日志
+                    await LogApiCallAsync(
+                        "K3Cloud登录",
+                        _config.LoginUrl,
+                        "POST",
+                        requestJson,
+                        responseContent?.Length,
+                        statusCode,
+                        0,
+                        $"HTTP状态码: {response.StatusCode}",
+                        startTime,
+                        endTime,
+                        (long)(endTime - startTime).TotalMilliseconds,
+                        null,
+                        null,
+                        $"用户: {_config.Username}"
+                    );
+
                     return new K3CloudLoginResponse
                     {
                         Message = $"登录请求失败，状态码: {response.StatusCode}",
@@ -135,7 +261,27 @@ namespace HDPro.CY.Order.Services.K3Cloud
             }
             catch (Exception ex)
             {
+                endTime = DateTime.Now;
                 _logger.LogError(ex, "K3Cloud登录异常");
+
+                // 记录异常日志
+                await LogApiCallAsync(
+                    "K3Cloud登录",
+                    _config.LoginUrl,
+                    "POST",
+                    requestJson,
+                    responseContent?.Length,
+                    statusCode,
+                    0,
+                    $"异常: {ex.Message}",
+                    startTime,
+                    endTime,
+                    (long)(endTime - startTime).TotalMilliseconds,
+                    null,
+                    null,
+                    $"用户: {_config.Username}"
+                );
+
                 return new K3CloudLoginResponse
                 {
                     Message = $"登录异常: {ex.Message}",
@@ -152,6 +298,12 @@ namespace HDPro.CY.Order.Services.K3Cloud
         /// <returns></returns>
         public async Task<K3CloudQueryResponse<T>> ExecuteQueryAsync<T>(K3CloudQueryRequest request)
         {
+            var startTime = DateTime.Now;
+            var endTime = DateTime.Now;
+            int? statusCode = null;
+            string responseContent = null;
+            string requestJson = null;
+
             try
             {
                 // 确保已登录
@@ -165,29 +317,70 @@ namespace HDPro.CY.Order.Services.K3Cloud
                     };
                 }
 
-                var json = JsonConvert.SerializeObject(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                requestJson = JsonConvert.SerializeObject(request);
+                var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
                 // 设置Cookie
                 var cookieValue = $"ASP.NET_SessionId=m5rgvx01kcrkw31iybroi3ue; kdservice-sessionid={_sessionId}";
                 _httpClient.DefaultRequestHeaders.Remove("Cookie");
                 _httpClient.DefaultRequestHeaders.Add("Cookie", cookieValue);
 
-                _logger.LogInformation($"正在执行K3Cloud查询，URL: {_config.QueryUrl}，参数: {json}");
+                _logger.LogInformation($"正在执行K3Cloud查询，URL: {_config.QueryUrl}，参数: {requestJson}");
 
+                startTime = DateTime.Now;
                 var response = await _httpClient.PostAsync(_config.QueryUrl, content);
-                var responseContent = await response.Content.ReadAsStringAsync();
+                responseContent = await response.Content.ReadAsStringAsync();
+                endTime = DateTime.Now;
+                statusCode = (int)response.StatusCode;
 
                 _logger.LogInformation($"K3Cloud查询响应: {responseContent}");
 
                 if (response.IsSuccessStatusCode)
                 {
                     var queryResponse = JsonConvert.DeserializeObject<K3CloudQueryResponse<T>>(responseContent);
+
+                    // 记录日志
+                    await LogApiCallAsync(
+                        "K3Cloud查询",
+                        _config.QueryUrl,
+                        "POST",
+                        requestJson,
+                        responseContent?.Length,
+                        statusCode,
+                        queryResponse?.IsSuccess == true ? 1 : 0,
+                        queryResponse?.IsSuccess == true ? null : queryResponse?.Message,
+                        startTime,
+                        endTime,
+                        (long)(endTime - startTime).TotalMilliseconds,
+                        null,
+                        null,
+                        $"FormId: {request?.parameters?.FirstOrDefault()?.FormId}"
+                    );
+
                     return queryResponse;
                 }
                 else
                 {
                     _logger.LogError($"K3Cloud查询请求失败，状态码: {response.StatusCode}，响应: {responseContent}");
+
+                    // 记录失败日志
+                    await LogApiCallAsync(
+                        "K3Cloud查询",
+                        _config.QueryUrl,
+                        "POST",
+                        requestJson,
+                        responseContent?.Length,
+                        statusCode,
+                        0,
+                        $"HTTP状态码: {response.StatusCode}",
+                        startTime,
+                        endTime,
+                        (long)(endTime - startTime).TotalMilliseconds,
+                        null,
+                        null,
+                        $"FormId: {request?.parameters?.FirstOrDefault()?.FormId}"
+                    );
+
                     return new K3CloudQueryResponse<T>
                     {
                         IsSuccess = false,
@@ -197,7 +390,27 @@ namespace HDPro.CY.Order.Services.K3Cloud
             }
             catch (Exception ex)
             {
+                endTime = DateTime.Now;
                 _logger.LogError(ex, "K3Cloud查询异常");
+
+                // 记录异常日志
+                await LogApiCallAsync(
+                    "K3Cloud查询",
+                    _config.QueryUrl,
+                    "POST",
+                    requestJson,
+                    responseContent?.Length,
+                    statusCode,
+                    0,
+                    $"异常: {ex.Message}",
+                    startTime,
+                    endTime,
+                    (long)(endTime - startTime).TotalMilliseconds,
+                    null,
+                    null,
+                    $"FormId: {request?.parameters?.FirstOrDefault()?.FormId}"
+                );
+
                 return new K3CloudQueryResponse<T>
                 {
                     IsSuccess = false,
