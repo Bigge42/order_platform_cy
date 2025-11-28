@@ -17,21 +17,37 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Net.Http;
+using System.Text;
+using Newtonsoft.Json;
 
 namespace HDPro.CY.Order.Services
 {
     public partial class WZ_OrderCycleBaseService
     {
         private readonly IWZ_OrderCycleBaseRepository _repository;//访问数据库
+        private readonly IOCP_OrderTrackingRepository _orderTrackingRepository;
+        private readonly IOCP_MaterialRepository _materialRepository;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         [ActivatorUtilitiesConstructor]
         public WZ_OrderCycleBaseService(
             IWZ_OrderCycleBaseRepository dbRepository,
-            IHttpContextAccessor httpContextAccessor
+            IHttpContextAccessor httpContextAccessor,
+            IOCP_OrderTrackingRepository orderTrackingRepository,
+            IOCP_MaterialRepository materialRepository,
+            IHttpClientFactory httpClientFactory
             )
         : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
+            _orderTrackingRepository = orderTrackingRepository;
+            _materialRepository = materialRepository;
+            _httpClientFactory = httpClientFactory;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -55,10 +71,375 @@ namespace HDPro.CY.Order.Services
         protected override WebResponseContent ValidateCYOrderEntity(WZ_OrderCycleBase entity)
         {
             var response = base.ValidateCYOrderEntity(entity);
-            
+
             // 在此处添加WZ_OrderCycleBase特有的数据验证逻辑
-            
+
             return response;
         }
-  }
-} 
+
+        /// <summary>
+        /// 从订单跟踪表同步数据到订单周期基础表
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>同步的总行数</returns>
+        public async Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default)
+        {
+            var orderTrackingContext = _orderTrackingRepository?.DbContext
+                ?? throw new InvalidOperationException("订单跟踪仓储未正确初始化");
+            var materialContext = _materialRepository?.DbContext
+                ?? throw new InvalidOperationException("物料仓储未正确初始化");
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
+                .AsNoTracking()
+                .Where(p => p.PrdScheduleDate == null)
+                .ToListAsync(cancellationToken);
+
+            if (orderTrackingList.Count == 0)
+            {
+                return 0;
+            }
+
+            var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
+                .Select(p => p.MaterialNumber)
+                .Distinct()
+                .ToList();
+
+            var materialDict = materialNumbers.Count == 0
+                ? new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase)
+                : (await materialContext.Set<OCP_Material>()
+                    .AsNoTracking()
+                    .Where(p => materialNumbers.Contains(p.MaterialCode))
+                    .ToListAsync(cancellationToken))
+                    .GroupBy(p => p.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.SOBillNo))
+                .Select(p => p.SOBillNo)
+                .Distinct()
+                .ToList();
+
+            var planTrackingNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MtoNo))
+                .Select(p => p.MtoNo)
+                .Distinct()
+                .ToList();
+
+            var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
+                .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
+                .ToListAsync(cancellationToken);
+
+            var existingDict = new Dictionary<string, WZ_OrderCycleBase>(StringComparer.OrdinalIgnoreCase);
+            foreach (var record in existingRecords)
+            {
+                var key = $"{record.SalesOrderNo}__{record.PlanTrackingNo}";
+                if (existingDict.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                existingDict[key] = record;
+            }
+
+            var toInsert = new List<WZ_OrderCycleBase>();
+            var updatedCount = 0;
+
+            foreach (var orderTracking in orderTrackingList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
+                {
+                    continue;
+                }
+
+                materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
+
+                var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
+
+                if (existingDict.TryGetValue(key, out var existing))
+                {
+                    MapFields(orderTracking, materialInfo, existing);
+                    updatedCount++;
+                    continue;
+                }
+
+                var newEntity = new WZ_OrderCycleBase();
+                MapFields(orderTracking, materialInfo, newEntity);
+                toInsert.Add(newEntity);
+            }
+
+            if (toInsert.Count > 0)
+            {
+                _repository.AddRange(toInsert);
+            }
+
+            if (updatedCount == 0 && toInsert.Count == 0)
+            {
+                return 0;
+            }
+
+            await orderCycleContext.SaveChangesAsync(cancellationToken);
+
+            return updatedCount + toInsert.Count;
+        }
+
+        /// <summary>
+        /// 调用 Python 阀门规则服务批量计算周期及排产信息
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>成功回填的行数</returns>
+        public async Task<int> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default)
+        {
+            if (_httpClientFactory == null)
+            {
+                throw new InvalidOperationException("HttpClientFactory 未注册，无法调用规则服务");
+            }
+
+            var context = _repository.DbContext;
+            var entities = await context.Set<WZ_OrderCycleBase>()
+                .Where(p => p.OrderApprovedDate.HasValue && p.ReplyDeliveryDate.HasValue && p.RequestedDeliveryDate.HasValue)
+                .ToListAsync(cancellationToken);
+
+            if (entities.Count == 0)
+            {
+                return 0;
+            }
+
+            var client = _httpClientFactory.CreateClient();
+            const string url = "http://10.11.10.101:8000/batch_infer";
+
+            var requestPayload = BuildValveRuleRequests(entities);
+            var json = JsonConvert.SerializeObject(requestPayload);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
+
+            if (batchResponse.Results == null || batchResponse.Results.Count == 0)
+            {
+                return 0;
+            }
+
+            var resultMap = new Dictionary<int, ValveRuleResult>(entities.Count);
+            foreach (var item in batchResponse.Results)
+            {
+                if (item?.Success != true || item.Result == null)
+                {
+                    continue;
+                }
+
+                var id = TryParseId(item.Result.Id);
+                if (!id.HasValue)
+                {
+                    continue;
+                }
+
+                resultMap[id.Value] = item.Result;
+            }
+
+            if (resultMap.Count == 0)
+            {
+                return 0;
+            }
+
+            var ids = new List<int>(resultMap.Keys);
+            var matchedEntities = entities.Where(p => ids.Contains(p.Id)).ToList();
+
+            var updated = 0;
+            foreach (var entity in matchedEntities)
+            {
+                if (!resultMap.TryGetValue(entity.Id, out var result))
+                {
+                    continue;
+                }
+
+                entity.FixedCycleDays = result.FixedCycleDays;
+                entity.ProductionLine = result.ProductionLine;
+                entity.StandardDeliveryDate = TryParseDate(result.StandardDeliveryDate);
+                entity.ScheduleDate = TryParseDate(result.ScheduleDate);
+                updated++;
+            }
+
+            if (updated == 0)
+            {
+                return 0;
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+            return updated;
+        }
+
+        private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items)
+        {
+            var requests = new List<ValveRuleRequest>(items.Count);
+            foreach (var item in items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                requests.Add(new ValveRuleRequest
+                {
+                    Id = item.Id.ToString(),
+                    OrderApprovedDate = item.OrderApprovedDate,
+                    ReplyDeliveryDate = item.ReplyDeliveryDate,
+                    RequestedDeliveryDate = item.RequestedDeliveryDate,
+                    InnerMaterial = item.InnerMaterial,
+                    FlangeConnection = item.FlangeConnection,
+                    BonnetForm = item.BonnetForm,
+                    FlowCharacteristic = item.FlowCharacteristic,
+                    Actuator = item.Actuator,
+                    OutsourcedValveBody = item.OutsourcedValveBody,
+                    ValveCategory = item.ValveCategory,
+                    SealFaceForm = item.SealFaceForm,
+                    SpecialProduct = item.SpecialProduct,
+                    PurchaseFlag = item.PurchaseFlag,
+                    ProductName = item.ProductName,
+                    NominalDiameter = item.NominalDiameter,
+                    NominalPressure = item.NominalPressure
+                });
+            }
+
+            return requests;
+        }
+
+        private static int? TryParseId(string id)
+        {
+            return int.TryParse(id, out var value) ? value : null;
+        }
+
+        private static DateTime? TryParseDate(string date)
+        {
+            return DateTime.TryParse(date, out var value) ? value.Date : null;
+        }
+
+        private sealed class ValveRuleRequest
+        {
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("OrderApprovedDate")]
+            public DateTime? OrderApprovedDate { get; set; }
+
+            [JsonProperty("ReplyDeliveryDate")]
+            public DateTime? ReplyDeliveryDate { get; set; }
+
+            [JsonProperty("RequestedDeliveryDate")]
+            public DateTime? RequestedDeliveryDate { get; set; }
+
+            [JsonProperty("nei_jian_cai_zhi")]
+            public string InnerMaterial { get; set; }
+
+            [JsonProperty("fa_lan_lian_jie")]
+            public string FlangeConnection { get; set; }
+
+            [JsonProperty("shang_gai_xing_shi")]
+            public string BonnetForm { get; set; }
+
+            [JsonProperty("liu_liang_te_xing")]
+            public string FlowCharacteristic { get; set; }
+
+            [JsonProperty("zhi_xing_ji_gou")]
+            public string Actuator { get; set; }
+
+            [JsonProperty("wai_gou_fa_ti")]
+            public string OutsourcedValveBody { get; set; }
+
+            [JsonProperty("fa_men_lei_bie")]
+            public string ValveCategory { get; set; }
+
+            [JsonProperty("mi_feng_mian_xing_shi")]
+            public string SealFaceForm { get; set; }
+
+            [JsonProperty("te_pin")]
+            public string SpecialProduct { get; set; }
+
+            [JsonProperty("wai_gou_biao_zhi")]
+            public string PurchaseFlag { get; set; }
+
+            [JsonProperty("chan_pin_ming_cheng")]
+            public string ProductName { get; set; }
+
+            [JsonProperty("gong_cheng_tong_jing")]
+            public string NominalDiameter { get; set; }
+
+            [JsonProperty("gong_cheng_ya_li")]
+            public string NominalPressure { get; set; }
+        }
+
+        private sealed class ValveRuleResult
+        {
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("sheng_chan_xian")]
+            public string ProductionLine { get; set; }
+
+            [JsonProperty("gu_ding_zhou_qi")]
+            public int? FixedCycleDays { get; set; }
+
+            [JsonProperty("StandardDeliveryDate")]
+            public string StandardDeliveryDate { get; set; }
+
+            [JsonProperty("ScheduleDate")]
+            public string ScheduleDate { get; set; }
+        }
+
+        private sealed class ValveRuleResponseItem
+        {
+            [JsonProperty("index")]
+            public int Index { get; set; }
+
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("result")]
+            public ValveRuleResult Result { get; set; }
+        }
+
+        private sealed class ValveRuleBatchResponse
+        {
+            [JsonProperty("total")]
+            public int Total { get; set; }
+
+            [JsonProperty("results")]
+            public List<ValveRuleResponseItem> Results { get; set; }
+        }
+
+        private static void MapFields(OCP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
+        {
+            target.SalesOrderNo = orderTracking.SOBillNo;
+            target.PlanTrackingNo = orderTracking.MtoNo;
+
+            target.OrderApprovedDate = orderTracking.OrderAuditDate;
+            target.ReplyDeliveryDate = orderTracking.ReplyDeliveryDate;
+            target.RequestedDeliveryDate = orderTracking.DeliveryDate;
+            target.MaterialCode = orderTracking.MaterialNumber;
+
+            if (materialInfo != null)
+            {
+                target.InnerMaterial = materialInfo.Material;
+                target.FlangeConnection = materialInfo.FlangeConnection;
+                target.BonnetForm = materialInfo.PackingForm;
+                target.FlowCharacteristic = materialInfo.FlowCharacteristic;
+                target.Actuator = materialInfo.ActuatorModel;
+                target.SealFaceForm = materialInfo.DrawingNo;
+                target.ProductName = materialInfo.ProductModel;
+                target.NominalDiameter = materialInfo.NominalDiameter;
+                target.NominalPressure = materialInfo.NominalPressure;
+            }
+        }
+    }
+}
