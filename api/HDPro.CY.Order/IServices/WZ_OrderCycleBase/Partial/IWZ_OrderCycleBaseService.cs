@@ -5,9 +5,13 @@ using HDPro.Core.BaseProvider;
 using HDPro.Entity.DomainModels;
 using HDPro.Core.Utilities;
 using System.Linq.Expressions;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 namespace HDPro.CY.Order.IServices
 {
     public partial interface IWZ_OrderCycleBaseService
     {
+        Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default);
     }
  }
