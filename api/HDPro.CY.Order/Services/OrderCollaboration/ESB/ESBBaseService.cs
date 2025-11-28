@@ -14,6 +14,7 @@ using HDPro.Core.BaseProvider;
 using HDPro.Entity.SystemModels;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Services.Common;
 
 namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
 {
@@ -153,13 +154,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
         /// <returns>ESB数据列表</returns>
         public async Task<List<T>> CallESBApi<T>(string apiPath, string startDate, string endDate, string operationType)
         {
-            var startTime = DateTime.Now;
             var esbUrl = string.Empty;
             var jsonContent = string.Empty;
             int? statusCode = null;
-            long? responseLength = null;
-            int? dataCount = null;
-            string errorMessage = null;
+            ApiLogHelper logHelper = null;
 
             try
             {
@@ -183,6 +181,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 var timeoutMinutes = AppSetting.ESB?.DefaultTimeoutMinutes ?? 5;
                 httpClient.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
 
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start($"{operationType}ESB接口", esbUrl, "POST", jsonContent, _logger)
+                    .WithRemark($"时间范围：{startDate} 到 {endDate}");
+
                 LogInfoWithArgs("调用{OperationType}ESB接口：{EsbUrl}，参数：{JsonContent}", operationType, operationType, esbUrl, jsonContent);
 
                 // 发送POST请求
@@ -191,86 +193,36 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}";
+                    var errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}";
                     LogErrorWithArgs("{OperationType}ESB接口调用失败，状态码：{StatusCode}，原因：{ReasonPhrase}",
                         operationType, operationType, response.StatusCode, response.ReasonPhrase);
 
-                    // 记录失败日志
-                    var endTime = DateTime.Now;
-                    var elapsedMs = (long)(endTime - startTime).TotalMilliseconds;
-                    await LogApiCallAsync(
-                        apiName: $"{operationType}ESB接口",
-                        apiPath: esbUrl,
-                        httpMethod: "POST",
-                        requestParams: jsonContent,
-                        responseLength: 0,
-                        statusCode: statusCode,
-                        status: 0, // 失败
-                        errorMessage: errorMessage,
-                        startTime: startTime,
-                        endTime: endTime,
-                        elapsedMs: elapsedMs,
-                        dataCount: 0,
-                        remark: $"ESB接口调用失败"
-                    );
-
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode);
                     return new List<T>();
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
-                responseLength = responseContent?.Length ?? 0;
-                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseLength);
+                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length);
                 HDLogHelper.Log($"{operationType}ESBApi", responseContent);
 
                 // 反序列化响应数据
                 var dataList = JsonConvert.DeserializeObject<List<T>>(responseContent);
-                dataCount = dataList?.Count ?? 0;
+                var dataCount = dataList?.Count ?? 0;
 
                 // 记录成功日志
-                var successEndTime = DateTime.Now;
-                var successElapsedMs = (long)(successEndTime - startTime).TotalMilliseconds;
-                await LogApiCallAsync(
-                    apiName: $"{operationType}ESB接口",
-                    apiPath: esbUrl,
-                    httpMethod: "POST",
-                    requestParams: jsonContent,
-                    responseLength: responseLength,
-                    statusCode: statusCode,
-                    status: 1, // 成功
-                    errorMessage: null,
-                    startTime: startTime,
-                    endTime: successEndTime,
-                    elapsedMs: successElapsedMs,
-                    dataCount: dataCount,
-                    responseResult: $"成功返回{dataCount}条数据",
-                    remark: $"时间范围：{startDate} 到 {endDate}"
-                );
+                await logHelper.WithDataCount(dataCount).LogSuccessAsync(statusCode, responseContent);
 
                 return dataList ?? new List<T>();
             }
             catch (Exception ex)
             {
-                errorMessage = ex.Message;
                 LogErrorWithArgs(ex, "调用{OperationType}ESB接口异常", operationType, operationType);
 
                 // 记录异常日志
-                var exceptionEndTime = DateTime.Now;
-                var exceptionElapsedMs = (long)(exceptionEndTime - startTime).TotalMilliseconds;
-                await LogApiCallAsync(
-                    apiName: $"{operationType}ESB接口",
-                    apiPath: esbUrl,
-                    httpMethod: "POST",
-                    requestParams: jsonContent,
-                    responseLength: responseLength,
-                    statusCode: statusCode,
-                    status: 0, // 失败
-                    errorMessage: errorMessage,
-                    startTime: startTime,
-                    endTime: exceptionEndTime,
-                    elapsedMs: exceptionElapsedMs,
-                    dataCount: 0,
-                    remark: "接口调用发生异常"
-                );
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogExceptionAsync(ex, statusCode);
+                }
 
                 throw;
             }
@@ -287,13 +239,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
         /// <returns>ESB接口返回的数据列表</returns>
         public async Task<List<T>> CallESBApiWithRequestData<T>(string apiPath, object requestData, string operationType, string customBaseUrl = null)
         {
-            var startTime = DateTime.Now;
             var esbUrl = string.Empty;
             var jsonContent = string.Empty;
             int? statusCode = null;
-            long? responseLength = null;
-            int? dataCount = null;
-            string errorMessage = null;
+            ApiLogHelper logHelper = null;
 
             // 从配置文件获取超时时间
             var timeoutMinutes = AppSetting.ESB?.DefaultTimeoutMinutes ?? 15;
@@ -328,6 +277,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
 
                 httpClient.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
 
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start($"{operationType}ESB接口", esbUrl, "POST", jsonContent, _logger)
+                    .WithRemark($"超时设置：{timeoutMinutes}分钟");
+
                 LogInfoWithArgs("调用{OperationType}ESB接口：{EsbUrl}，超时设置：{TimeoutMinutes}分钟，参数：{JsonContent}",
                     operationType, operationType, esbUrl, timeoutMinutes, jsonContent);
 
@@ -343,139 +296,56 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}，错误内容：{errorContent}";
+                    var errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}，错误内容：{errorContent}";
                     LogErrorWithArgs("{OperationType}ESB接口调用失败，状态码：{StatusCode}，原因：{ReasonPhrase}，错误内容：{ErrorContent}",
                         operationType, operationType, response.StatusCode, response.ReasonPhrase, errorContent);
 
-                    // 记录失败日志
-                    var endTime = DateTime.Now;
-                    var elapsedMs = (long)(endTime - startTime).TotalMilliseconds;
-                    await LogApiCallAsync(
-                        apiName: $"{operationType}ESB接口",
-                        apiPath: esbUrl,
-                        httpMethod: "POST",
-                        requestParams: jsonContent,
-                        responseLength: errorContent?.Length ?? 0,
-                        statusCode: statusCode,
-                        status: 0, // 失败
-                        errorMessage: errorMessage,
-                        startTime: startTime,
-                        endTime: endTime,
-                        elapsedMs: elapsedMs,
-                        dataCount: 0,
-                        remark: $"超时设置：{timeoutMinutes}分钟"
-                    );
-
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode, errorContent);
                     return new List<T>();
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
-                responseLength = responseContent?.Length ?? 0;
-                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseLength);
+                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length);
                 //HDLogHelper.Log($"{operationType}ESBApi", responseContent);
 
                 if (string.IsNullOrWhiteSpace(responseContent))
                 {
                     LogWarningWithArgs("{OperationType}ESB接口返回空响应", operationType, operationType);
-
-                    // 记录空响应日志
-                    var emptyEndTime = DateTime.Now;
-                    var emptyElapsedMs = (long)(emptyEndTime - startTime).TotalMilliseconds;
-                    await LogApiCallAsync(
-                        apiName: $"{operationType}ESB接口",
-                        apiPath: esbUrl,
-                        httpMethod: "POST",
-                        requestParams: jsonContent,
-                        responseLength: 0,
-                        statusCode: statusCode,
-                        status: 1, // 成功但无数据
-                        errorMessage: null,
-                        startTime: startTime,
-                        endTime: emptyEndTime,
-                        elapsedMs: emptyElapsedMs,
-                        dataCount: 0,
-                        responseResult: "返回空响应",
-                        remark: $"超时设置：{timeoutMinutes}分钟"
-                    );
-
+                    await logHelper.WithDataCount(0).LogSuccessAsync(statusCode);
                     return new List<T>();
                 }
 
                 // 反序列化响应数据
                 var dataList = JsonConvert.DeserializeObject<List<T>>(responseContent);
-                dataCount = dataList?.Count ?? 0;
+                var dataCount = dataList?.Count ?? 0;
 
                 // 记录成功日志
-                var successEndTime = DateTime.Now;
-                var successElapsedMs = (long)(successEndTime - startTime).TotalMilliseconds;
-                await LogApiCallAsync(
-                    apiName: $"{operationType}ESB接口",
-                    apiPath: esbUrl,
-                    httpMethod: "POST",
-                    requestParams: jsonContent,
-                    responseLength: responseLength,
-                    statusCode: statusCode,
-                    status: 1, // 成功
-                    errorMessage: null,
-                    startTime: startTime,
-                    endTime: successEndTime,
-                    elapsedMs: successElapsedMs,
-                    dataCount: dataCount,
-                    responseResult: $"成功返回{dataCount}条数据",
-                    remark: $"超时设置：{timeoutMinutes}分钟"
-                );
+                await logHelper.WithDataCount(dataCount).LogSuccessAsync(statusCode, responseContent);
 
                 return dataList ?? new List<T>();
             }
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.Message.Contains("timeout"))
             {
-                errorMessage = $"接口调用超时，超时设置：{timeoutMinutes}分钟";
+                var errorMessage = $"接口调用超时，超时设置：{timeoutMinutes}分钟";
                 LogErrorWithArgs(ex, "{OperationType}ESB接口调用超时，超时设置：{TimeoutMinutes}分钟", operationType, operationType, timeoutMinutes);
 
                 // 记录超时日志
-                var timeoutEndTime = DateTime.Now;
-                var timeoutElapsedMs = (long)(timeoutEndTime - startTime).TotalMilliseconds;
-                await LogApiCallAsync(
-                    apiName: $"{operationType}ESB接口",
-                    apiPath: esbUrl,
-                    httpMethod: "POST",
-                    requestParams: jsonContent,
-                    responseLength: 0,
-                    statusCode: null,
-                    status: 0, // 失败
-                    errorMessage: errorMessage,
-                    startTime: startTime,
-                    endTime: timeoutEndTime,
-                    elapsedMs: timeoutElapsedMs,
-                    dataCount: 0,
-                    remark: $"接口调用超时，超时设置：{timeoutMinutes}分钟"
-                );
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode);
+                }
 
                 throw new TimeoutException($"{operationType}ESB接口调用超时（{timeoutMinutes}分钟）", ex);
             }
             catch (Exception ex)
             {
-                errorMessage = ex.Message;
                 LogErrorWithArgs(ex, "调用{OperationType}ESB接口异常", operationType, operationType);
 
                 // 记录异常日志
-                var exceptionEndTime = DateTime.Now;
-                var exceptionElapsedMs = (long)(exceptionEndTime - startTime).TotalMilliseconds;
-                await LogApiCallAsync(
-                    apiName: $"{operationType}ESB接口",
-                    apiPath: esbUrl,
-                    httpMethod: "POST",
-                    requestParams: jsonContent,
-                    responseLength: responseLength,
-                    statusCode: statusCode,
-                    status: 0, // 失败
-                    errorMessage: errorMessage,
-                    startTime: startTime,
-                    endTime: exceptionEndTime,
-                    elapsedMs: exceptionElapsedMs,
-                    dataCount: 0,
-                    remark: "接口调用发生异常"
-                );
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogExceptionAsync(ex, statusCode);
+                }
 
                 throw;
             }
@@ -652,83 +522,6 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
             return errorMessage;
         }
 
-        #region API日志记录
 
-        /// <summary>
-        /// 记录API调用日志到数据库
-        /// </summary>
-        /// <param name="apiName">接口名称</param>
-        /// <param name="apiPath">接口路径</param>
-        /// <param name="httpMethod">请求方法</param>
-        /// <param name="requestParams">请求参数</param>
-        /// <param name="responseLength">响应数据长度</param>
-        /// <param name="statusCode">HTTP状态码</param>
-        /// <param name="status">调用状态(1:成功,0:失败)</param>
-        /// <param name="errorMessage">错误信息</param>
-        /// <param name="startTime">调用开始时间</param>
-        /// <param name="endTime">调用结束时间</param>
-        /// <param name="elapsedMs">耗时(毫秒)</param>
-        /// <param name="dataCount">返回数据条数</param>
-        /// <param name="responseResult">返回结果(可选,用于记录简要结果)</param>
-        /// <param name="remark">备注</param>
-        protected async Task LogApiCallAsync(
-            string apiName,
-            string apiPath,
-            string httpMethod,
-            string requestParams,
-            long? responseLength,
-            int? statusCode,
-            int status,
-            string errorMessage,
-            DateTime startTime,
-            DateTime endTime,
-            long elapsedMs,
-            int? dataCount = null,
-            string responseResult = null,
-            string remark = null)
-        {
-            try
-            {
-                var currentUser = UserContext.Current;
-                var apiLog = new OCP_ApiLog
-                {
-                    ApiName = apiName?.Length > 200 ? apiName.Substring(0, 200) : apiName,
-                    ApiPath = apiPath?.Length > 200 ? apiPath.Substring(0, 200) : apiPath,
-                    HttpMethod = httpMethod?.Length > 20 ? httpMethod.Substring(0, 20) : httpMethod,
-                    RequestParams = requestParams, // nvarchar(max)
-                    ResponseLength = responseLength,
-                    StatusCode = statusCode,
-                    Status = status,
-                    ErrorMessage = errorMessage, // nvarchar(max)
-                    StartTime = startTime,
-                    EndTime = endTime,
-                    ElapsedMs = elapsedMs,
-                    DataCount = dataCount,
-                    ResponseResult = responseResult, // nvarchar(max)
-                    Remark = remark?.Length > 500 ? remark.Substring(0, 500) : remark,
-                    CreateDate = DateTime.Now,
-                    CreateID = currentUser?.UserId ?? 0,
-                    Creator = currentUser?.UserName ?? "系统",
-                    ModifyDate = DateTime.Now,
-                    ModifyID = currentUser?.UserId ?? 0,
-                    Modifier = currentUser?.UserName ?? "系统"
-                };
-
-                // 使用Repository保存日志
-                var repository = AutofacContainerModule.GetService<IOCP_ApiLogRepository>();
-                if (repository != null)
-                {
-                    await repository.AddAsync(apiLog);
-                    await repository.SaveChangesAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                // 记录日志失败不应影响主流程,只记录到文件日志
-                _logger.LogError(ex, "保存API调用日志到数据库失败: {ErrorMessage}", ex.Message);
-            }
-        }
-
-        #endregion
     }
 }

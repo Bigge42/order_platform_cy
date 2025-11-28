@@ -5,8 +5,12 @@
 using HDPro.Core.Configuration;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.Utilities;
+using HDPro.Core.ManageUser;
 using HDPro.CY.Order.IServices.SRM;
+using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.Models;
+using HDPro.CY.Order.Services.Common;
+using HDPro.Entity.DomainModels;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System;
@@ -52,12 +56,14 @@ namespace HDPro.CY.Order.Services.SRM
             _httpClient.DefaultRequestHeaders.Add("appID", _srmConfig.AppId);
             _httpClient.DefaultRequestHeaders.Add("tokenKey", _srmConfig.TokenKey);
             
-            _logger.LogInformation("SRM HttpClient配置完成，超时时间: {Timeout}秒, AppId: {AppId}", 
+            _logger.LogInformation("SRM HttpClient配置完成，超时时间: {Timeout}秒, AppId: {AppId}",
                 _srmConfig.Timeout, _srmConfig.AppId);
-            
+
             // Content-Type应该在发送请求时通过HttpContent设置，而不是在默认请求头中
             // _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
         }
+
+
 
         /// <summary>
         /// 推送催单数据到SRM系统
@@ -242,6 +248,7 @@ namespace HDPro.CY.Order.Services.SRM
             var requestJson = string.Empty;
             var responseContent = string.Empty;
             var statusCode = System.Net.HttpStatusCode.InternalServerError;
+            ApiLogHelper logHelper = null;
 
             try
             {
@@ -250,86 +257,95 @@ namespace HDPro.CY.Order.Services.SRM
 
                 // 序列化请求数据
                 requestJson = JsonConvert.SerializeObject(srmRequest, Formatting.None);
-                
+
                 _logger.LogInformation("发送SRM请求开始 - URL: {RequestUrl}", requestUrl);
                 _logger.LogInformation("发送SRM请求参数: {RequestJson}", requestJson);
 
                 var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-                // 记录请求开始时间
-                var startTime = DateTime.Now;
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start("SRM催单推送", requestUrl, "POST", requestJson, _logger)
+                    .WithRemark($"操作人: {srmRequest?.op}")
+                    .WithDataCount(srmRequest?.data?.Count);
 
                 // 发送POST请求
                 var response = await _httpClient.PostAsync(requestUrl, content);
                 statusCode = response.StatusCode;
                 responseContent = await response.Content.ReadAsStringAsync();
 
-                // 记录请求结束时间和耗时
-                var endTime = DateTime.Now;
-                var duration = endTime - startTime;
-
-                _logger.LogInformation("发送SRM请求完成 - 状态码: {StatusCode}, 耗时: {Duration}ms, 响应长度: {ResponseLength}字符", 
-                    response.StatusCode, duration.TotalMilliseconds, responseContent?.Length ?? 0);
-                
+                _logger.LogInformation("发送SRM请求完成 - 状态码: {StatusCode}, 响应长度: {ResponseLength}字符",
+                    response.StatusCode, responseContent?.Length ?? 0);
                 _logger.LogInformation("SRM响应内容: {ResponseContent}", responseContent);
 
                 if (response.IsSuccessStatusCode)
                 {
                     // 解析SRM响应
                     var srmResponse = JsonConvert.DeserializeObject<SRMResponse>(responseContent);
-                    
+
                     if (srmResponse != null)
                     {
-                        _logger.LogInformation("SRM响应解析成功 - 结果码: {ResultCode}, 消息: {Message}", 
+                        _logger.LogInformation("SRM响应解析成功 - 结果码: {ResultCode}, 消息: {Message}",
                             srmResponse.res, srmResponse.msg);
 
                         if (srmResponse.res == 1)
                         {
                             _logger.LogInformation("SRM请求处理成功");
+                            await logHelper.WithResponseResult(responseContent).LogSuccessAsync((int)statusCode, responseContent);
                             return WebResponseContent.Instance.OK("催单数据推送成功");
                         }
                         else
                         {
-                            _logger.LogError("SRM请求处理失败，错误代码: {ErrorCode}, 错误消息: {ErrorMessage}", 
+                            _logger.LogError("SRM请求处理失败，错误代码: {ErrorCode}, 错误消息: {ErrorMessage}",
                                 srmResponse.res, srmResponse.msg);
+                            await logHelper.WithResponseResult(responseContent).LogFailureAsync($"SRM返回错误: {srmResponse.msg}", (int)statusCode, responseContent);
                             return WebResponseContent.Instance.Error($"SRM返回错误: {srmResponse.msg}");
                         }
                     }
                     else
                     {
                         _logger.LogError("SRM响应解析失败，响应内容为空或格式错误");
+                        await logHelper.WithResponseResult(responseContent).LogFailureAsync("无法解析SRM响应数据", (int)statusCode, responseContent);
                         return WebResponseContent.Instance.Error("无法解析SRM响应数据");
                     }
                 }
                 else
                 {
-                    _logger.LogError("SRM HTTP请求失败 - 状态码: {StatusCode}, 原因: {ReasonPhrase}", 
+                    _logger.LogError("SRM HTTP请求失败 - 状态码: {StatusCode}, 原因: {ReasonPhrase}",
                         response.StatusCode, response.ReasonPhrase);
+                    await logHelper.WithResponseResult(responseContent).LogFailureAsync($"HTTP请求失败，状态码: {response.StatusCode}", (int)statusCode, responseContent);
                     return WebResponseContent.Instance.Error($"HTTP请求失败，状态码: {response.StatusCode}, 响应: {responseContent}");
                 }
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(ex, "发送SRM HTTP请求时发生网络异常 - URL: {RequestUrl}, 请求参数: {RequestJson}", 
+                _logger.LogError(ex, "发送SRM HTTP请求时发生网络异常 - URL: {RequestUrl}, 请求参数: {RequestJson}",
                     requestUrl, requestJson);
+                if (logHelper != null)
+                    await logHelper.LogExceptionAsync(ex);
                 return WebResponseContent.Instance.Error($"网络请求失败: {ex.Message}");
             }
             catch (TaskCanceledException ex)
             {
-                _logger.LogError(ex, "发送SRM请求时发生超时 - URL: {RequestUrl}, 超时时间: {Timeout}秒, 请求参数: {RequestJson}", 
+                _logger.LogError(ex, "发送SRM请求时发生超时 - URL: {RequestUrl}, 超时时间: {Timeout}秒, 请求参数: {RequestJson}",
                     requestUrl, _srmConfig.Timeout, requestJson);
+                if (logHelper != null)
+                    await logHelper.LogFailureAsync($"请求超时(超时设置: {_srmConfig.Timeout}秒)");
                 return WebResponseContent.Instance.Error("请求超时，请检查网络连接或增加超时时间");
             }
             catch (JsonException ex)
             {
-                _logger.LogError(ex, "SRM JSON序列化或反序列化异常 - 请求JSON: {RequestJson}, 响应内容: {ResponseContent}", 
+                _logger.LogError(ex, "SRM JSON序列化或反序列化异常 - 请求JSON: {RequestJson}, 响应内容: {ResponseContent}",
                     requestJson, responseContent);
+                if (logHelper != null)
+                    await logHelper.WithResponseResult(responseContent).LogExceptionAsync(ex, (int?)statusCode);
                 return WebResponseContent.Instance.Error($"数据格式错误: {ex.Message}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "发送SRM请求时发生未知异常 - URL: {RequestUrl}, 请求参数: {RequestJson}, 响应状态码: {StatusCode}, 响应内容: {ResponseContent}", 
+                _logger.LogError(ex, "发送SRM请求时发生未知异常 - URL: {RequestUrl}, 请求参数: {RequestJson}, 响应状态码: {StatusCode}, 响应内容: {ResponseContent}",
                     requestUrl, requestJson, statusCode, responseContent);
+                if (logHelper != null)
+                    await logHelper.WithResponseResult(responseContent).LogExceptionAsync(ex, (int?)statusCode);
                 return WebResponseContent.Instance.Error($"发送失败: {ex.Message}");
             }
         }

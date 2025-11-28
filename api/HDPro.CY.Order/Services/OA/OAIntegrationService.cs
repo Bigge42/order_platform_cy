@@ -5,7 +5,11 @@
  */
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.Utilities;
+using HDPro.Core.ManageUser;
 using HDPro.CY.Order.IServices.OA;
+using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Services.Common;
+using HDPro.Entity.DomainModels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -142,7 +146,9 @@ namespace HDPro.CY.Order.Services.OA
             var tokenUrl = string.Empty;
             var requestJson = string.Empty;
             var responseContent = string.Empty;
-            
+            int? statusCode = null;
+            ApiLogHelper logHelper = null;
+
             try
             {
                 if (string.IsNullOrEmpty(loginName))
@@ -152,10 +158,11 @@ namespace HDPro.CY.Order.Services.OA
                     response.Message = "登录名不能为空";
                     return response;
                 }
+
                 // 管理员账号映射到默认OA登录名
                 loginName = MapAdminLoginName(loginName);
                 tokenUrl = $"{_oaBaseUrl}/seeyon/rest/token";
-                
+
                 var requestBody = new
                 {
                     userName = _userName,
@@ -169,36 +176,40 @@ namespace HDPro.CY.Order.Services.OA
                 _oaTokenLogger.LogInfo("开始获取OA Token - URL: {TokenUrl}, LoginName: {LoginName}", tokenUrl, loginName);
                 _oaTokenLogger.LogRequestParameters("OA Token", requestJson);
 
-                // 记录请求开始时间
-                var startTime = DateTime.Now;
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start("OA获取Token", tokenUrl, "POST", requestJson, _logger)
+                    .WithRemark($"LoginName: {loginName}");
 
                 var httpResponse = await _httpClient.PostAsync(tokenUrl, content);
                 responseContent = await httpResponse.Content.ReadAsStringAsync();
+                statusCode = (int)httpResponse.StatusCode;
 
-                // 记录请求结束时间和耗时
-                var endTime = DateTime.Now;
-                var duration = endTime - startTime;
-
-                _oaTokenLogger.LogHttpRequest("POST", tokenUrl, (int)httpResponse.StatusCode, duration.TotalMilliseconds);
+                _oaTokenLogger.LogHttpRequest("POST", tokenUrl, statusCode.Value, 0);
                 _oaTokenLogger.LogResponseContent("OA Token", responseContent);
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
                     var tokenResponse = JsonConvert.DeserializeObject<OATokenResponse>(responseContent);
-                    
+
                     if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.Id))
                     {
                         response.Status = true;
-                        response.Data = tokenResponse; // 返回完整的Token响应对象
+                        response.Data = tokenResponse;
                         response.Message = "获取Token成功";
-                        
+
                         _oaTokenLogger.LogTokenOperation(loginName, true, $"TokenId: {tokenResponse.Id}, UserId: {tokenResponse.BindingUser?.Id}, UserName: {tokenResponse.BindingUser?.Name}");
+
+                        // 记录成功日志
+                        await logHelper.WithResponseResult(responseContent).LogSuccessAsync(statusCode, responseContent);
                     }
                     else
                     {
                         response.Status = false;
                         response.Message = "Token响应格式错误";
                         _oaTokenLogger.LogTokenOperation(loginName, false, "Token响应格式错误，无法解析Token信息");
+
+                        // 记录失败日志
+                        await logHelper.WithResponseResult(responseContent).LogFailureAsync("Token响应格式错误", statusCode, responseContent);
                     }
                 }
                 else
@@ -206,28 +217,40 @@ namespace HDPro.CY.Order.Services.OA
                     response.Status = false;
                     response.Message = $"获取Token失败，HTTP状态码: {httpResponse.StatusCode}";
                     _oaTokenLogger.LogTokenOperation(loginName, false, $"HTTP状态码: {httpResponse.StatusCode}, 原因: {httpResponse.ReasonPhrase}");
+
+                    // 记录失败日志
+                    await logHelper.WithResponseResult(responseContent).LogFailureAsync($"HTTP状态码: {httpResponse.StatusCode}", statusCode, responseContent);
                 }
             }
             catch (HttpRequestException ex)
             {
                 response.Status = false;
                 response.Message = $"获取Token网络异常: {ex.Message}";
-                _oaTokenLogger.LogError(ex, "获取OA Token时发生网络异常 - URL: {TokenUrl}, 请求参数: {RequestJson}",
-                    tokenUrl, requestJson);
+                _oaTokenLogger.LogError(ex, "获取OA Token时发生网络异常 - URL: {TokenUrl}, 请求参数: {RequestJson}", tokenUrl, requestJson);
+
+                // 记录异常日志
+                if (logHelper != null)
+                    await logHelper.LogExceptionAsync(ex, statusCode);
             }
             catch (JsonException ex)
             {
                 response.Status = false;
                 response.Message = $"获取Token数据格式异常: {ex.Message}";
-                _oaTokenLogger.LogError(ex, "获取OA Token时JSON序列化异常 - 请求JSON: {RequestJson}, 响应内容: {ResponseContent}",
-                    requestJson, responseContent);
+                _oaTokenLogger.LogError(ex, "获取OA Token时JSON序列化异常 - 请求JSON: {RequestJson}, 响应内容: {ResponseContent}", requestJson, responseContent);
+
+                // 记录异常日志
+                if (logHelper != null)
+                    await logHelper.WithResponseResult(responseContent).LogExceptionAsync(ex, statusCode);
             }
             catch (Exception ex)
             {
                 response.Status = false;
                 response.Message = $"获取Token异常: {ex.Message}";
-                _oaTokenLogger.LogError(ex, "获取OA Token时发生未知异常 - URL: {TokenUrl}, 登录名: {LoginName}",
-                    tokenUrl, loginName);
+                _oaTokenLogger.LogError(ex, "获取OA Token时发生未知异常 - URL: {TokenUrl}, 登录名: {LoginName}", tokenUrl, loginName);
+
+                // 记录异常日志
+                if (logHelper != null)
+                    await logHelper.LogExceptionAsync(ex, statusCode);
             }
 
             return response;
