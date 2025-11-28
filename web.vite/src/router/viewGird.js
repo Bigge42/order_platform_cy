@@ -704,6 +704,10 @@ let viewgird = [
         path: '/OCP_ApiLog',
         name: 'OCP_ApiLog',
         component: () => import('@/views/order/order/OCP_ApiLog.vue')
+    }    ,{
+        path: '/WZ_OrderCycleBase',
+        name: 'WZ_OrderCycleBase',
+        component: () => import('@/views/order//wz_ordercyclebase/WZ_OrderCycleBase.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除
