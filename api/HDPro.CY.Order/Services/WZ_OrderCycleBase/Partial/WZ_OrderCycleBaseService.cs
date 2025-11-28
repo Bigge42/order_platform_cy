@@ -200,6 +200,7 @@ namespace HDPro.CY.Order.Services
             var context = _repository.DbContext;
             var entities = await context.Set<WZ_OrderCycleBase>()
                 .Where(p => p.OrderApprovedDate.HasValue && p.ReplyDeliveryDate.HasValue && p.RequestedDeliveryDate.HasValue)
+                .OrderBy(p => p.Id)
                 .ToListAsync(cancellationToken);
 
             if (entities.Count == 0)
@@ -208,74 +209,89 @@ namespace HDPro.CY.Order.Services
             }
 
             var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(5);
             const string url = "http://10.11.10.101:8000/batch_infer";
 
-            var requestPayload = BuildValveRuleRequests(entities);
-            var json = JsonConvert.SerializeObject(requestPayload);
+            const int batchSize = 200;
+            var totalUpdated = 0;
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            for (var i = 0; i < entities.Count; i += batchSize)
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
+                cancellationToken.ThrowIfCancellationRequested();
 
-            using var response = await client.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
-
-            if (batchResponse.Results == null || batchResponse.Results.Count == 0)
-            {
-                return 0;
-            }
-
-            var resultMap = new Dictionary<int, ValveRuleResult>(entities.Count);
-            foreach (var item in batchResponse.Results)
-            {
-                if (item?.Success != true || item.Result == null)
+                var batchEntities = entities.Skip(i).Take(batchSize).ToList();
+                if (batchEntities.Count == 0)
                 {
                     continue;
                 }
 
-                var id = TryParseId(item.Result.Id);
-                if (!id.HasValue)
+                var requestPayload = BuildValveRuleRequests(batchEntities);
+                var json = JsonConvert.SerializeObject(requestPayload);
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+
+                using var response = await client.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
+
+                if (batchResponse.Results == null || batchResponse.Results.Count == 0)
                 {
                     continue;
                 }
 
-                resultMap[id.Value] = item.Result;
-            }
+                var resultMap = new Dictionary<int, ValveRuleResult>(batchEntities.Count);
+                foreach (var item in batchResponse.Results)
+                {
+                    if (item?.Success != true || item.Result == null)
+                    {
+                        continue;
+                    }
 
-            if (resultMap.Count == 0)
-            {
-                return 0;
-            }
+                    var id = TryParseId(item.Result.Id);
+                    if (!id.HasValue)
+                    {
+                        continue;
+                    }
 
-            var ids = new List<int>(resultMap.Keys);
-            var matchedEntities = entities.Where(p => ids.Contains(p.Id)).ToList();
+                    resultMap[id.Value] = item.Result;
+                }
 
-            var updated = 0;
-            foreach (var entity in matchedEntities)
-            {
-                if (!resultMap.TryGetValue(entity.Id, out var result))
+                if (resultMap.Count == 0)
                 {
                     continue;
                 }
 
-                entity.FixedCycleDays = result.FixedCycleDays;
-                entity.ProductionLine = result.ProductionLine;
-                entity.StandardDeliveryDate = TryParseDate(result.StandardDeliveryDate);
-                entity.ScheduleDate = TryParseDate(result.ScheduleDate);
-                updated++;
+                var ids = new List<int>(resultMap.Keys);
+                var matchedEntities = batchEntities.Where(p => ids.Contains(p.Id)).ToList();
+
+                var updated = 0;
+                foreach (var entity in matchedEntities)
+                {
+                    if (!resultMap.TryGetValue(entity.Id, out var result))
+                    {
+                        continue;
+                    }
+
+                    entity.FixedCycleDays = result.FixedCycleDays;
+                    entity.ProductionLine = result.ProductionLine;
+                    entity.StandardDeliveryDate = TryParseDate(result.StandardDeliveryDate);
+                    entity.ScheduleDate = TryParseDate(result.ScheduleDate);
+                    updated++;
+                }
+
+                if (updated > 0)
+                {
+                    await context.SaveChangesAsync(cancellationToken);
+                    totalUpdated += updated;
+                }
             }
 
-            if (updated == 0)
-            {
-                return 0;
-            }
-
-            await context.SaveChangesAsync(cancellationToken);
-            return updated;
+            return totalUpdated;
         }
 
         private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items)
