@@ -8,8 +8,6 @@ using System;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
-using System.Collections.Generic;
-using HDPro.CY.Order.Models.OrderCycleBaseDtos;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -20,6 +18,7 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <returns>同步的记录数量</returns>
         [HttpPost("sync-from-order-tracking")]
+        [AllowAnonymous]
         public async Task<IActionResult> SyncFromOrderTracking()
         {
             try
@@ -36,14 +35,14 @@ namespace HDPro.CY.Order.Controllers
         /// <summary>
         /// 批量调用阀门规则服务，回填订单周期信息
         /// </summary>
-        /// <param name="items">业务数据集合</param>
         /// <returns>成功回填的数量</returns>
         [HttpPost("batch-call-valve-rule-service")]
-        public async Task<IActionResult> BatchCallValveRuleService([FromBody] List<OrderRuleDto> items)
+        [AllowAnonymous]
+        public async Task<IActionResult> BatchCallValveRuleService()
         {
             try
             {
-                var result = await Service.BatchCallValveRuleServiceAsync(items);
+                var result = await Service.BatchCallValveRuleServiceAsync();
                 return JsonNormal(result);
             }
             catch (Exception ex)

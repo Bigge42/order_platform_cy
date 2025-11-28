@@ -25,7 +25,6 @@ using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
-using HDPro.CY.Order.Models.OrderCycleBaseDtos;
 
 namespace HDPro.CY.Order.Services
 {
@@ -189,25 +188,29 @@ namespace HDPro.CY.Order.Services
         /// <summary>
         /// 调用 Python 阀门规则服务批量计算周期及排产信息
         /// </summary>
-        /// <param name="items">需要推断的业务数据</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>成功回填的行数</returns>
-        public async Task<int> BatchCallValveRuleServiceAsync(List<OrderRuleDto> items, CancellationToken cancellationToken = default)
+        public async Task<int> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default)
         {
-            if (items == null || items.Count == 0)
-            {
-                return 0;
-            }
-
             if (_httpClientFactory == null)
             {
                 throw new InvalidOperationException("HttpClientFactory 未注册，无法调用规则服务");
             }
 
+            var context = _repository.DbContext;
+            var entities = await context.Set<WZ_OrderCycleBase>()
+                .Where(p => p.OrderApprovedDate.HasValue && p.ReplyDeliveryDate.HasValue && p.RequestedDeliveryDate.HasValue)
+                .ToListAsync(cancellationToken);
+
+            if (entities.Count == 0)
+            {
+                return 0;
+            }
+
             var client = _httpClientFactory.CreateClient();
             const string url = "http://10.11.10.101:8000/batch_infer";
 
-            var requestPayload = BuildValveRuleRequests(items);
+            var requestPayload = BuildValveRuleRequests(entities);
             var json = JsonConvert.SerializeObject(requestPayload);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, url)
@@ -226,7 +229,7 @@ namespace HDPro.CY.Order.Services
                 return 0;
             }
 
-            var resultMap = new Dictionary<int, ValveRuleResult>(items.Count);
+            var resultMap = new Dictionary<int, ValveRuleResult>(entities.Count);
             foreach (var item in batchResponse.Results)
             {
                 if (item?.Success != true || item.Result == null)
@@ -249,13 +252,10 @@ namespace HDPro.CY.Order.Services
             }
 
             var ids = new List<int>(resultMap.Keys);
-            var context = _repository.DbContext;
-            var entities = await context.Set<WZ_OrderCycleBase>()
-                .Where(p => ids.Contains(p.Id))
-                .ToListAsync(cancellationToken);
+            var matchedEntities = entities.Where(p => ids.Contains(p.Id)).ToList();
 
             var updated = 0;
-            foreach (var entity in entities)
+            foreach (var entity in matchedEntities)
             {
                 if (!resultMap.TryGetValue(entity.Id, out var result))
                 {
@@ -278,7 +278,7 @@ namespace HDPro.CY.Order.Services
             return updated;
         }
 
-        private static List<ValveRuleRequest> BuildValveRuleRequests(List<OrderRuleDto> items)
+        private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items)
         {
             var requests = new List<ValveRuleRequest>(items.Count);
             foreach (var item in items)
