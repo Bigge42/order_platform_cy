@@ -8,6 +8,7 @@ using System;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
+using Microsoft.AspNetCore.Authorization;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -18,6 +19,7 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <returns>同步的记录数量</returns>
         [HttpPost("sync-from-order-tracking")]
+        [AllowAnonymous]
         public async Task<IActionResult> SyncFromOrderTracking()
         {
             try
@@ -36,6 +38,7 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <returns>回填批量结果摘要</returns>
         [HttpPost("batch-call-valve-rule-service")]
+        [AllowAnonymous]
         public async Task<IActionResult> BatchCallValveRuleService()
         {
             try
