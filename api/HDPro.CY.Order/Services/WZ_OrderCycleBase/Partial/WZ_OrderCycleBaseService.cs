@@ -78,7 +78,14 @@ namespace HDPro.CY.Order.Services
         /// <returns>同步的总行数</returns>
         public async Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default)
         {
-            var orderTrackingQuery = _orderTrackingRepository.DbContext.Set<OCP_OrderTracking>()
+            var orderTrackingContext = _orderTrackingRepository?.DbContext
+                ?? throw new InvalidOperationException("订单跟踪仓储未正确初始化");
+            var materialContext = _materialRepository?.DbContext
+                ?? throw new InvalidOperationException("物料仓储未正确初始化");
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var orderTrackingQuery = orderTrackingContext.Set<OCP_OrderTracking>()
                 .AsNoTracking()
                 .Where(p => p.PrdScheduleDate == null);
 
@@ -96,11 +103,11 @@ namespace HDPro.CY.Order.Services
 
             var materialDict = materialNumbers.Count == 0
                 ? new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase)
-                : (await _materialRepository.DbContext.Set<OCP_Material>()
+                : (await materialContext.Set<OCP_Material>()
                     .AsNoTracking()
                     .Where(p => materialNumbers.Contains(p.MaterialCode))
                     .ToListAsync(cancellationToken))
-                    .ToDictionary(p => p.MaterialCode, StringComparer.OrdinalIgnoreCase);
+                    .ToDictionary(p => p.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
             var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.SOBillNo))
                 .Select(p => p.SOBillNo)
@@ -112,7 +119,7 @@ namespace HDPro.CY.Order.Services
                 .Distinct()
                 .ToList();
 
-            var existingRecords = await _repository.DbContext.Set<WZ_OrderCycleBase>()
+            var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
                 .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
                 .ToListAsync(cancellationToken);
 
@@ -159,7 +166,7 @@ namespace HDPro.CY.Order.Services
                 return 0;
             }
 
-            await _repository.DbContext.SaveChangesAsync(cancellationToken);
+            await orderCycleContext.SaveChangesAsync(cancellationToken);
 
             return updatedCount + toInsert.Count;
         }
@@ -176,13 +183,15 @@ namespace HDPro.CY.Order.Services
 
             if (materialInfo != null)
             {
+                target.InnerMaterial = materialInfo.Material;
                 target.FlangeConnection = materialInfo.FlangeConnection;
+                target.BonnetForm = materialInfo.PackingForm;
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;
                 target.Actuator = materialInfo.ActuatorModel;
+                target.SealFaceForm = materialInfo.DrawingNo;
                 target.ProductName = materialInfo.ProductModel;
                 target.NominalDiameter = materialInfo.NominalDiameter;
                 target.NominalPressure = materialInfo.NominalPressure;
-                // InnerMaterial、BonnetForm、SealFaceForm 等字段在当前物料模型中未提供，保持为空以避免错误数据
             }
         }
     }
