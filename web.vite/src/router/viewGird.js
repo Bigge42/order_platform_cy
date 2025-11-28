@@ -700,6 +700,10 @@ let viewgird = [
         path: '/BomQuery',
         name: 'BomQuery',
         component: () => import('@/views/order/ordercollaboration/BomQuery.vue')
+    }    ,{
+        path: '/OCP_ApiLog',
+        name: 'OCP_ApiLog',
+        component: () => import('@/views/order/order/OCP_ApiLog.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除
