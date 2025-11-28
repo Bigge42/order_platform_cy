@@ -22,6 +22,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Http;
+using System.Text;
+using Newtonsoft.Json;
+using HDPro.CY.Order.Models.OrderCycleBaseDtos;
 
 namespace HDPro.CY.Order.Services
 {
@@ -30,19 +34,22 @@ namespace HDPro.CY.Order.Services
         private readonly IWZ_OrderCycleBaseRepository _repository;//访问数据库
         private readonly IOCP_OrderTrackingRepository _orderTrackingRepository;
         private readonly IOCP_MaterialRepository _materialRepository;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         [ActivatorUtilitiesConstructor]
         public WZ_OrderCycleBaseService(
             IWZ_OrderCycleBaseRepository dbRepository,
             IHttpContextAccessor httpContextAccessor,
             IOCP_OrderTrackingRepository orderTrackingRepository,
-            IOCP_MaterialRepository materialRepository
+            IOCP_MaterialRepository materialRepository,
+            IHttpClientFactory httpClientFactory
             )
         : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
             _orderTrackingRepository = orderTrackingRepository;
             _materialRepository = materialRepository;
+            _httpClientFactory = httpClientFactory;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -177,6 +184,239 @@ namespace HDPro.CY.Order.Services
             await orderCycleContext.SaveChangesAsync(cancellationToken);
 
             return updatedCount + toInsert.Count;
+        }
+
+        /// <summary>
+        /// 调用 Python 阀门规则服务批量计算周期及排产信息
+        /// </summary>
+        /// <param name="items">需要推断的业务数据</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>成功回填的行数</returns>
+        public async Task<int> BatchCallValveRuleServiceAsync(List<OrderRuleDto> items, CancellationToken cancellationToken = default)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return 0;
+            }
+
+            if (_httpClientFactory == null)
+            {
+                throw new InvalidOperationException("HttpClientFactory 未注册，无法调用规则服务");
+            }
+
+            var client = _httpClientFactory.CreateClient();
+            const string url = "http://10.11.10.101:8000/batch_infer";
+
+            var requestPayload = BuildValveRuleRequests(items);
+            var json = JsonConvert.SerializeObject(requestPayload);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
+
+            if (batchResponse.Results == null || batchResponse.Results.Count == 0)
+            {
+                return 0;
+            }
+
+            var resultMap = new Dictionary<int, ValveRuleResult>(items.Count);
+            foreach (var item in batchResponse.Results)
+            {
+                if (item?.Success != true || item.Result == null)
+                {
+                    continue;
+                }
+
+                var id = TryParseId(item.Result.Id);
+                if (!id.HasValue)
+                {
+                    continue;
+                }
+
+                resultMap[id.Value] = item.Result;
+            }
+
+            if (resultMap.Count == 0)
+            {
+                return 0;
+            }
+
+            var ids = new List<int>(resultMap.Keys);
+            var context = _repository.DbContext;
+            var entities = await context.Set<WZ_OrderCycleBase>()
+                .Where(p => ids.Contains(p.Id))
+                .ToListAsync(cancellationToken);
+
+            var updated = 0;
+            foreach (var entity in entities)
+            {
+                if (!resultMap.TryGetValue(entity.Id, out var result))
+                {
+                    continue;
+                }
+
+                entity.FixedCycleDays = result.FixedCycleDays;
+                entity.ProductionLine = result.ProductionLine;
+                entity.StandardDeliveryDate = TryParseDate(result.StandardDeliveryDate);
+                entity.ScheduleDate = TryParseDate(result.ScheduleDate);
+                updated++;
+            }
+
+            if (updated == 0)
+            {
+                return 0;
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+            return updated;
+        }
+
+        private static List<ValveRuleRequest> BuildValveRuleRequests(List<OrderRuleDto> items)
+        {
+            var requests = new List<ValveRuleRequest>(items.Count);
+            foreach (var item in items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                requests.Add(new ValveRuleRequest
+                {
+                    Id = item.Id.ToString(),
+                    OrderApprovedDate = item.OrderApprovedDate,
+                    ReplyDeliveryDate = item.ReplyDeliveryDate,
+                    RequestedDeliveryDate = item.RequestedDeliveryDate,
+                    InnerMaterial = item.InnerMaterial,
+                    FlangeConnection = item.FlangeConnection,
+                    BonnetForm = item.BonnetForm,
+                    FlowCharacteristic = item.FlowCharacteristic,
+                    Actuator = item.Actuator,
+                    OutsourcedValveBody = item.OutsourcedValveBody,
+                    ValveCategory = item.ValveCategory,
+                    SealFaceForm = item.SealFaceForm,
+                    SpecialProduct = item.SpecialProduct,
+                    PurchaseFlag = item.PurchaseFlag,
+                    ProductName = item.ProductName,
+                    NominalDiameter = item.NominalDiameter,
+                    NominalPressure = item.NominalPressure
+                });
+            }
+
+            return requests;
+        }
+
+        private static int? TryParseId(string id)
+        {
+            return int.TryParse(id, out var value) ? value : null;
+        }
+
+        private static DateTime? TryParseDate(string date)
+        {
+            return DateTime.TryParse(date, out var value) ? value.Date : null;
+        }
+
+        private sealed class ValveRuleRequest
+        {
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("OrderApprovedDate")]
+            public DateTime? OrderApprovedDate { get; set; }
+
+            [JsonProperty("ReplyDeliveryDate")]
+            public DateTime? ReplyDeliveryDate { get; set; }
+
+            [JsonProperty("RequestedDeliveryDate")]
+            public DateTime? RequestedDeliveryDate { get; set; }
+
+            [JsonProperty("nei_jian_cai_zhi")]
+            public string InnerMaterial { get; set; }
+
+            [JsonProperty("fa_lan_lian_jie")]
+            public string FlangeConnection { get; set; }
+
+            [JsonProperty("shang_gai_xing_shi")]
+            public string BonnetForm { get; set; }
+
+            [JsonProperty("liu_liang_te_xing")]
+            public string FlowCharacteristic { get; set; }
+
+            [JsonProperty("zhi_xing_ji_gou")]
+            public string Actuator { get; set; }
+
+            [JsonProperty("wai_gou_fa_ti")]
+            public string OutsourcedValveBody { get; set; }
+
+            [JsonProperty("fa_men_lei_bie")]
+            public string ValveCategory { get; set; }
+
+            [JsonProperty("mi_feng_mian_xing_shi")]
+            public string SealFaceForm { get; set; }
+
+            [JsonProperty("te_pin")]
+            public string SpecialProduct { get; set; }
+
+            [JsonProperty("wai_gou_biao_zhi")]
+            public string PurchaseFlag { get; set; }
+
+            [JsonProperty("chan_pin_ming_cheng")]
+            public string ProductName { get; set; }
+
+            [JsonProperty("gong_cheng_tong_jing")]
+            public string NominalDiameter { get; set; }
+
+            [JsonProperty("gong_cheng_ya_li")]
+            public string NominalPressure { get; set; }
+        }
+
+        private sealed class ValveRuleResult
+        {
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("sheng_chan_xian")]
+            public string ProductionLine { get; set; }
+
+            [JsonProperty("gu_ding_zhou_qi")]
+            public int? FixedCycleDays { get; set; }
+
+            [JsonProperty("StandardDeliveryDate")]
+            public string StandardDeliveryDate { get; set; }
+
+            [JsonProperty("ScheduleDate")]
+            public string ScheduleDate { get; set; }
+        }
+
+        private sealed class ValveRuleResponseItem
+        {
+            [JsonProperty("index")]
+            public int Index { get; set; }
+
+            [JsonProperty("id")]
+            public string Id { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("result")]
+            public ValveRuleResult Result { get; set; }
+        }
+
+        private sealed class ValveRuleBatchResponse
+        {
+            [JsonProperty("total")]
+            public int Total { get; set; }
+
+            [JsonProperty("results")]
+            public List<ValveRuleResponseItem> Results { get; set; }
         }
 
         private static void MapFields(OCP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
