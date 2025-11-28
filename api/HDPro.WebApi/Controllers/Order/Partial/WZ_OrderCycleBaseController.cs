@@ -6,7 +6,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 
@@ -14,16 +13,6 @@ namespace HDPro.CY.Order.Controllers
 {
     public partial class WZ_OrderCycleBaseController
     {
-        private readonly IWZ_OrderCycleBaseService _service;//访问业务代码
-
-        [ActivatorUtilitiesConstructor]
-        public WZ_OrderCycleBaseController(
-            IWZ_OrderCycleBaseService service)
-            : base(service)
-        {
-            _service = service;
-        }
-
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
@@ -33,7 +22,7 @@ namespace HDPro.CY.Order.Controllers
         {
             try
             {
-                var result = await _service.SyncFromOrderTrackingAsync();
+                var result = await Service.SyncFromOrderTrackingAsync();
                 return JsonNormal(result);
             }
             catch (Exception ex)
