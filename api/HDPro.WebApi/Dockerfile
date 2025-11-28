@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS base
 RUN apt-get update; apt-get install libfontconfig1 -y
 
 WORKDIR /app
-EXPOSE 9100  #ÕâÀï¶Ë¿ÚÒªÓëProgram.csÒ»Ñù
+EXPOSE 9100  #è¿™é‡Œç«¯å£è¦ä¸Program.csä¸€æ ·
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
