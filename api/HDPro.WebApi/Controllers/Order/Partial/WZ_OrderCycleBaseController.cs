@@ -34,7 +34,7 @@ namespace HDPro.CY.Order.Controllers
         /// <summary>
         /// 批量调用阀门规则服务，回填订单周期信息
         /// </summary>
-        /// <returns>成功回填的数量</returns>
+        /// <returns>回填批量结果摘要</returns>
         [HttpPost("batch-call-valve-rule-service")]
         public async Task<IActionResult> BatchCallValveRuleService()
         {

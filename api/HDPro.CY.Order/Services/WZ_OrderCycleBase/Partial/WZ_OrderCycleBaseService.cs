@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.IServices;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -190,7 +191,7 @@ namespace HDPro.CY.Order.Services
         /// </summary>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>成功回填的行数</returns>
-        public async Task<int> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default)
+        public async Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default)
         {
             if (_httpClientFactory == null)
             {
@@ -205,7 +206,7 @@ namespace HDPro.CY.Order.Services
 
             if (entities.Count == 0)
             {
-                return 0;
+                return new ValveRuleBatchSummary();
             }
 
             var client = _httpClientFactory.CreateClient();
@@ -213,7 +214,10 @@ namespace HDPro.CY.Order.Services
             const string url = "http://10.11.10.101:8000/batch_infer";
 
             const int batchSize = 200;
-            var totalUpdated = 0;
+            var summary = new ValveRuleBatchSummary
+            {
+                Total = entities.Count
+            };
 
             for (var i = 0; i < entities.Count; i += batchSize)
             {
@@ -224,6 +228,8 @@ namespace HDPro.CY.Order.Services
                 {
                     continue;
                 }
+
+                summary.BatchCount++;
 
                 var requestPayload = BuildValveRuleRequests(batchEntities);
                 var json = JsonConvert.SerializeObject(requestPayload);
@@ -241,57 +247,70 @@ namespace HDPro.CY.Order.Services
 
                 if (batchResponse.Results == null || batchResponse.Results.Count == 0)
                 {
+                    if (!string.IsNullOrWhiteSpace(batchResponse.LogFile))
+                    {
+                        summary.LogFiles.Add(batchResponse.LogFile);
+                    }
                     continue;
                 }
 
-                var resultMap = new Dictionary<int, ValveRuleResult>(batchEntities.Count);
+                var entityMap = batchEntities.ToDictionary(p => p.Id, p => p);
+                var updated = 0;
+                var batchSuccess = 0;
+                var batchFailed = 0;
+                var processedIds = new HashSet<int>();
+
                 foreach (var item in batchResponse.Results)
                 {
-                    if (item?.Success != true || item.Result == null)
+                    var matchedId = TryParseId(item?.Id) ?? TryParseId(item?.Result?.Id);
+                    if (!matchedId.HasValue)
                     {
+                        batchFailed++;
                         continue;
                     }
 
-                    var id = TryParseId(item.Result.Id);
-                    if (!id.HasValue)
+                    processedIds.Add(matchedId.Value);
+
+                    if (!entityMap.TryGetValue(matchedId.Value, out var entity))
                     {
+                        batchFailed++;
                         continue;
                     }
 
-                    resultMap[id.Value] = item.Result;
-                }
-
-                if (resultMap.Count == 0)
-                {
-                    continue;
-                }
-
-                var ids = new List<int>(resultMap.Keys);
-                var matchedEntities = batchEntities.Where(p => ids.Contains(p.Id)).ToList();
-
-                var updated = 0;
-                foreach (var entity in matchedEntities)
-                {
-                    if (!resultMap.TryGetValue(entity.Id, out var result))
+                    if (item.Success != true || item.Result == null)
                     {
+                        batchFailed++;
                         continue;
                     }
 
-                    entity.FixedCycleDays = result.FixedCycleDays;
-                    entity.ProductionLine = result.ProductionLine;
-                    entity.StandardDeliveryDate = TryParseDate(result.StandardDeliveryDate);
-                    entity.ScheduleDate = TryParseDate(result.ScheduleDate);
+                    entity.FixedCycleDays = item.Result.FixedCycleDays;
+                    entity.ProductionLine = item.Result.ProductionLine;
+                    entity.StandardDeliveryDate = TryParseDate(item.Result.StandardDeliveryDate);
+                    entity.ScheduleDate = TryParseDate(item.Result.ScheduleDate);
+
+                    batchSuccess++;
                     updated++;
                 }
+
+                summary.Succeeded += batchSuccess;
+                var missingCount = Math.Max(0, batchEntities.Count - processedIds.Count);
+                summary.Failed += batchFailed + missingCount;
 
                 if (updated > 0)
                 {
                     await context.SaveChangesAsync(cancellationToken);
-                    totalUpdated += updated;
+                    summary.Updated += updated;
+                }
+
+                if (!string.IsNullOrWhiteSpace(batchResponse.LogFile))
+                {
+                    summary.LogFiles.Add(batchResponse.LogFile);
                 }
             }
 
-            return totalUpdated;
+            summary.Failed = Math.Max(summary.Failed, summary.Total - summary.Succeeded);
+
+            return summary;
         }
 
         private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items)
@@ -336,7 +355,7 @@ namespace HDPro.CY.Order.Services
 
         private static DateTime? TryParseDate(string date)
         {
-            return DateTime.TryParse(date, out var value) ? value.Date : null;
+            return DateTime.TryParse(date, out var value) ? value : null;
         }
 
         private sealed class ValveRuleRequest
@@ -433,6 +452,9 @@ namespace HDPro.CY.Order.Services
 
             [JsonProperty("results")]
             public List<ValveRuleResponseItem> Results { get; set; }
+
+            [JsonProperty("log_file")]
+            public string LogFile { get; set; }
         }
 
         private static void MapFields(OCP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
