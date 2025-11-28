@@ -18,7 +18,6 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <returns>同步的记录数量</returns>
         [HttpPost("sync-from-order-tracking")]
-        [AllowAnonymous]
         public async Task<IActionResult> SyncFromOrderTracking()
         {
             try
@@ -37,7 +36,6 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <returns>成功回填的数量</returns>
         [HttpPost("batch-call-valve-rule-service")]
-        [AllowAnonymous]
         public async Task<IActionResult> BatchCallValveRuleService()
         {
             try
