@@ -255,6 +255,7 @@ namespace HDPro.CY.Order.Services
                 }
 
                 var entityMap = batchEntities.ToDictionary(p => p.Id, p => p);
+                var updatedEntities = new List<WZ_OrderCycleBase>();
                 var updated = 0;
                 var batchSuccess = 0;
                 var batchFailed = 0;
@@ -290,14 +291,16 @@ namespace HDPro.CY.Order.Services
 
                     batchSuccess++;
                     updated++;
+                    updatedEntities.Add(entity);
                 }
 
                 summary.Succeeded += batchSuccess;
                 var missingCount = Math.Max(0, batchEntities.Count - processedIds.Count);
                 summary.Failed += batchFailed + missingCount;
 
-                if (updated > 0)
+                if (updatedEntities.Count > 0)
                 {
+                    context.UpdateRange(updatedEntities);
                     await context.SaveChangesAsync(cancellationToken);
                     summary.Updated += updated;
                 }
