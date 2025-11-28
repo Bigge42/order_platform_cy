@@ -10,7 +10,6 @@ const store = useStore()
 const watermarkUrl = ref('')
 
 const userName = computed(() => (store.getters.getUserName ? store.getters.getUserName() : ''))
-const loginName = computed(() => (store.getters.getLoginName ? store.getters.getLoginName() : ''))
 const isLogin = computed(() => (store.getters.isLogin ? store.getters.isLogin() : false))
 
 const layerStyle = computed(() => ({
@@ -43,8 +42,7 @@ const renderWatermark = () => {
   ctx.fillStyle = '#000'
   ctx.font = '16px Microsoft YaHei, sans-serif'
   const lines = [
-    userName.value || '',
-    loginName.value || '',
+    userName.value ? `${userName.value}@川仪调节阀` : '',
     new Date().toLocaleString()
   ]
   lines.forEach((text, idx) => {
@@ -62,7 +60,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', renderWatermark)
 })
 
-watch([userName, loginName, isLogin], renderWatermark)
+watch([userName, isLogin], renderWatermark)
 </script>
 
 <style scoped>
