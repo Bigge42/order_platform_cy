@@ -9,18 +9,23 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace HDPro.CY.Order.Controllers
 {
     public partial class WZ_OrderCycleBaseController
     {
         private readonly IWZ_OrderCycleBaseService _service;//访问业务代码
+        private readonly ILogger<WZ_OrderCycleBaseController> _logger;
 
         [ActivatorUtilitiesConstructor]
-        public WZ_OrderCycleBaseController(IWZ_OrderCycleBaseService service)
+        public WZ_OrderCycleBaseController(
+            IWZ_OrderCycleBaseService service,
+            ILogger<WZ_OrderCycleBaseController> logger)
             : base(service)
         {
             _service = service;
+            _logger = logger;
         }
 
         /// <summary>
@@ -37,6 +42,7 @@ namespace HDPro.CY.Order.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "【订单周期同步】接口调用失败：{Message}", ex.Message);
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
             }
         }
