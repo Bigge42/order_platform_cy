@@ -2,6 +2,7 @@
   <div id="nav"></div>
   <el-config-provider :locale="locale">
     <router-view />
+    <Watermark />
   </el-config-provider>
 </template>
 <script>
@@ -10,10 +11,12 @@ import { ElConfigProvider } from "element-plus";
 // import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 // import en from 'element-plus/es/locale/lang/en'
 import { locale } from "@/components/lang";
+import Watermark from "@/components/Watermark.vue";
 export default {
   name: "order_app",
   components: {
     [ElConfigProvider.name]: ElConfigProvider, //添加组件
+    Watermark,
   },
   data() {
     return {
