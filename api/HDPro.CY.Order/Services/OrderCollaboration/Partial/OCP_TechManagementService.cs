@@ -466,6 +466,7 @@ namespace HDPro.CY.Order.Services
                     foreach (var record in list)
                     {
                         record.OverdueDays = CalculateTechManagementOverdueDays(record);
+                        record.IsSpecialContract = record.StandardDays.HasValue && record.StandardDays > 3 ? 1 : 0;
                     }
                     // 获取所有不为空的物料编码
                     var materialCodes = list
