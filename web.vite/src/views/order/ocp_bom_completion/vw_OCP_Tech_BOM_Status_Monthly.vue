@@ -19,6 +19,7 @@
                :onInit="onInit"
                :onInited="onInited"
                :searchBefore="searchBefore"
+               :exportBefore="exportBefore"
                :searchAfter="searchAfter"
                :addBefore="addBefore"
                :updateBefore="updateBefore"
@@ -26,7 +27,7 @@
                :modelOpenBefore="modelOpenBefore"
                :modelOpenAfter="modelOpenAfter">
         <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
-        <template #gridHeader>
+        <template #btnLeft>
             <div class="month-filter">
                 <el-date-picker v-model="selectedMonth"
                                 type="month"
@@ -57,6 +58,18 @@
 
     const selectedMonth = ref(getCurrentMonth())
 
+    const appendMonthFilter = (param) => {
+        const ym = selectedMonth.value
+        if (!ym) return
+        param.wheres = param.wheres || []
+        const [year, month] = ym.split('-').map(Number)
+        const start = `${year}-${padZero(month)}-01`
+        const endDate = new Date(year, month, 0).getDate()
+        const end = `${year}-${padZero(month)}-${padZero(endDate)} 23:59:59`
+        param.wheres.push({ name: 'OrderAuditDate', value: start, displayType: 'thanorequal' })
+        param.wheres.push({ name: 'OrderAuditDate', value: end, displayType: 'lessorequal' })
+    }
+
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
     //生成对象属性初始化
     const onInit = async ($vm) => {
@@ -71,17 +84,12 @@
     const searchBefore = async (param) => {
         //界面查询前,可以给param.wheres添加查询参数
         //返回false，则不会执行查询
-        const ym = selectedMonth.value
-        if (ym) {
-            param.wheres = param.wheres || []
-            const [year, month] = ym.split('-').map(Number)
-            const start = `${year}-${padZero(month)}-01`
-            const endDate = new Date(year, month, 0).getDate()
-            const end = `${year}-${padZero(month)}-${padZero(endDate)} 23:59:59`
-            param.wheres.push({ name: 'OrderAuditDate', value: start, displayType: 'thanorequal' })
-            param.wheres.push({ name: 'OrderAuditDate', value: end, displayType: 'lessorequal' })
-        }
+        appendMonthFilter(param)
         return true;
+    }
+    const exportBefore = async (param) => {
+        appendMonthFilter(param)
+        return true
     }
     const searchAfter = async (rows, result) => {
         return true;
@@ -119,3 +127,12 @@
     //对外暴露数据
     defineExpose({})
 </script>
+
+<style scoped>
+.month-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+}
+</style>
