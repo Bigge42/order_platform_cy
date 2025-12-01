@@ -28,35 +28,42 @@ export function applyAlertWarningStyle(columns, customStyle = null) {
   /**
    * 预警单元格样式函数
    */
-  const warningCellStyle = (row) => {
+  const warningCellStyle = (row, rowIndex, columnIndex, tableData) => {
+    // 添加调试日志
     if (row && row.ShouldAlert === true) {
+      console.log('检测到预警行:', row)
       return alertStyle
     }
     return null
   }
 
   // 为每个列添加cellStyle
-  columns.forEach((col) => {
+  let appliedCount = 0
+  columns.forEach((col, index) => {
     if (col.cellStyle) {
       // 如果已有cellStyle,则合并
       const originalCellStyle = col.cellStyle
       col.cellStyle = (row, rowIndex, columnIndex, tableData) => {
         const originalStyle = originalCellStyle(row, rowIndex, columnIndex, tableData)
-        const warningStyle = warningCellStyle(row)
-        
+        const warningStyle = warningCellStyle(row, rowIndex, columnIndex, tableData)
+
         // 预警样式优先级更高
         if (warningStyle) {
           return { ...originalStyle, ...warningStyle }
         }
         return originalStyle
       }
+      appliedCount++
+      console.log(`列[${index}] ${col.field || col.title} - 合并cellStyle`)
     } else {
       // 没有cellStyle,直接设置
       col.cellStyle = warningCellStyle
+      appliedCount++
+      console.log(`列[${index}] ${col.field || col.title} - 新增cellStyle`)
     }
   })
 
-  console.log('预警样式已应用到表格列')
+  console.log(`预警样式已应用到表格列,总列数:${columns.length}, 已应用:${appliedCount}`)
 }
 
 /**
