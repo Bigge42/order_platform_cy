@@ -72,6 +72,7 @@ const route = useRoute()
 const grid = ref(null)
 const { proxy } = getCurrentInstance()
 //http请求，proxy.http.post/get
+const viewOpts = reactive(viewOptions())
 const {
   table,
   editFormFields,
@@ -81,7 +82,7 @@ const {
   columns,
   detail,
   details
-} = reactive(viewOptions())
+} = viewOpts
 
 // 催单弹窗相关
 const reminderDialogVisible = ref(false)
@@ -154,6 +155,9 @@ const onInited = async () => {
     onClick: handleBatchReminder
   })
 
+  // 应用预警样式(在表格初始化完成后,添加列之前应用)
+  applyAlertWarningStyle(viewOpts.columns)
+
   // 添加操作列
   columns.push({
     field: 'action',
@@ -188,8 +192,6 @@ const searchBefore = async (param) => {
   return true
 }
 const searchAfter = async (rows, result) => {
-  // 应用预警样式(后端已经在数据中添加了ShouldAlert字段)
-  applyAlertWarningStyle(columns)
   return true
 }
 const addBefore = async (formData) => {
