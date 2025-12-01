@@ -27,6 +27,8 @@ using Microsoft.Extensions.Options;
 using HDPro.Core.Configuration;
 using HDPro.Core.Enums;
 using System;
+using HDPro.CY.Order.Services.Common;
+using HDPro.CY.Order.IServices;
 
 namespace HDPro.CY.Order.Services
 {
@@ -125,6 +127,7 @@ namespace HDPro.CY.Order.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<OCP_TechManagementService> _logger;
         private readonly TCSystemOptions _tcOptions;
+        private readonly IOCP_AlertRulesRepository _alertRulesRepository;
 
         [ActivatorUtilitiesConstructor]
         public OCP_TechManagementService(
@@ -132,7 +135,8 @@ namespace HDPro.CY.Order.Services
             IHttpContextAccessor httpContextAccessor,
             IHttpClientFactory httpClientFactory,
             ILogger<OCP_TechManagementService> logger,
-            IOptions<TCSystemOptions> tcOptions
+            IOptions<TCSystemOptions> tcOptions,
+            IOCP_AlertRulesRepository alertRulesRepository
             )
         : base(dbRepository, httpContextAccessor)
         {
@@ -140,6 +144,7 @@ namespace HDPro.CY.Order.Services
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _tcOptions = tcOptions.Value;
+            _alertRulesRepository = alertRulesRepository;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -490,6 +495,9 @@ namespace HDPro.CY.Order.Services
                             }
                         }
                     }
+
+                    // 应用预警标记
+                    ApplyAlertWarningToData(list);
                 }
             };
 
@@ -725,5 +733,32 @@ namespace HDPro.CY.Order.Services
                 throw; // 重新抛出异常，让控制器处理
             }
         }
+
+        /// <summary>
+        /// 应用预警标记到数据列表
+        /// </summary>
+        /// <param name="list">数据列表</param>
+        private void ApplyAlertWarningToData(List<OCP_TechManagement> list)
+        {
+            try
+            {
+                // 获取当前页面的预警规则
+                
+                var rules = _alertRulesRepository.FindAsync(x =>
+                    x.AlertPage == "OCP_TechManagement" &&
+                    x.TaskStatus == 1).GetAwaiter().GetResult();
+
+                if (rules != null && rules.Any())
+                {
+                    // 应用预警标记
+                    AlertWarningHelper.ApplyAlertWarning(list, rules.ToList(), _logger);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "应用预警标记时发生异常");
+                // 不抛出异常,避免影响正常查询
+            }
+        }
   }
-} 
+}
