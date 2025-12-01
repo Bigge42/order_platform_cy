@@ -27,14 +27,15 @@
                :modelOpenAfter="modelOpenAfter">
         <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
         <template #gridHeader>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <el-date-picker v-model="auditMonth"
+            <div class="month-filter">
+                <el-date-picker v-model="selectedMonth"
                                 type="month"
-                                placeholder="订单审核月份"
+                                placeholder="审核月份"
+                                format="YYYY-MM"
                                 value-format="YYYY-MM"
-                                style="width:160px"/>
-                <el-button type="primary" @click="applyAuditMonthFilter">审核月份筛选</el-button>
-                <el-button @click="clearAuditMonthFilter">清除月份筛选</el-button>
+                                style="width: 150px"
+                                @change="triggerMonthFilter" />
+                <el-button type="primary" @click="triggerMonthFilter">按审核月份筛选</el-button>
             </div>
         </template>
     </view-grid>
@@ -48,7 +49,13 @@
     //http请求，proxy.http.post/get
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
-    const auditMonth = ref('');
+    const padZero = (val) => val.toString().padStart(2, '0')
+    const getCurrentMonth = () => {
+        const now = new Date()
+        return `${now.getFullYear()}-${padZero(now.getMonth() + 1)}`
+    }
+
+    const selectedMonth = ref(getCurrentMonth())
 
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
     //生成对象属性初始化
@@ -56,7 +63,7 @@
         gridRef = $vm;
         //gridRef.setFixedSearchForm(true);
         //与jsx中的this.xx使用一样，只需将this.xx改为gridRef.xx
- 
+
     }
     //生成对象属性初始化后,操作明细表配置用到
     const onInited = async () => {
@@ -64,8 +71,15 @@
     const searchBefore = async (param) => {
         //界面查询前,可以给param.wheres添加查询参数
         //返回false，则不会执行查询
-        if (auditMonth.value) {
-            param.wheres.push({ name: "OrderAuditDate", value: auditMonth.value, displayType: "month" })
+        const ym = selectedMonth.value
+        if (ym) {
+            param.wheres = param.wheres || []
+            const [year, month] = ym.split('-').map(Number)
+            const start = `${year}-${padZero(month)}-01`
+            const endDate = new Date(year, month, 0).getDate()
+            const end = `${year}-${padZero(month)}-${padZero(endDate)} 23:59:59`
+            param.wheres.push({ name: 'OrderAuditDate', value: start, displayType: 'thanorequal' })
+            param.wheres.push({ name: 'OrderAuditDate', value: end, displayType: 'lessorequal' })
         }
         return true;
     }
@@ -90,13 +104,16 @@
     const modelOpenAfter = (row) => {
         //弹出框打开后方法,设置表单默认值,按钮操作等
     }
-    const applyAuditMonthFilter = () => {
-        gridRef?.search && gridRef.search();
+
+    const triggerMonthFilter = () => {
+        if (gridRef && gridRef.search) {
+            gridRef.search()
+        }
     }
-    const clearAuditMonthFilter = () => {
-        auditMonth.value = '';
-        gridRef?.search && gridRef.search();
-    }
+
+    watch(() => selectedMonth.value, () => {
+        triggerMonthFilter()
+    })
     //监听表单输入，做实时计算
     //watch(() => editFormFields.字段,(newValue, oldValue) => {	})
     //对外暴露数据
