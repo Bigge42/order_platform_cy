@@ -9,7 +9,7 @@
  */
 const DEFAULT_ALERT_STYLE = {
   backgroundColor: '#fffbe6',
-  color: '#000'
+  color: '#ff0000'  // 红色字体
 }
 
 /**
@@ -29,17 +29,14 @@ export function applyAlertWarningStyle(columns, customStyle = null) {
    * 预警单元格样式函数
    */
   const warningCellStyle = (row, rowIndex, columnIndex, tableData) => {
-    // 添加调试日志
     if (row && row.ShouldAlert === true) {
-      console.log('检测到预警行:', row)
       return alertStyle
     }
     return null
   }
 
   // 为每个列添加cellStyle
-  let appliedCount = 0
-  columns.forEach((col, index) => {
+  columns.forEach((col) => {
     if (col.cellStyle) {
       // 如果已有cellStyle,则合并
       const originalCellStyle = col.cellStyle
@@ -53,17 +50,11 @@ export function applyAlertWarningStyle(columns, customStyle = null) {
         }
         return originalStyle
       }
-      appliedCount++
-      console.log(`列[${index}] ${col.field || col.title} - 合并cellStyle`)
     } else {
       // 没有cellStyle,直接设置
       col.cellStyle = warningCellStyle
-      appliedCount++
-      console.log(`列[${index}] ${col.field || col.title} - 新增cellStyle`)
     }
   })
-
-  console.log(`预警样式已应用到表格列,总列数:${columns.length}, 已应用:${appliedCount}`)
 }
 
 /**
@@ -80,7 +71,5 @@ export function clearAlertWarningStyle(columns) {
       delete col.cellStyle
     }
   })
-
-  console.log('预警样式已清除')
 }
 
