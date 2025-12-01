@@ -27,6 +27,7 @@ using System.Threading.Tasks;
 using System.Text;
 using System.Reflection;
 using Quartz;
+using HDPro.CY.Order.Services.OrderCollaboration;
 
 namespace HDPro.CY.Order.Services
 {
@@ -80,12 +81,26 @@ namespace HDPro.CY.Order.Services
         /// <summary>
         /// 执行所有预警规则检查
         /// </summary>
+        /// <param name="logToQuartz">是否记录到Sys_QuartzLog表(默认true)</param>
         /// <returns>执行结果</returns>
-        public async Task<WebResponseContent> ExecuteAllAlertRulesAsync()
+        public async Task<WebResponseContent> ExecuteAllAlertRulesAsync(bool logToQuartz = true)
         {
             var response = new WebResponseContent();
+            Guid logId = Guid.Empty;
+            AlertRulesLogService logService = null;
+
             try
             {
+                // 如果需要记录日志,初始化日志服务
+                if (logToQuartz)
+                {
+                    logService = AutofacContainerModule.GetService<AlertRulesLogService>();
+                    if (logService != null)
+                    {
+                        logId = await logService.LogTaskStartAsync("手动执行所有预警规则");
+                    }
+                }
+
                 _logger.LogInformation("开始执行预警规则检查");
 
                 // 获取所有启用的预警规则
@@ -94,7 +109,14 @@ namespace HDPro.CY.Order.Services
                 if (!alertRules.Any())
                 {
                     _logger.LogInformation("没有找到启用的预警规则");
-                    return response.OK("没有启用的预警规则");
+                    var msg = "没有启用的预警规则";
+
+                    if (logService != null && logId != Guid.Empty)
+                    {
+                        await logService.LogTaskCompleteAsync(logId, true, msg);
+                    }
+
+                    return response.OK(msg);
                 }
 
                 var totalProcessed = 0;
@@ -120,11 +142,24 @@ namespace HDPro.CY.Order.Services
                 _logger.LogInformation("预警规则检查完成，处理规则 {ProcessedCount} 个，触发预警 {AlertCount} 条",
                     totalProcessed, totalAlerts);
 
-                return response.OK($"预警检查完成，处理规则 {totalProcessed} 个，触发预警 {totalAlerts} 条");
+                var resultMsg = $"预警检查完成，处理规则 {totalProcessed} 个，触发预警 {totalAlerts} 条";
+
+                if (logService != null && logId != Guid.Empty)
+                {
+                    await logService.LogTaskCompleteAsync(logId, true, resultMsg);
+                }
+
+                return response.OK(resultMsg);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "执行预警规则检查时发生异常");
+
+                if (logService != null && logId != Guid.Empty)
+                {
+                    await logService.LogTaskExceptionAsync(logId, ex);
+                }
+
                 return response.Error($"预警检查异常: {ex.Message}");
             }
         }
@@ -250,16 +285,50 @@ namespace HDPro.CY.Order.Services
 
                 // 转换为字典列表以便后续处理
                 var records = new List<Dictionary<string, object>>();
-                foreach (var item in result)
+
+                if (result != null)
                 {
-                    var dict = new Dictionary<string, object>();
-                    // 使用反射获取动态对象的属性
-                    var properties = item.GetType().GetProperties();
-                    foreach (var prop in properties)
+                    foreach (var item in result)
                     {
-                        dict[prop.Name] = prop.GetValue(item);
+                        // 跳过null项
+                        if (item == null)
+                        {
+                            continue;
+                        }
+
+                        var dict = new Dictionary<string, object>();
+
+                        // DapperRow实现了IDictionary<string, object>接口,可以直接转换
+                        if (item is System.Collections.Generic.IDictionary<string, object> dapperDict)
+                        {
+                            // 直接从DapperRow字典中复制数据,这是最高效的方式
+                            foreach (var kvp in dapperDict)
+                            {
+                                dict[kvp.Key] = kvp.Value;
+                            }
+                        }
+                        else
+                        {
+                            // 如果不是IDictionary,使用反射获取属性(备用方案)
+                            var itemType = item.GetType();
+                            var properties = itemType.GetProperties();
+
+                            foreach (var prop in properties)
+                            {
+                                try
+                                {
+                                    var value = prop.GetValue(item);
+                                    dict[prop.Name] = value;
+                                }
+                                catch
+                                {
+                                    dict[prop.Name] = null;
+                                }
+                            }
+                        }
+
+                        records.Add(dict);
                     }
-                    records.Add(dict);
                 }
 
                 return records;
@@ -386,7 +455,7 @@ namespace HDPro.CY.Order.Services
                 // 使用系统默认发送者发送OA消息
                 var senderLoginName = "system"; // 可以根据需要配置系统发送者账号
 
-                var result = await _oaIntegrationService.GetTokenAndSendMessageAsync(
+                var result = await _oaIntegrationService.GetShareholderTokenAndSendMessageAsync(
                     senderLoginName,
                     receiverLoginNames,
                     content);
@@ -446,10 +515,14 @@ namespace HDPro.CY.Order.Services
         /// 执行指定预警规则
         /// </summary>
         /// <param name="ruleId">规则ID</param>
+        /// <param name="logToQuartz">是否记录到Sys_QuartzLog表(默认true)</param>
         /// <returns>执行结果</returns>
-        public async Task<WebResponseContent> ExecuteAlertRuleByIdAsync(long ruleId)
+        public async Task<WebResponseContent> ExecuteAlertRuleByIdAsync(long ruleId, bool logToQuartz = true)
         {
             var response = new WebResponseContent();
+            Guid logId = Guid.Empty;
+            AlertRulesLogService logService = null;
+
             try
             {
                 var rule = await _repository.FindAsyncFirst(x => x.ID == ruleId);
@@ -458,15 +531,38 @@ namespace HDPro.CY.Order.Services
                     return response.Error($"未找到ID为 {ruleId} 的预警规则");
                 }
 
+                // 如果需要记录日志,初始化日志服务
+                if (logToQuartz)
+                {
+                    logService = AutofacContainerModule.GetService<AlertRulesLogService>();
+                    if (logService != null)
+                    {
+                        logId = await logService.LogTaskStartAsync($"手动执行预警规则-{ruleId}", ruleId);
+                    }
+                }
+
                 _logger.LogInformation("开始执行指定预警规则: {RuleName} (ID: {RuleId})", rule.RuleName, ruleId);
 
                 var alertCount = await ExecuteSingleAlertRuleAsync(rule);
 
-                return response.OK($"预警规则 [{rule.RuleName}] 执行完成，触发预警 {alertCount} 条");
+                var resultMsg = $"预警规则 [{rule.RuleName}] 执行完成，触发预警 {alertCount} 条";
+
+                if (logService != null && logId != Guid.Empty)
+                {
+                    await logService.LogTaskCompleteAsync(logId, true, resultMsg);
+                }
+
+                return response.OK(resultMsg);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "执行指定预警规则时发生异常，规则ID: {RuleId}", ruleId);
+
+                if (logService != null && logId != Guid.Empty)
+                {
+                    await logService.LogTaskExceptionAsync(logId, ex);
+                }
+
                 return response.Error($"执行预警规则异常: {ex.Message}");
             }
         }
