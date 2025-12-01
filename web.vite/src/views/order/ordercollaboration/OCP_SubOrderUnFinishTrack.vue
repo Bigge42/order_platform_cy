@@ -64,6 +64,7 @@ import MessageBoard from '@/comp/message-board/index.vue'
 import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
+import { applyAlertWarningStyle } from '@/utils/alertWarning'
 
 const grid = ref(null)
 const { proxy } = getCurrentInstance()
@@ -210,6 +211,8 @@ const searchBefore = async (param) => {
   return true
 }
 const searchAfter = async (rows, result) => {
+  // 应用预警样式(后端已经在数据中添加了ShouldAlert字段)
+  applyAlertWarningStyle(table.columns)
   return true
 }
 const addBefore = async (formData) => {

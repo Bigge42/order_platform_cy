@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using HDPro.Core.ManageUser;
+using HDPro.CY.Order.Services.Common;
 
 namespace HDPro.CY.Order.Services
 {
@@ -31,6 +32,7 @@ namespace HDPro.CY.Order.Services
         private readonly ILogger<OCP_OrderTrackingService> _logger;//日志记录器
         private readonly IOCP_LackMtrlResultRepository _lackMtrlResultRepository;//缺料运算结果Repository
         private readonly IOCP_LackMtrlPlanRepository _lackMtrlPlanRepository;//缺料运算方案Repository
+        private readonly IOCP_AlertRulesRepository _alertRulesRepository;//预警规则Repository
 
         [ActivatorUtilitiesConstructor]
         public OCP_OrderTrackingService(
@@ -38,7 +40,8 @@ namespace HDPro.CY.Order.Services
             IHttpContextAccessor httpContextAccessor,
             ILogger<OCP_OrderTrackingService> logger,
             IOCP_LackMtrlResultRepository lackMtrlResultRepository,
-            IOCP_LackMtrlPlanRepository lackMtrlPlanRepository
+            IOCP_LackMtrlPlanRepository lackMtrlPlanRepository,
+            IOCP_AlertRulesRepository alertRulesRepository
             )
         : base(dbRepository, httpContextAccessor)
         {
@@ -46,6 +49,7 @@ namespace HDPro.CY.Order.Services
             _logger = logger;
             _lackMtrlResultRepository = lackMtrlResultRepository;
             _lackMtrlPlanRepository = lackMtrlPlanRepository;
+            _alertRulesRepository = alertRulesRepository;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -107,6 +111,9 @@ namespace HDPro.CY.Order.Services
 
                 // 构建PrepareMtrl字段
                 BuildPrepareMtrlField(list);
+
+                // 应用预警标记
+                ApplyAlertWarningToData(list);
             };
 
             //EF:查询table界面显示合计（需要与前端开发文档上的【table显示合计】一起使用）
@@ -399,5 +406,28 @@ namespace HDPro.CY.Order.Services
                 throw; // 重新抛出异常，让控制器处理
             }
         }
+
+        /// <summary>
+        /// 应用预警标记到数据列表
+        /// </summary>
+        /// <param name="list">数据列表</param>
+        private void ApplyAlertWarningToData(List<OCP_OrderTracking> list)
+        {
+            try
+            {
+                var rules = _alertRulesRepository.FindAsync(x =>
+                    x.AlertPage == "OCP_OrderTracking" &&
+                    x.TaskStatus == 1).GetAwaiter().GetResult();
+
+                if (rules != null && rules.Any())
+                {
+                    AlertWarningHelper.ApplyAlertWarning(list, rules.ToList(), _logger);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "应用预警标记时发生异常");
+            }
+        }
     }
-} 
+}
