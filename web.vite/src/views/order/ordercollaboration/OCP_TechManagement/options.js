@@ -73,7 +73,13 @@ export default function(){
                        {field:'SalesQty',title:'销售数量',type:'decimal',sort:true,width:110,align:'left'},
                        {field:'OverdueDays',title:'超期天数',type:'int',sort:true,width:120,align:'left'},
                        {field:'StandardDays',title:'标准天数',type:'int',sort:true,width:120,align:'left'},
-                       {field:'IsSpecialContract',title:'是否特殊合同',type:'int',bind:{ key:'enable',data:[]},width:120,align:'left'},
+                       {field:'IsSpecialContract',title:'是否特殊合同',type:'string',width:120,align:'left',formatter:(row)=>{
+                           const standardDays = Number(row.StandardDays);
+                           if (Number.isNaN(standardDays)) {
+                               return '';
+                           }
+                           return standardDays > 3 ? '是' : '否';
+                       }},
                        {field:'Designer',title:'设计人',type:'string',width:120,align:'left'},
                        {field:'Remarks',title:'备注',type:'string',width:220,align:'left'},
                        {field:'TechID',title:'技术ID',type:'long',width:80,hidden:true,readonly:true,require:true,align:'left'},
