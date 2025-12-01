@@ -27,6 +27,15 @@
                :modelOpenAfter="modelOpenAfter">
         <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
         <template #gridHeader>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <el-date-picker v-model="auditMonth"
+                                type="month"
+                                placeholder="订单审核月份"
+                                value-format="YYYY-MM"
+                                style="width:160px"/>
+                <el-button type="primary" @click="applyAuditMonthFilter">审核月份筛选</el-button>
+                <el-button @click="clearAuditMonthFilter">清除月份筛选</el-button>
+            </div>
         </template>
     </view-grid>
 </template>
@@ -38,6 +47,8 @@
     const { proxy } = getCurrentInstance()
     //http请求，proxy.http.post/get
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
+
+    const auditMonth = ref('');
 
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
     //生成对象属性初始化
@@ -53,6 +64,9 @@
     const searchBefore = async (param) => {
         //界面查询前,可以给param.wheres添加查询参数
         //返回false，则不会执行查询
+        if (auditMonth.value) {
+            param.wheres.push({ name: "OrderAuditDate", value: auditMonth.value, displayType: "month" })
+        }
         return true;
     }
     const searchAfter = async (rows, result) => {
@@ -75,6 +89,13 @@
     }
     const modelOpenAfter = (row) => {
         //弹出框打开后方法,设置表单默认值,按钮操作等
+    }
+    const applyAuditMonthFilter = () => {
+        gridRef?.search && gridRef.search();
+    }
+    const clearAuditMonthFilter = () => {
+        auditMonth.value = '';
+        gridRef?.search && gridRef.search();
     }
     //监听表单输入，做实时计算
     //watch(() => editFormFields.字段,(newValue, oldValue) => {	})
