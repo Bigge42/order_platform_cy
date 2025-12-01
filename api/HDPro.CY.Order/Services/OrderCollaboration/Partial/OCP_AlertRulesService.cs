@@ -28,6 +28,7 @@ using System.Text;
 using System.Reflection;
 using Quartz;
 using HDPro.CY.Order.Services.OrderCollaboration;
+using HDPro.Core.Configuration;
 
 namespace HDPro.CY.Order.Services
 {
@@ -452,8 +453,8 @@ namespace HDPro.CY.Order.Services
                 _logger.LogInformation("开始发送预警OA通知，规则: {RuleName}, 接收者: {Receivers}",
                     rule.RuleName, string.Join(",", receiverLoginNames));
 
-                // 使用系统默认发送者发送OA消息
-                var senderLoginName = "system"; // 可以根据需要配置系统发送者账号
+                // 从配置文件获取系统发送者账号
+                var senderLoginName = AppSetting.GetSettingString("ShareholderOA:SenderLoginName") ?? "system";
 
                 var result = await _oaIntegrationService.GetShareholderTokenAndSendMessageAsync(
                     senderLoginName,

@@ -3119,3 +3119,197 @@ GET /api/BomQuery/ExpandBom?materialNumber=NOTEXIST
 ### 总结
 
 通过添加降级查询逻辑，当BOM展开接口未返回数据时，自动从物料表查询并构建根节点返回。这样确保了所有物料都能被查询和展示，显著提升了系统的完整性和用户体验。无BOM的物料也能正常显示物料信息和图纸，用户不会因为"未找到BOM"的错误而困惑。
+
+---
+
+## 2025-12-01 - OA预警通知发送者配置化
+
+### 会话主要目的
+将预警规则OA通知的发送者登录名从硬编码改为从配置文件读取,提高系统的灵活性和可维护性。
+
+### 完成的主要任务
+1. 在 `appsettings.json` 的 OA 配置节中添加 `SenderLoginName` 配置项
+2. 修改 `OCP_AlertRulesService.cs` 中的 `SendOANotificationAsync` 方法,从配置文件读取发送者登录名
+3. 添加 `HDPro.Core.Configuration` 命名空间引用
+
+### 关键决策和解决方案
+
+#### 问题
+预警规则发送OA通知时,发送者登录名(`senderLoginName`)在代码中硬编码为 `"system"`,不便于在不同环境或不同需求下调整。
+
+#### 解决方案
+采用配置文件方式管理发送者登录名:
+
+1. **配置文件层**:在 `appsettings.json` 的 OA 配置节中添加 `SenderLoginName` 字段
+   ```json
+   "OA": {
+       "BaseUrl": "http://10.11.0.81:8090",
+       "UserName": "bhgpbjd",
+       "Password": "ce77172d-47fe-4d13-a138-ca9dcb4e0bcc",
+       "TemplateCode": "tjf_ddjqbg",
+       "AppName": "collaboration",
+       "Timeout": 30,
+       "UseShareholderOA": true,
+       "SenderLoginName": "system"
+   }
+   ```
+
+2. **代码层**:使用 `AppSetting.GetSettingString()` 方法读取配置
+   ```csharp
+   // 从配置文件获取系统发送者账号
+   var senderLoginName = AppSetting.GetSettingString("OA:SenderLoginName") ?? "system";
+   ```
+
+3. **容错处理**:使用空合并操作符 `??` 提供默认值 `"system"`,确保配置缺失时系统仍能正常运行
+
+### 技术栈
+- **配置管理**: ASP.NET Core Configuration (appsettings.json)
+- **配置读取**: HDPro.Core.Configuration.AppSetting
+- **日志记录**: Microsoft.Extensions.Logging.ILogger
+
+### 修改的文件
+
+#### 1. `api\HDPro.WebApi\appsettings.json`
+**修改内容**:
+- 在 OA 配置节中添加 `SenderLoginName` 字段,值为 `"system"`
+
+**修改位置**:
+```json
+"OA": {
+    // ... 其他配置 ...
+    "UseShareholderOA": true,
+    "SenderLoginName": "system"  // 新增
+}
+```
+
+#### 2. `api\HDPro.CY.Order\Services\OrderCollaboration\Partial\OCP_AlertRulesService.cs`
+**修改内容**:
+- 添加 `using HDPro.Core.Configuration;` 命名空间引用
+- 修改 `SendOANotificationAsync` 方法中的发送者登录名获取逻辑
+
+**修改前**:
+```csharp
+// 使用系统默认发送者发送OA消息
+var senderLoginName = "system"; // 可以根据需要配置系统发送者账号
+```
+
+**修改后**:
+```csharp
+// 从配置文件获取系统发送者账号
+var senderLoginName = AppSetting.GetSettingString("OA:SenderLoginName") ?? "system";
+```
+
+### 配置说明
+
+#### 配置项详解
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `OA:SenderLoginName` | string | `"system"` | OA消息发送者的登录名 |
+
+#### 配置示例
+
+**开发环境**:
+```json
+"OA": {
+    "SenderLoginName": "dev_system"
+}
+```
+
+**测试环境**:
+```json
+"OA": {
+    "SenderLoginName": "test_system"
+}
+```
+
+**生产环境**:
+```json
+"OA": {
+    "SenderLoginName": "system"
+}
+```
+
+### 优势对比
+
+#### 硬编码方式 ❌
+```csharp
+var senderLoginName = "system"; // 硬编码
+```
+- ❌ 修改需要重新编译代码
+- ❌ 不同环境需要维护不同的代码分支
+- ❌ 不便于运维人员调整
+- ❌ 修改风险高,容易引入bug
+
+#### 配置文件方式 ✅
+```csharp
+var senderLoginName = AppSetting.GetSettingString("OA:SenderLoginName") ?? "system";
+```
+- ✅ 修改只需编辑配置文件,无需重新编译
+- ✅ 不同环境使用不同的配置文件
+- ✅ 运维人员可以直接调整
+- ✅ 提供默认值,配置缺失时仍能正常运行
+- ✅ 符合配置外部化的最佳实践
+
+### 使用场景
+
+#### 场景1:不同环境使用不同发送者
+```
+开发环境: dev_system
+测试环境: test_system
+生产环境: system
+```
+
+#### 场景2:按业务类型区分发送者
+```
+订单预警: order_alert_system
+库存预警: stock_alert_system
+质量预警: quality_alert_system
+```
+
+#### 场景3:按紧急程度区分发送者
+```
+普通预警: normal_alert
+紧急预警: urgent_alert
+严重预警: critical_alert
+```
+
+### 注意事项
+
+1. **配置文件格式**:
+   - ⚠️ 确保JSON格式正确,注意逗号和引号
+   - ⚠️ 配置项名称区分大小写
+
+2. **发送者账号**:
+   - ⚠️ 确保配置的登录名在OA系统中存在
+   - ⚠️ 确保该账号有发送消息的权限
+
+3. **默认值**:
+   - ✅ 代码中提供了默认值 `"system"`,配置缺失时不会报错
+   - ✅ 建议在配置文件中明确配置,避免依赖默认值
+
+4. **配置更新**:
+   - ⚠️ 修改配置文件后需要重启应用才能生效
+   - ⚠️ 如需热更新,可考虑使用配置中心(如Apollo、Nacos)
+
+### 后续优化建议
+
+1. **配置验证**:
+   - 在应用启动时验证 `SenderLoginName` 配置是否存在
+   - 验证配置的账号在OA系统中是否有效
+
+2. **配置中心**:
+   - 集成配置中心,支持配置热更新
+   - 无需重启应用即可生效
+
+3. **多发送者支持**:
+   - 支持配置多个发送者账号
+   - 根据预警类型或优先级选择不同的发送者
+
+4. **发送者轮询**:
+   - 配置多个发送者账号
+   - 轮询使用,避免单个账号发送过多消息
+
+### 总结
+
+通过将OA预警通知的发送者登录名从硬编码改为配置文件读取,显著提升了系统的灵活性和可维护性。现在可以在不修改代码的情况下,通过配置文件轻松调整发送者账号,适应不同环境和业务需求。这符合配置外部化的最佳实践,降低了系统的维护成本和修改风险。
