@@ -270,3 +270,171 @@ const searchAfter = async (rows, result) => {
 
 本次开发成功实现了一个通用、灵活、易用的预警功能系统。通过合理的架构设计和代码封装,实现了"一次开发,多处复用"的目标。前端只需一行代码即可应用预警功能,后端通过配置即可管理预警规则,大大提高了开发效率和系统的可维护性。
 
+---
+
+## 2025-12-02 预警规则状态优化 - 启用/暂停双状态设计
+
+### 会话主要目的
+优化预警规则的任务状态管理,采用"启用/暂停"双状态设计,避免频繁创建/删除定时任务,提升性能和用户体验。
+
+### 完成的主要任务
+
+#### 1. 修改AlertRuleTaskStatus枚举
+- **文件**: `api\HDPro.Entity\DomainModels\OrderCollaboration\Enums\AlertRuleTaskStatus.cs`
+- **修改**:
+  - `Paused = 0` (暂停 - 定时任务存在但暂停执行)
+  - `Enabled = 1` (启用 - 定时任务运行中)
+  - 移除 `Stopped` 状态
+- **理由**: 只需要启用和暂停两种状态,通过Quartz的暂停/恢复功能管理任务
+
+#### 2. 修改AlertRulesSchedulerService调度服务
+- **文件**: `api\HDPro.CY.Order\Services\OrderCollaboration\AlertRulesSchedulerService.cs`
+- **核心修改**:
+  - 重构 `CreateOrUpdateAlertRuleJobAsync` 方法:
+    - 如果任务不存在,创建新任务(根据状态决定是否立即暂停)
+    - 如果任务已存在,调用 `PauseJob` 或 `ResumeJob` (不重新创建)
+  - 修改 `GetActiveAlertRulesWithScheduleAsync`,包含启用和暂停两种状态
+- **优化**: 避免频繁删除/创建任务,提升性能
+
+#### 3. 修改AlertRulesController控制器
+- **文件**: `api\HDPro.WebApi\Controllers\Order\AlertRulesController.cs`
+- **修改**:
+  - 移除 `switch` 语句,统一调用 `CreateOrUpdateAlertRuleJobAsync`
+  - 该方法会自动根据状态处理暂停/恢复逻辑
+- **简化**: 代码更简洁,逻辑更清晰
+
+#### 4. 修改Vue页面按钮显示逻辑
+- **文件**: `web.vite\src\views\order\ordercollaboration\OCP_AlertRules.vue`
+- **修改内容**:
+  - 权限配置改为 `pause` 和 `enable`
+  - 按钮显示逻辑:
+    - 暂停状态(0) → 显示"启用"按钮
+    - 启用状态(1) → 显示"暂停"按钮
+  - 保留"执行一次"和"日志"按钮
+- **用户体验提升**: 界面简洁,操作直观
+
+#### 5. 更新相关文档
+- **文件**:
+  - `docs\预警功能使用说明.md`
+  - `docs\预警功能架构说明.md`
+- **修改**: 将TaskStatus字段说明更新为"(0=暂停, 1=启用)"
+
+### 关键决策和解决方案
+
+#### 1. 为什么采用启用/暂停双状态设计?
+
+**设计理由**:
+1. **性能优化**: 暂停时不删除任务,恢复时不重新创建,避免频繁操作Quartz调度器
+2. **快速切换**: 暂停→启用只需调用 `ResumeJob`,响应速度快
+3. **保留任务状态**: 任务的执行历史、下次执行时间等信息得以保留
+4. **符合业务场景**: 预警规则可能需要临时暂停,但不需要完全删除
+
+#### 2. 状态切换逻辑
+
+**初始启用**:
+```
+创建新的定时任务 → 启动任务
+```
+
+**启用 → 暂停**:
+```
+调用 scheduler.PauseJob(jobKey) → 任务暂停但不删除
+```
+
+**暂停 → 启用**:
+```
+调用 scheduler.ResumeJob(jobKey) → 任务恢复运行
+```
+
+#### 3. 按钮显示逻辑
+
+**优化后**:
+- 暂停状态 → 显示"启用"按钮(绿色/primary)
+- 启用状态 → 显示"暂停"按钮(橙色/warning)
+- 逻辑清晰,操作简单
+
+### 使用的技术栈
+
+**后端**:
+- C# / ASP.NET Core
+- Entity Framework Core
+- Quartz.NET (定时任务调度)
+  - `PauseJob()` - 暂停任务
+  - `ResumeJob()` - 恢复任务
+
+**前端**:
+- Vue 3 (Composition API)
+- Element Plus
+- JSX语法(用于动态渲染按钮)
+
+### 修改的文件
+
+1. `api\HDPro.Entity\DomainModels\OrderCollaboration\Enums\AlertRuleTaskStatus.cs` - 修改枚举定义
+2. `api\HDPro.CY.Order\Services\OrderCollaboration\AlertRulesSchedulerService.cs` - 重构调度逻辑
+3. `api\HDPro.WebApi\Controllers\Order\AlertRulesController.cs` - 简化状态处理
+4. `web.vite\src\views\order\ordercollaboration\OCP_AlertRules.vue` - 优化按钮显示逻辑
+5. `docs\预警功能使用说明.md` - 更新文档
+6. `docs\预警功能架构说明.md` - 更新文档
+
+### 代码设计原则
+
+#### 1. 性能优先
+- 避免频繁创建/删除定时任务
+- 利用Quartz的暂停/恢复功能
+
+#### 2. KISS原则(Keep It Simple, Stupid)
+- 只保留必要的两种状态
+- 代码逻辑简洁明了
+
+#### 3. 用户体验优先
+- 根据当前状态智能显示操作按钮
+- 减少用户的认知负担
+
+### 测试建议
+
+1. **功能测试**:
+   - 测试初始启用,验证任务创建并运行
+   - 测试启用→暂停,验证任务暂停但不删除
+   - 测试暂停→启用,验证任务恢复运行(不重新创建)
+   - 验证任务的下次执行时间是否保留
+
+2. **UI测试**:
+   - 验证暂停状态时只显示"启用"按钮
+   - 验证启用状态时只显示"暂停"按钮
+   - 验证按钮点击后状态正确更新
+
+3. **性能测试**:
+   - 对比暂停/恢复 vs 删除/创建的性能差异
+   - 验证频繁切换状态时的系统响应速度
+
+### 核心代码逻辑
+
+#### CreateOrUpdateAlertRuleJobAsync 方法逻辑:
+
+```csharp
+if (任务已存在)
+{
+    if (状态 == 暂停)
+        暂停任务 (PauseJob)
+    else
+        恢复任务 (ResumeJob)
+}
+else
+{
+    创建新任务
+    if (状态 == 暂停)
+        立即暂停任务
+}
+```
+
+### 总结
+
+本次优化成功实现了预警规则的启用/暂停双状态设计:
+- ✅ 采用Quartz的暂停/恢复功能,避免频繁创建/删除任务
+- ✅ 提升了性能和响应速度
+- ✅ 优化了用户体验,界面更简洁
+- ✅ 更新了相关文档
+- ✅ 代码更简洁,更易维护
+
+**核心改进**: 从"停止/启用/暂停"三状态简化为"暂停/启用"双状态,利用Quartz的原生功能实现快速切换,避免频繁操作调度器。
+
