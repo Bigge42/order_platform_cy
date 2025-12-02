@@ -22,21 +22,29 @@ using HDPro.Core.BaseProvider;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using HDPro.CY.Order.Services.Common;
+using Microsoft.Extensions.Logging;
 
 namespace HDPro.CY.Order.Services
 {
     public partial class OCP_SubOrderUnFinishTrackService
     {
         private readonly IOCP_SubOrderUnFinishTrackRepository _repository;//访问数据库
+        private readonly IOCP_AlertRulesRepository _alertRulesRepository;//预警规则Repository
+        private readonly ILogger<OCP_SubOrderUnFinishTrackService> _logger;//日志记录器
 
         [ActivatorUtilitiesConstructor]
         public OCP_SubOrderUnFinishTrackService(
             IOCP_SubOrderUnFinishTrackRepository dbRepository,
-            IHttpContextAccessor httpContextAccessor
+            IHttpContextAccessor httpContextAccessor,
+            IOCP_AlertRulesRepository alertRulesRepository,
+            ILogger<OCP_SubOrderUnFinishTrackService> logger
             )
         : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
+            _alertRulesRepository = alertRulesRepository;
+            _logger = logger;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -100,6 +108,9 @@ namespace HDPro.CY.Order.Services
                 if (grid.rows != null && grid.rows.Any())
                 {
                     ApplySupplierFieldsFilter(grid.rows);
+
+                    // 应用预警标记
+                    ApplyAlertWarningToData(grid.rows);
                 }
             };
 
@@ -189,6 +200,29 @@ namespace HDPro.CY.Order.Services
             var authorizedRoleIds = new int[] { 35 }; // 示例：有权限查看供应商字段的角色ID列表
 
             return UserContext.Current.RoleIds.Any(roleId => authorizedRoleIds.Contains(roleId));
+        }
+
+        /// <summary>
+        /// 应用预警标记到数据列表
+        /// </summary>
+        /// <param name="list">数据列表</param>
+        private void ApplyAlertWarningToData(List<OCP_SubOrderUnFinishTrack> list)
+        {
+            try
+            {
+                var rules = _alertRulesRepository.FindAsync(x =>
+                    x.AlertPage == "OCP_SubOrderUnFinishTrack" &&
+                    x.TaskStatus == 1).GetAwaiter().GetResult();
+
+                if (rules != null && rules.Any())
+                {
+                    AlertWarningHelper.ApplyAlertWarning(list, rules.ToList(), _logger);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "应用预警标记时发生异常");
+            }
         }
   }
 }

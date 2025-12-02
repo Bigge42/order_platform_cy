@@ -169,6 +169,7 @@ namespace HDPro.CY.Order.Repositories
             repo.Update(e, true);
             return true;
         }
-    }
 #endif
+    }
+
 }

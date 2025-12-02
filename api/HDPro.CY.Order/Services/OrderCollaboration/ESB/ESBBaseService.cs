@@ -12,6 +12,9 @@ using System.Linq;
 using HDPro.Entity.DomainModels;
 using HDPro.Core.BaseProvider;
 using HDPro.Entity.SystemModels;
+using HDPro.Core.Extensions.AutofacManager;
+using HDPro.CY.Order.IRepositories;
+using HDPro.CY.Order.Services.Common;
 
 namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
 {
@@ -151,14 +154,19 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
         /// <returns>ESB数据列表</returns>
         public async Task<List<T>> CallESBApi<T>(string apiPath, string startDate, string endDate, string operationType)
         {
+            var esbUrl = string.Empty;
+            var jsonContent = string.Empty;
+            int? statusCode = null;
+            ApiLogHelper logHelper = null;
+
             try
             {
                 using var httpClient = _httpClientFactory.CreateClient();
-                
+
                 // 从配置文件获取ESB接口地址
                 var baseUrl = AppSetting.ESB?.BaseUrl ?? "http://10.11.0.101:8003";
-                var esbUrl = $"{baseUrl.TrimEnd('/')}/{apiPath}";
-                
+                esbUrl = $"{baseUrl.TrimEnd('/')}/{apiPath}";
+
                 // 构建请求参数
                 var requestData = new
                 {
@@ -166,37 +174,56 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                     FENDDATE = endDate
                 };
 
-                var jsonContent = JsonConvert.SerializeObject(requestData);
+                jsonContent = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
 
                 // 从配置文件获取超时时间
                 var timeoutMinutes = AppSetting.ESB?.DefaultTimeoutMinutes ?? 5;
                 httpClient.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
 
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start($"{operationType}ESB接口", esbUrl, "POST", jsonContent, _logger)
+                    .WithRemark($"时间范围：{startDate} 到 {endDate}");
+
                 LogInfoWithArgs("调用{OperationType}ESB接口：{EsbUrl}，参数：{JsonContent}", operationType, operationType, esbUrl, jsonContent);
 
                 // 发送POST请求
                 var response = await httpClient.PostAsync(esbUrl, content);
+                statusCode = (int)response.StatusCode;
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    var errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}";
                     LogErrorWithArgs("{OperationType}ESB接口调用失败，状态码：{StatusCode}，原因：{ReasonPhrase}",
                         operationType, operationType, response.StatusCode, response.ReasonPhrase);
+
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode);
                     return new List<T>();
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
-                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length ?? 0);
+                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length);
                 HDLogHelper.Log($"{operationType}ESBApi", responseContent);
 
                 // 反序列化响应数据
                 var dataList = JsonConvert.DeserializeObject<List<T>>(responseContent);
-                
+                var dataCount = dataList?.Count ?? 0;
+
+                // 记录成功日志
+                await logHelper.WithDataCount(dataCount).LogSuccessAsync(statusCode, responseContent);
+
                 return dataList ?? new List<T>();
             }
             catch (Exception ex)
             {
                 LogErrorWithArgs(ex, "调用{OperationType}ESB接口异常", operationType, operationType);
+
+                // 记录异常日志
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogExceptionAsync(ex, statusCode);
+                }
+
                 throw;
             }
         }
@@ -212,6 +239,11 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
         /// <returns>ESB接口返回的数据列表</returns>
         public async Task<List<T>> CallESBApiWithRequestData<T>(string apiPath, object requestData, string operationType, string customBaseUrl = null)
         {
+            var esbUrl = string.Empty;
+            var jsonContent = string.Empty;
+            int? statusCode = null;
+            ApiLogHelper logHelper = null;
+
             // 从配置文件获取超时时间
             var timeoutMinutes = AppSetting.ESB?.DefaultTimeoutMinutes ?? 15;
 
@@ -223,7 +255,6 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 var baseUrl = customBaseUrl ?? AppSetting.ESB?.BaseUrl ?? "http://10.11.0.101:8003";
 
                 // 根据API路径确定完整URL
-                string esbUrl;
                 if (apiPath.StartsWith("/gateway/DataCenter/"))
                 {
                     // 数据中心接口
@@ -241,10 +272,14 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                     esbUrl = $"{baseUrl.TrimEnd('/')}/{apiPath}";
                 }
 
-                var jsonContent = JsonConvert.SerializeObject(requestData);
+                jsonContent = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
 
                 httpClient.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
+
+                // 开始记录日志
+                logHelper = ApiLogHelper.Start($"{operationType}ESB接口", esbUrl, "POST", jsonContent, _logger)
+                    .WithRemark($"超时设置：{timeoutMinutes}分钟");
 
                 LogInfoWithArgs("调用{OperationType}ESB接口：{EsbUrl}，超时设置：{TimeoutMinutes}分钟，参数：{JsonContent}",
                     operationType, operationType, esbUrl, timeoutMinutes, jsonContent);
@@ -253,6 +288,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var response = await httpClient.PostAsync(esbUrl, content);
                 stopwatch.Stop();
+                statusCode = (int)response.StatusCode;
 
                 LogInfoWithArgs("{OperationType}ESB接口调用完成，耗时：{ElapsedSeconds:F2}秒",
                     operationType, operationType, stopwatch.Elapsed.TotalSeconds);
@@ -260,34 +296,57 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
+                    var errorMessage = $"状态码：{response.StatusCode}，原因：{response.ReasonPhrase}，错误内容：{errorContent}";
                     LogErrorWithArgs("{OperationType}ESB接口调用失败，状态码：{StatusCode}，原因：{ReasonPhrase}，错误内容：{ErrorContent}",
                         operationType, operationType, response.StatusCode, response.ReasonPhrase, errorContent);
+
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode, errorContent);
                     return new List<T>();
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
-                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length ?? 0);
+                LogInfoWithArgs("{OperationType}ESB接口返回数据长度：{Length}", operationType, operationType, responseContent?.Length);
                 //HDLogHelper.Log($"{operationType}ESBApi", responseContent);
 
                 if (string.IsNullOrWhiteSpace(responseContent))
                 {
                     LogWarningWithArgs("{OperationType}ESB接口返回空响应", operationType, operationType);
+                    await logHelper.WithDataCount(0).LogSuccessAsync(statusCode);
                     return new List<T>();
                 }
 
                 // 反序列化响应数据
                 var dataList = JsonConvert.DeserializeObject<List<T>>(responseContent);
+                var dataCount = dataList?.Count ?? 0;
+
+                // 记录成功日志
+                await logHelper.WithDataCount(dataCount).LogSuccessAsync(statusCode, responseContent);
 
                 return dataList ?? new List<T>();
             }
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.Message.Contains("timeout"))
             {
+                var errorMessage = $"接口调用超时，超时设置：{timeoutMinutes}分钟";
                 LogErrorWithArgs(ex, "{OperationType}ESB接口调用超时，超时设置：{TimeoutMinutes}分钟", operationType, operationType, timeoutMinutes);
+
+                // 记录超时日志
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogFailureAsync(errorMessage, statusCode);
+                }
+
                 throw new TimeoutException($"{operationType}ESB接口调用超时（{timeoutMinutes}分钟）", ex);
             }
             catch (Exception ex)
             {
                 LogErrorWithArgs(ex, "调用{OperationType}ESB接口异常", operationType, operationType);
+
+                // 记录异常日志
+                if (logHelper != null)
+                {
+                    await logHelper.WithDataCount(0).LogExceptionAsync(ex, statusCode);
+                }
+
                 throw;
             }
         }
@@ -462,5 +521,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
             LogError(ex, errorMessage, operationType);
             return errorMessage;
         }
+
+
     }
-} 
+}

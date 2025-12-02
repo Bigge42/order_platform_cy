@@ -15,14 +15,14 @@ namespace HDPro.CY.Order.IServices
         /// 执行所有预警规则检查
         /// </summary>
         /// <returns>执行结果</returns>
-        Task<WebResponseContent> ExecuteAllAlertRulesAsync();
+        Task<WebResponseContent> ExecuteAllAlertRulesAsync(bool logToQuartz = true);
 
         /// <summary>
         /// 执行指定预警规则
         /// </summary>
         /// <param name="ruleId">规则ID</param>
         /// <returns>执行结果</returns>
-        Task<WebResponseContent> ExecuteAlertRuleByIdAsync(long ruleId);
+        Task<WebResponseContent> ExecuteAlertRuleByIdAsync(long ruleId, bool logToQuartz = true);
 
         /// <summary>
         /// 测试预警规则（不发送通知，只返回查询结果）

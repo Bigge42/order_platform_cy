@@ -485,7 +485,14 @@ namespace HDPro.CY.Order.Services
             entity.FlangeConnection = k3Material.F_BLN_FLLJFS;         // F_BLN_FLLJFS -> FlangeConnection
             entity.ActuatorModel = k3Material.F_BLN_ZXJGXH;            // F_BLN_ZXJGXH -> ActuatorModel
             entity.ActuatorStroke = k3Material.F_BLN_ZXJGXC;           // F_BLN_ZXJGXC -> ActuatorStroke
-            
+
+            // 2024-11-16 新增字段映射
+            entity.FlangeStandard = k3Material.F_BLN_Flbz;             // F_BLN_Flbz -> FlangeStandard (法兰标准)
+            entity.BodyMaterial = k3Material.F_BLN_Ftcz;               // F_BLN_Ftcz -> BodyMaterial (阀体材质)
+            entity.TrimMaterial = k3Material.F_BLN_Fljcz;              // F_BLN_Fljcz -> TrimMaterial (阀内件材质)
+            entity.FlangeSealType = k3Material.F_BLN_Flmfmxs;          // F_BLN_Flmfmxs -> FlangeSealType (法兰密封面型式)
+            entity.TCReleaser = k3Material.F_TC_RELEASER;              // F_TC_RELEASER -> TCReleaser (TC发布人)
+
             // 是否关联BOM映射
             if (!string.IsNullOrEmpty(k3Material.FIsBOM))
             {

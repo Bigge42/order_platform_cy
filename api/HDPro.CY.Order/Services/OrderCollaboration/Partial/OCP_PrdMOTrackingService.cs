@@ -18,21 +18,31 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
 using HDPro.Core.ManageUser;
+using HDPro.CY.Order.Services.Common;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
 
 namespace HDPro.CY.Order.Services
 {
     public partial class OCP_PrdMOTrackingService
     {
         private readonly IOCP_PrdMOTrackingRepository _repository;//访问数据库
+        private readonly IOCP_AlertRulesRepository _alertRulesRepository;//预警规则Repository
+        private readonly ILogger<OCP_PrdMOTrackingService> _logger;//日志记录器
 
         [ActivatorUtilitiesConstructor]
         public OCP_PrdMOTrackingService(
             IOCP_PrdMOTrackingRepository dbRepository,
-            IHttpContextAccessor httpContextAccessor
+            IHttpContextAccessor httpContextAccessor,
+            IOCP_AlertRulesRepository alertRulesRepository,
+            ILogger<OCP_PrdMOTrackingService> logger
             )
         : base(dbRepository, httpContextAccessor)
         {
             _repository = dbRepository;
+            _alertRulesRepository = alertRulesRepository;
+            _logger = logger;
             //多租户会用到这init代码，其他情况可以不用
             //base.Init(dbRepository);
         }
@@ -112,6 +122,9 @@ namespace HDPro.CY.Order.Services
                 {
                     record.OverdueDays = CalculateOverdueDays(record);
                 }
+
+                // 应用预警标记
+                ApplyAlertWarningToData(trackingRecords);
             };
 
             return base.GetPageData(options);
@@ -179,5 +192,28 @@ namespace HDPro.CY.Order.Services
             var completedStatuses = new[] { "完工", "结案", "结算" };
             return completedStatuses.Contains(billStatus.Trim());
         }
+
+        /// <summary>
+        /// 应用预警标记到数据列表
+        /// </summary>
+        /// <param name="list">数据列表</param>
+        private void ApplyAlertWarningToData(List<OCP_PrdMOTracking> list)
+        {
+            try
+            {
+                var rules = _alertRulesRepository.FindAsync(x =>
+                    x.AlertPage == "OCP_PrdMOTracking" &&
+                    x.TaskStatus == 1).GetAwaiter().GetResult();
+
+                if (rules != null && rules.Any())
+                {
+                    AlertWarningHelper.ApplyAlertWarning(list, rules.ToList(), _logger);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "应用预警标记时发生异常");
+            }
+        }
   }
-} 
+}

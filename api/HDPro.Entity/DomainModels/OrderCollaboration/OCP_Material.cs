@@ -170,6 +170,50 @@ namespace HDPro.Entity.DomainModels
        public string BasicUnit { get; set; }
 
        /// <summary>
+       ///创建人ID
+       /// </summary>
+       [Display(Name ="创建人ID")]
+       [Column(TypeName="int")]
+       public int? CreateID { get; set; }
+
+       /// <summary>
+       ///创建日期
+       /// </summary>
+       [Display(Name ="创建日期")]
+       [Column(TypeName="datetime")]
+       public DateTime? CreateDate { get; set; }
+
+       /// <summary>
+       ///创建人
+       /// </summary>
+       [Display(Name ="创建人")]
+       [MaxLength(20)]
+       [Column(TypeName="nvarchar(20)")]
+       public string Creator { get; set; }
+
+       /// <summary>
+       ///修改人
+       /// </summary>
+       [Display(Name ="修改人")]
+       [MaxLength(20)]
+       [Column(TypeName="nvarchar(20)")]
+       public string Modifier { get; set; }
+
+       /// <summary>
+       ///修改日期
+       /// </summary>
+       [Display(Name ="修改日期")]
+       [Column(TypeName="datetime")]
+       public DateTime? ModifyDate { get; set; }
+
+       /// <summary>
+       ///修改人ID
+       /// </summary>
+       [Display(Name ="修改人ID")]
+       [Column(TypeName="int")]
+       public int? ModifyID { get; set; }
+
+       /// <summary>
        ///填料形式
        /// </summary>
        [Display(Name ="填料形式")]
@@ -267,86 +311,6 @@ namespace HDPro.Entity.DomainModels
        [Editable(true)]
        public string TCReleaser { get; set; }
 
-       /// <summary>
-       ///创建人ID
-       /// </summary>
-       [Display(Name ="创建人ID")]
-       [Column(TypeName="int")]
-       public int? CreateID { get; set; }
 
-       /// <summary>
-       ///创建日期
-       /// </summary>
-       [Display(Name ="创建日期")]
-       [Column(TypeName="datetime")]
-       public DateTime? CreateDate { get; set; }
-
-       /// <summary>
-       ///创建人
-       /// </summary>
-       [Display(Name ="创建人")]
-       [MaxLength(20)]
-       [Column(TypeName="nvarchar(20)")]
-       public string Creator { get; set; }
-
-       /// <summary>
-       ///修改人
-       /// </summary>
-       [Display(Name ="修改人")]
-       [MaxLength(20)]
-       [Column(TypeName="nvarchar(20)")]
-       public string Modifier { get; set; }
-
-       /// <summary>
-       ///修改日期
-       /// </summary>
-       [Display(Name ="修改日期")]
-       [Column(TypeName="datetime")]
-       public DateTime? ModifyDate { get; set; }
-
-       /// <summary>
-       ///修改人ID
-       /// </summary>
-       [Display(Name ="修改人ID")]
-       [Column(TypeName="int")]
-       public int? ModifyID { get; set; }
-
-       /// <summary>
-       ///
-       /// </summary>
-       [Display(Name ="InnerMaterial")]
-       [MaxLength(2000)]
-       [Column(TypeName="nvarchar(2000)")]
-       [Editable(true)]
-       public string InnerMaterial { get; set; }
-
-       /// <summary>
-       ///
-       /// </summary>
-       [Display(Name ="BonnetForm")]
-       [MaxLength(2000)]
-       [Column(TypeName="nvarchar(2000)")]
-       [Editable(true)]
-       public string BonnetForm { get; set; }
-
-       /// <summary>
-       ///
-       /// </summary>
-       [Display(Name ="ValveCategory")]
-       [MaxLength(2000)]
-       [Column(TypeName="nvarchar(2000)")]
-       [Editable(true)]
-       public string ValveCategory { get; set; }
-
-       /// <summary>
-       ///
-       /// </summary>
-       [Display(Name ="SealFaceForm")]
-       [MaxLength(2000)]
-       [Column(TypeName="nvarchar(2000)")]
-       [Editable(true)]
-       public string SealFaceForm { get; set; }
-
-       
     }
 }

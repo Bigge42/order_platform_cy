@@ -20,14 +20,22 @@ export default function(){
                                {"title":"用户合同号","field":"CustomerContractNumber"},
                                {"title":"客户","field":"Customer"}],
                               [{"title":"订单状态","field":"BillStatus"},
-                               {"title":"数量","field":"SaleQty","type":"decimal"},
-                               {"title":"入库数量","field":"InstockQty","type":"decimal"}],
-                              [{"title":"待入库数量","field":"UnInstockQty","type":"decimal"},
-                               {"title":"出库数量","field":"OutStockQty","type":"decimal"}],
+                               {"title":"数量","field":"SaleQty","type":"decimal","comparationList":[{"key":"decimal","value":"decimal"},
+                               {"key":"EMPTY","value":"空"},
+                               {"key":"NOT_EMPTY","value":"不空"}]},
+                               {"title":"入库数量","field":"InstockQty","type":"decimal","comparationList":[{"key":"decimal","value":"decimal"},
+                               {"key":"EMPTY","value":"空"},
+                               {"key":"NOT_EMPTY","value":"不空"}]}],
+                              [{"title":"待入库数量","field":"UnInstockQty","type":"decimal","comparationList":[{"key":"decimal","value":"decimal"},
+                               {"key":"EMPTY","value":"空"},
+                               {"key":"NOT_EMPTY","value":"不空"}]},
+                               {"title":"出库数量","field":"OutStockQty","type":"decimal","comparationList":[{"key":"decimal","value":"decimal"},
+                               {"key":"EMPTY","value":"空"},
+                               {"key":"NOT_EMPTY","value":"不空"}]}],
                               [{"title":"合同类型","field":"ContractType"},
                                {"title":"项目名称","field":"ProjectName"}]];
     const searchFormFields = {"ContractType":"","Customer":"","BillStatus":"","ProjectName":""};
-    const searchFormOptions = [[{"title":"销售订单号","field":"BillNo","type":"like"},{"title":"订单日期","field":"BillDate","type":"date"},{"title":"销售合同号","field":"SalesContractNumber","type":"like"},{"title":"用户合同号","field":"CustomerContractNumber","type":"like"}],[{"title":"客户","field":"Customer","type":"like"},{"title":"订单状态","field":"BillStatus","type":"like"}],[{"title":"合同类型","field":"ContractType","type":"like"},{"title":"项目名称","field":"ProjectName","type":"like"}]];
+    const searchFormOptions = [[{"title":"销售订单号","field":"BillNo","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"订单日期","field":"BillDate","type":"date","comparationList":[{"key":"date","value":"date(年月日)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"销售合同号","field":"SalesContractNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"用户合同号","field":"CustomerContractNumber","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"客户","field":"Customer","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"订单状态","field":"BillStatus","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}],[{"title":"合同类型","field":"ContractType","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]},{"title":"项目名称","field":"ProjectName","type":"like","comparationList":[{"key":"like","value":"模糊查询(包含)"},{"key":"EMPTY","value":"空"},{"key":"NOT_EMPTY","value":"不空"}]}]];
     const columns = [{field:'OrderID',title:'订单ID',type:'long',sort:true,width:80,hidden:true,readonly:true,require:true,align:'left'},
                        {field:'BillNo',title:'销售订单号',type:'string',sort:true,width:110,align:'left'},
                        {field:'BillDate',title:'订单日期',type:'date',sort:true,width:150,align:'left'},
@@ -49,7 +57,7 @@ export default function(){
                        {field:'ModifyDate',title:'修改日期',type:'datetime',width:150,hidden:true,align:'left'},
                        {field:'ModifyID',title:'修改人Id',type:'int',width:80,hidden:true,align:'left'},
                        {field:'FID',title:'销售订单主键',type:'long',width:80,hidden:true,align:'left'},
-                       {field:'ESBModifyDate',title:'ESB修改日期',type:'datetime',width:150,align:'left'}];
+                       {field:'ESBModifyDate',title:'ESB修改日期',type:'datetime',width:150,hidden:true,align:'left'}];
     const detail =  {
                     cnName: '销售订单进度详情',
                     table: 'OCP_SOProgressDetail',
