@@ -23,5 +23,13 @@ namespace HDPro.Entity.DomainModels
         /// </summary>
         [NotMapped]
         public bool ShouldAlert { get; set; }
+        
+        /// <summary>
+        /// 是否特殊合同
+        /// </summary>
+        [NotMapped]
+        [Display(Name = "是否特殊合同")]
+        public int? IsSpecialContract { get; set; }
+    
     }
 }
