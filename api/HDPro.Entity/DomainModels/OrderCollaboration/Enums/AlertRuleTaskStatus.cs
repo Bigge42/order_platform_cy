@@ -11,21 +11,15 @@ namespace HDPro.Entity.DomainModels.OrderCollaboration.Enums
     public enum AlertRuleTaskStatus
     {
         /// <summary>
-        /// 停止 - 不创建定时任务
-        /// </summary>
-        [Description("停止")]
-        Stopped = 0,
-
-        /// <summary>
-        /// 启用 - 创建并启动定时任务
-        /// </summary>
-        [Description("启用")]
-        Enabled = 1,
-
-        /// <summary>
-        /// 暂停 - 创建定时任务但暂停执行
+        /// 暂停 - 定时任务存在但暂停执行
         /// </summary>
         [Description("暂停")]
-        Paused = 2
+        Paused = 0,
+
+        /// <summary>
+        /// 启用 - 定时任务运行中
+        /// </summary>
+        [Description("启用")]
+        Enabled = 1
     }
 }

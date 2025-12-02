@@ -63,6 +63,7 @@
     import NegotiationDialog from '@/comp/negotiation-dialog/index.vue'
     import { ref, reactive, getCurrentInstance, watch, onMounted, computed } from "vue";
     import { ElMessage } from 'element-plus'
+    import { applyAlertWarningStyle } from '@/utils/alertWarning'
     
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
@@ -112,7 +113,8 @@
     }
     
     //http请求，proxy.http.post/get
-    const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
+    const viewOpts = reactive(viewOptions())
+    const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = viewOpts
 
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
     //生成对象属性初始化
@@ -225,7 +227,9 @@
     }
     //生成对象属性初始化后,操作明细表配置用到
     const onInited = async () => {
-        
+        // 应用预警样式(在表格初始化完成后应用)
+        applyAlertWarningStyle(viewOpts.columns)
+
         // 找到PrepareMtrl列并添加自定义渲染
         const prepareMtrlColumn = columns.find(col => col.field === 'PrepareMtrl');
         if (prepareMtrlColumn) {

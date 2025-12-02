@@ -64,7 +64,6 @@ const selectedPersonNames = ref('')
 
 const getPermission = () => {
   const permission = {
-    stop: false,
     pause: false,
     enable: false,
     Execute: false,
@@ -192,9 +191,14 @@ const onInit = async ($vm) => {
     align: 'center',
     fixed: 'right',
     render: (h, { row, column, index }) => {
+      // 根据当前状态决定显示哪个按钮
+      // TaskStatus: 0=暂停, 1=启用
+      const isEnabled = row.TaskStatus === 1
+
       return (
         <div>
-          {permissionMap.enable && (
+          {/* 当状态为暂停时,显示启用按钮 */}
+          {!isEnabled && permissionMap.enable && (
             <el-button
               type="primary"
               link
@@ -204,24 +208,15 @@ const onInit = async ($vm) => {
               启用
             </el-button>
           )}
-          {permissionMap.pause && (
+          {/* 当状态为启用时,显示暂停按钮 */}
+          {isEnabled && permissionMap.pause && (
             <el-button
-              type="primary"
-              link
-              style={{ padding: '2px 4px', fontSize: '12px' }}
-              onClick={() => handleTaskStatus(row, 2)}
-            >
-              暂停
-            </el-button>
-          )}
-          {permissionMap.stop && (
-            <el-button
-              type="primary"
+              type="warning"
               link
               style={{ padding: '2px 4px', fontSize: '12px' }}
               onClick={() => handleTaskStatus(row, 0)}
             >
-              停止
+              暂停
             </el-button>
           )}
           {permissionMap.Execute && (

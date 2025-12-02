@@ -13,9 +13,15 @@ using HDPro.Entity.SystemModels;
 
 namespace HDPro.Entity.DomainModels
 {
-    
+
     public partial class OCP_SubOrderUnFinishTrack
     {
         //此处配置字段(字段配置见此model的另一个partial),如果表中没有此字段请加上 [NotMapped]属性，否则会异常
+
+        /// <summary>
+        /// 预警标记(用于前端显示,不映射到数据库)
+        /// </summary>
+        [NotMapped]
+        public bool ShouldAlert { get; set; }
     }
 }

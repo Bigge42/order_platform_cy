@@ -124,6 +124,31 @@ namespace HDPro.CY.Order.Services.K3Cloud.Models
         public string F_BLN_ZXJGXC { get; set; }
 
         /// <summary>
+        /// 法兰标准 - F_BLN_Flbz
+        /// </summary>
+        public string F_BLN_Flbz { get; set; }
+
+        /// <summary>
+        /// 阀体材质 - F_BLN_Ftcz
+        /// </summary>
+        public string F_BLN_Ftcz { get; set; }
+
+        /// <summary>
+        /// 阀内件材质 - F_BLN_Fljcz
+        /// </summary>
+        public string F_BLN_Fljcz { get; set; }
+
+        /// <summary>
+        /// 法兰密封面型式 - F_BLN_Flmfmxs
+        /// </summary>
+        public string F_BLN_Flmfmxs { get; set; }
+
+        /// <summary>
+        /// TC发布人 - F_TC_RELEASER
+        /// </summary>
+        public string F_TC_RELEASER { get; set; }
+
+        /// <summary>
         /// 库房编号 - FStockId.FNumber
         /// </summary>
         public string FStockNumber { get; set; }

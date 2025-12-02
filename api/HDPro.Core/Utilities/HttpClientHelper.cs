@@ -29,22 +29,46 @@ namespace HDPro.Core.Utilities
         /// <returns>响应结果</returns>
         public async Task<T> GetAsync<T>(string url) where T : class
         {
+            return await GetAsync<T>(url, 0);
+        }
+
+        /// <summary>
+        /// 发送GET请求（带超时设置）
+        /// </summary>
+        /// <typeparam name="T">返回类型</typeparam>
+        /// <param name="url">请求地址</param>
+        /// <param name="timeoutSeconds">超时时间（秒），0表示使用默认超时</param>
+        /// <returns>响应结果</returns>
+        public async Task<T> GetAsync<T>(string url, int timeoutSeconds) where T : class
+        {
             try
             {
-                _logger.LogInformation("发送GET请求: {Url}", url);
-                
-                var response = await _httpClient.GetAsync(url);
+                _logger.LogInformation("发送GET请求: {Url}, 超时: {Timeout}秒", url, timeoutSeconds > 0 ? timeoutSeconds : "默认");
+
+                HttpResponseMessage response;
+                if (timeoutSeconds > 0)
+                {
+                    using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds)))
+                    {
+                        response = await _httpClient.GetAsync(url, cts.Token);
+                    }
+                }
+                else
+                {
+                    response = await _httpClient.GetAsync(url);
+                }
+
                 var content = await response.Content.ReadAsStringAsync();
-                
-                _logger.LogInformation("GET请求响应: {StatusCode}, 内容: {Content}", 
-                    response.StatusCode, content);
+
+                _logger.LogInformation("GET请求响应: {StatusCode}, 内容长度: {Length}",
+                    response.StatusCode, content?.Length ?? 0);
 
                 if (response.IsSuccessStatusCode)
                 {
                     return JsonConvert.DeserializeObject<T>(content);
                 }
-                
-                _logger.LogWarning("GET请求失败: {StatusCode}, 内容: {Content}", 
+
+                _logger.LogWarning("GET请求失败: {StatusCode}, 内容: {Content}",
                     response.StatusCode, content);
                 return null;
             }

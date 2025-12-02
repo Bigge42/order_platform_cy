@@ -336,48 +336,41 @@ namespace HDPro.WebApi.Controllers.Order
 
                 var status = (AlertRuleTaskStatus)taskStatus;
 
-                // 根据状态管理定时任务
-                switch (status)
+                // 获取完整的规则信息
+                var pageData = new PageDataOptions();
+                pageData.Filter = new List<SearchParameters>
                 {
-                    case AlertRuleTaskStatus.Stopped:
-                        await _schedulerService.DeleteAlertRuleJobAsync(ruleId);
-                        break;
-                    case AlertRuleTaskStatus.Enabled:
-                    case AlertRuleTaskStatus.Paused:
-                        // 对于启用和暂停状态，需要获取完整的规则信息
-                        var pageData = new PageDataOptions();
-                        pageData.Filter = new List<SearchParameters>
-                        {
-                            new SearchParameters { Name = "ID", Value = ruleId.ToString() }
-                        };
-                        var result = _alertRulesService.GetPageData(pageData);
+                    new SearchParameters { Name = "ID", Value = ruleId.ToString() }
+                };
+                var result = _alertRulesService.GetPageData(pageData);
 
-                        if (result.rows == null || !result.rows.Any())
-                        {
-                            return WebResponseContent.Instance.Error("预警规则不存在，无法创建定时任务");
-                        }
-
-                        // 将动态对象转换为OCP_AlertRules实体
-                        var ruleData = result.rows.First();
-                        var alertRuleEntity = new OCP_AlertRules
-                        {
-                            ID = Convert.ToInt64(ruleData.ID),
-                            RuleName = ruleData.RuleName?.ToString(),
-                            AlertPage = ruleData.AlertPage?.ToString(),
-                            FieldName = ruleData.FieldName?.ToString(),
-                            DayCount = ruleData.DayCount != null ? Convert.ToInt32(ruleData.DayCount) : 0,
-                            FinishStatusField = ruleData.FinishStatusField?.ToString(),
-                            ConditionType = ruleData.ConditionType?.ToString(),
-                            ConditionValue = ruleData.ConditionValue?.ToString(),
-                            ResponsiblePersonLoginName = ruleData.ResponsiblePersonLoginName?.ToString(),
-                            PushInterval = ruleData.PushInterval?.ToString(),
-                            TriggerOA = ruleData.TriggerOA != null ? Convert.ToInt32(ruleData.TriggerOA) : 0,
-                            TaskStatus = taskStatus
-                        };
-
-                        await _schedulerService.CreateOrUpdateAlertRuleJobAsync(alertRuleEntity);
-                        break;
+                if (result.rows == null || !result.rows.Any())
+                {
+                    return WebResponseContent.Instance.Error("预警规则不存在");
                 }
+
+                // 将动态对象转换为OCP_AlertRules实体
+                var ruleData = result.rows.First();
+                var alertRuleEntity = new OCP_AlertRules
+                {
+                    ID = Convert.ToInt64(ruleData.ID),
+                    RuleName = ruleData.RuleName?.ToString(),
+                    AlertPage = ruleData.AlertPage?.ToString(),
+                    FieldName = ruleData.FieldName?.ToString(),
+                    DayCount = ruleData.DayCount != null ? Convert.ToInt32(ruleData.DayCount) : 0,
+                    FinishStatusField = ruleData.FinishStatusField?.ToString(),
+                    ConditionType = ruleData.ConditionType?.ToString(),
+                    ConditionValue = ruleData.ConditionValue?.ToString(),
+                    ResponsiblePersonLoginName = ruleData.ResponsiblePersonLoginName?.ToString(),
+                    PushInterval = ruleData.PushInterval?.ToString(),
+                    TriggerOA = ruleData.TriggerOA != null ? Convert.ToInt32(ruleData.TriggerOA) : 0,
+                    TaskStatus = taskStatus
+                };
+
+                // 调用CreateOrUpdateAlertRuleJobAsync，它会根据状态自动处理：
+                // - 如果任务不存在，创建新任务（启用或暂停状态）
+                // - 如果任务已存在，暂停或恢复任务
+                await _schedulerService.CreateOrUpdateAlertRuleJobAsync(alertRuleEntity);
 
                 return WebResponseContent.Instance.OK($"预警规则任务状态已更新为: {status}");
             }

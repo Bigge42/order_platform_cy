@@ -64,11 +64,13 @@ import MessageBoard from '@/comp/message-board/index.vue'
 import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
+import { applyAlertWarningStyle } from '@/utils/alertWarning'
 
 const grid = ref(null)
 const { proxy } = getCurrentInstance()
 const route = useRoute()
 //http请求，proxy.http.post/get
+const viewOpts = reactive(viewOptions())
 const {
   table,
   editFormFields,
@@ -78,7 +80,7 @@ const {
   columns,
   detail,
   details
-} = reactive(viewOptions())
+} = viewOpts
 
 // 催单弹窗相关
 const followUpReminderVisible = ref(false)
@@ -127,6 +129,9 @@ const onInited = async () => {
     type: 'warning',
     onClick: handleBatchReminder
   })
+
+  // 应用预警样式(在表格初始化完成后,添加列之前应用)
+  applyAlertWarningStyle(viewOpts.columns)
 
   // 添加功能列
   columns.push({

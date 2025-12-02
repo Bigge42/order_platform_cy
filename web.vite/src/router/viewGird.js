@@ -697,6 +697,14 @@ let viewgird = [
         name: 'ORDER_NOTE_FLAT',
         component: () => import('@/views/order/order_note_flat/ORDER_NOTE_FLAT.vue')
     }    ,{
+        path: '/BomQuery',
+        name: 'BomQuery',
+        component: () => import('@/views/order/ordercollaboration/BomQuery.vue')
+    }    ,{
+        path: '/OCP_ApiLog',
+        name: 'OCP_ApiLog',
+        component: () => import('@/views/order/order/OCP_ApiLog.vue')
+    }    ,{
         path: '/WZ_OrderCycleBase',
         name: 'WZ_OrderCycleBase',
         component: () => import('@/views/order//wz_ordercyclebase/WZ_OrderCycleBase.vue')
