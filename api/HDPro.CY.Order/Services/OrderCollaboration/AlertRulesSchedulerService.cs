@@ -107,57 +107,64 @@ namespace HDPro.CY.Order.Services.OrderCollaboration
                 var scheduler = await _schedulerFactory.GetScheduler();
                 var jobKey = new JobKey($"AlertRule_{rule.ID}", "AlertRules");
                 var triggerKey = new TriggerKey($"AlertRule_{rule.ID}_Trigger", "AlertRules");
-
-                // 删除已存在的任务
-                if (await scheduler.CheckExists(jobKey))
-                {
-                    await scheduler.DeleteJob(jobKey);
-                    _logger.LogInformation("删除已存在的预警规则任务: {JobKey}", jobKey);
-                }
-
-                // 根据TaskStatus决定是否创建任务
                 var taskStatus = (AlertRuleTaskStatus)rule.TaskStatus;
 
-                if (taskStatus == AlertRuleTaskStatus.Stopped)
+                // 检查任务是否已存在
+                bool jobExists = await scheduler.CheckExists(jobKey);
+
+                if (jobExists)
                 {
-                    _logger.LogInformation("预警规则 [{RuleName}] 状态为停止，不创建定时任务", rule.RuleName);
-                    return response.OK($"预警规则 [{rule.RuleName}] 状态为停止，不创建定时任务");
-                }
-
-                // 创建新的任务
-                var job = JobBuilder.Create<SingleAlertRuleJob>()
-                    .WithIdentity(jobKey)
-                    .WithDescription($"预警规则: {rule.RuleName}")
-                    .UsingJobData("RuleId", rule.ID)
-                    .Build();
-
-                var trigger = TriggerBuilder.Create()
-                    .WithIdentity(triggerKey)
-                    .WithDescription($"预警规则触发器: {rule.RuleName}")
-                    .WithCronSchedule(rule.PushInterval)
-                    .Build();
-
-                await scheduler.ScheduleJob(job, trigger);
-
-                // 根据状态决定是否暂停任务
-                if (taskStatus == AlertRuleTaskStatus.Paused)
-                {
-                    await scheduler.PauseJob(jobKey);
-                    _logger.LogInformation("预警规则定时任务创建并暂停 - 规则: {RuleName}, Cron: {CronExpression}",
-                        rule.RuleName, rule.PushInterval);
-                    return response.OK($"预警规则 [{rule.RuleName}] 定时任务创建成功并已暂停");
+                    // 任务已存在，根据状态决定是暂停还是恢复
+                    if (taskStatus == AlertRuleTaskStatus.Paused)
+                    {
+                        await scheduler.PauseJob(jobKey);
+                        _logger.LogInformation("预警规则定时任务已暂停 - 规则: {RuleName}", rule.RuleName);
+                        return response.OK($"预警规则 [{rule.RuleName}] 定时任务已暂停");
+                    }
+                    else // Enabled
+                    {
+                        await scheduler.ResumeJob(jobKey);
+                        _logger.LogInformation("预警规则定时任务已恢复 - 规则: {RuleName}", rule.RuleName);
+                        return response.OK($"预警规则 [{rule.RuleName}] 定时任务已恢复");
+                    }
                 }
                 else
                 {
-                    _logger.LogInformation("预警规则定时任务创建并启用 - 规则: {RuleName}, Cron: {CronExpression}",
-                        rule.RuleName, rule.PushInterval);
-                    return response.OK($"预警规则 [{rule.RuleName}] 定时任务创建成功并已启用");
+                    // 任务不存在，创建新任务
+                    var job = JobBuilder.Create<SingleAlertRuleJob>()
+                        .WithIdentity(jobKey)
+                        .WithDescription($"预警规则: {rule.RuleName}")
+                        .UsingJobData("RuleId", rule.ID)
+                        .Build();
+
+                    var trigger = TriggerBuilder.Create()
+                        .WithIdentity(triggerKey)
+                        .WithDescription($"预警规则触发器: {rule.RuleName}")
+                        .WithCronSchedule(rule.PushInterval)
+                        .Build();
+
+                    await scheduler.ScheduleJob(job, trigger);
+
+                    // 如果初始状态是暂停，创建后立即暂停
+                    if (taskStatus == AlertRuleTaskStatus.Paused)
+                    {
+                        await scheduler.PauseJob(jobKey);
+                        _logger.LogInformation("预警规则定时任务创建并暂停 - 规则: {RuleName}, Cron: {CronExpression}",
+                            rule.RuleName, rule.PushInterval);
+                        return response.OK($"预警规则 [{rule.RuleName}] 定时任务创建成功并已暂停");
+                    }
+                    else
+                    {
+                        _logger.LogInformation("预警规则定时任务创建并启用 - 规则: {RuleName}, Cron: {CronExpression}",
+                            rule.RuleName, rule.PushInterval);
+                        return response.OK($"预警规则 [{rule.RuleName}] 定时任务创建成功并已启用");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "创建预警规则定时任务时发生异常，规则: {RuleName}", rule.RuleName);
-                return response.Error($"创建定时任务异常: {ex.Message}");
+                _logger.LogError(ex, "创建或更新预警规则定时任务时发生异常，规则: {RuleName}", rule.RuleName);
+                return response.Error($"操作定时任务异常: {ex.Message}");
             }
         }
 
@@ -256,7 +263,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration
         }
 
         /// <summary>
-        /// 获取所有需要调度的预警规则
+        /// 获取所有需要调度的预警规则（包括启用和暂停状态）
         /// </summary>
         /// <returns></returns>
         private async Task<List<OCP_AlertRules>> GetActiveAlertRulesWithScheduleAsync()
@@ -264,6 +271,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration
             // 这里应该调用AlertRulesService的方法，但为了避免循环依赖，直接使用Repository
             var repository = AutofacContainerModule.GetService<IOCP_AlertRulesRepository>();
 
+            // 获取启用和暂停状态的规则（两种状态都需要有定时任务）
             return await repository.FindAsIQueryable(x =>
                 !string.IsNullOrEmpty(x.RuleName) &&
                 !string.IsNullOrEmpty(x.PushInterval) &&
