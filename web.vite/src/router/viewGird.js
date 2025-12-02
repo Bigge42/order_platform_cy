@@ -700,6 +700,10 @@ let viewgird = [
         path: '/WZ_OrderCycleBase',
         name: 'WZ_OrderCycleBase',
         component: () => import('@/views/order//wz_ordercyclebase/WZ_OrderCycleBase.vue')
+    }    ,{
+        path: '/V_XhckkbRecord_Material',
+        name: 'V_XhckkbRecord_Material',
+        component: () => import('@/views/order/v_xhckkbrecord_material/V_XhckkbRecord_Material.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

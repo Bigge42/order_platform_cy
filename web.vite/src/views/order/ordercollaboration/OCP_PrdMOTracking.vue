@@ -185,7 +185,6 @@ const onInited = async () => {
     }
   })
 
-  applyRowWarningStyle()
 }
 const searchBefore = async (param) => {
   //界面查询前,可以给param.wheres添加查询参数
@@ -200,41 +199,6 @@ const addBefore = async (formData) => {
   return true
 }
 
-const shouldHighlightRow = (row) => {
-  if (!row || row.PreCompleteDate) return false
-  if (!row.MaterialPickDate) return false
-
-  const pickDate = new Date(row.MaterialPickDate)
-  if (Number.isNaN(pickDate.getTime())) return false
-
-  const now = new Date()
-  const daysSincePick = (now.getTime() - pickDate.getTime()) / (1000 * 60 * 60 * 24)
-
-  return daysSincePick > 2
-}
-
-const applyRowWarningStyle = () => {
-  const warningCellStyle = (row) => {
-    if (shouldHighlightRow(row)) {
-      return {
-        backgroundColor: '#ffecec',
-        color: '#f5222d'
-      }
-    }
-    return null
-  }
-
-  columns.forEach((col) => {
-    if (col.cellStyle) {
-      const originalCellStyle = col.cellStyle
-      col.cellStyle = (row, rowIndex, columnIndex, tableData) => {
-        return originalCellStyle(row, rowIndex, columnIndex, tableData) || warningCellStyle(row)
-      }
-    } else {
-      col.cellStyle = warningCellStyle
-    }
-  })
-}
 const updateBefore = async (formData) => {
   //编辑保存前formData为对象，包括明细表、删除行的Id
   return true
