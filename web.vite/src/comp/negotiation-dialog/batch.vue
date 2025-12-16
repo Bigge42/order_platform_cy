@@ -11,6 +11,16 @@
         <div class="dialog-content">
           <div class="batch-operations" v-if="tableData.length > 0">
             <span class="record-count">已选中 {{ tableData.length }} 条记录</span>
+            <div class="batch-buttons">
+              <el-button
+                size="small"
+                type="primary"
+                @click="onBatchEdit"
+                :disabled="batchState.selectedRows.length === 0"
+              >
+                批量编辑 ({{ batchState.selectedRows.length }})
+              </el-button>
+            </div>
           </div>
 
           <el-form ref="formRef" :model="{ tableData }" label-width="0">
@@ -27,6 +37,7 @@
               <el-table-column prop="billNo" label="采购订单编号" width="140" align="center" />
               <el-table-column prop="seq" label="行号" width="80" align="center" />
               <el-table-column prop="planTraceNo" label="计划跟踪号" width="140" align="center" />
+              <el-table-column prop="defaultResPersonName" label="默认负责人" width="120" align="center" />
               <el-table-column label="协商原因" width="180" align="center">
                 <template #default="{ row, $index }">
                   <el-form-item
@@ -128,17 +139,97 @@
       </template>
     </CompDialog>
 
+    <el-drawer
+      v-model="batchState.drawerVisible"
+      title="批量编辑"
+      direction="rtl"
+      size="360px"
+      :append-to-body="false"
+      :before-close="onDrawerCancel"
+    >
+      <template #header>
+        <h4>批量编辑 ({{ batchState.selectedRowsSnapshot.length }} 条记录)</h4>
+      </template>
+
+      <template #default>
+        <div class="drawer-content">
+          <el-form :model="batchState.formData" label-width="90px" label-position="top">
+            <el-form-item label="协商原因">
+              <el-select v-model="batchState.formData.negotiationReason" placeholder="请选择">
+                <el-option
+                  v-for="option in reasonOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="协商日期">
+              <el-date-picker
+                v-model="batchState.formData.negotiationDate"
+                type="date"
+                placeholder="请选择日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+              />
+            </el-form-item>
+
+            <el-form-item label="指定负责人">
+              <div class="assigned-person-container">
+                <el-tag
+                  v-if="batchState.formData.assignedResPersonName"
+                  type="info"
+                  size="small"
+                  closable
+                  @close="removeDrawerAssignedPerson(batchState.formData)"
+                  class="person-tag"
+                >
+                  {{ batchState.formData.assignedResPersonName }}
+                </el-tag>
+                <el-button
+                  size="small"
+                  type="primary"
+                  link
+                  @click="openDrawerPersonSelector(batchState.formData)"
+                  class="select-person-btn"
+                >
+                  {{ batchState.formData.assignedResPersonName ? '重新选择' : '选择人员' }}
+                </el-button>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="协商内容">
+              <el-input
+                v-model="batchState.formData.negotiationContent"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入协商内容"
+              />
+            </el-form-item>
+          </el-form>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="onDrawerCancel">取消</el-button>
+          <el-button type="primary" @click="onDrawerConfirm">应用</el-button>
+        </div>
+      </template>
+    </el-drawer>
+
     <PersonSelector
-      v-model="personSelectorVisible"
-      :selected-person-id="selectedPersonId"
-      @confirm="handlePersonConfirm"
-      @cancel="handlePersonCancel"
+      v-model="personSelectorState.visible"
+      :selected-person-id="personSelectorState.selectedPersonId"
+      @confirm="onPersonConfirm"
+      @cancel="onPersonCancel"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed, getCurrentInstance } from 'vue'
+import { ref, watch, computed, getCurrentInstance, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import CompDialog from '@/comp/dialog/index.vue'
 import PersonSelector from '@/comp/person-selector/index.vue'
@@ -181,14 +272,30 @@ const tableData = ref([])
 const reasonOptions = ref([])
 const selectedRows = ref([])
 
+const getDefaultBatchFormData = () => ({
+  negotiationReason: '',
+  negotiationDate: '',
+  assignedResPersonName: '',
+  assignedResPerson: '',
+  negotiationContent: ''
+})
+
+const batchState = reactive({
+  drawerVisible: false,
+  selectedRows: [],
+  selectedRowsSnapshot: [],
+  formData: getDefaultBatchFormData()
+})
+
 const {
-  personSelectorVisible,
-  selectedPersonId,
+  personSelectorState,
   resetPersonSelectorState,
   openPersonSelector,
+  openDrawerPersonSelector,
   handlePersonConfirm,
   handlePersonCancel,
-  applyPersonToTable
+  removeAssignedPerson,
+  removeDrawerAssignedPerson
 } = usePersonSelector()
 
 watch(
@@ -216,11 +323,13 @@ const formatTableData = (dataSource = []) => {
     planTraceNo: item.planTraceNo || item.PlanTraceNo || '',
     businessType: item.businessType || 'PO',
     businessKey: item.businessKey || item.FENTRYID,
+    defaultResPersonName: item.defaultResPersonName || item.DefaultResPersonName || '',
+    defaultResPerson: item.defaultResPerson || item.DefaultResPerson || '',
     negotiationReason: item.negotiationReason || '',
     negotiationDate: item.negotiationDate || '',
     negotiationContent: item.negotiationContent || '',
     assignedResPersonName: item.assignedResPersonName || '',
-    assignedResPerson: item.assignedResPerson || null
+    assignedResPerson: item.assignedResPerson || ''
   }))
 }
 
@@ -255,6 +364,7 @@ const loadReasonOptions = async () => {
 
 const handleSelectionChange = (val) => {
   selectedRows.value = val
+  batchState.selectedRows = val
 }
 
 const clearFieldValidation = (index, field) => {
@@ -262,28 +372,61 @@ const clearFieldValidation = (index, field) => {
   formRef.value?.clearValidate?.(prop)
 }
 
-const onRemoveAssignedPerson = (rowIndex) => {
-  const row = tableData.value[rowIndex]
-  if (row) {
-    row.assignedResPerson = null
-    row.assignedResPersonName = ''
-  }
+const clearFormValidation = () => {
+  formRef.value?.clearValidate?.()
 }
 
-watch(applyPersonToTable, (val) => {
-  if (val?.targetRows) {
-    const { targetRows, person } = val
-    targetRows.forEach((row) => {
-      row.assignedResPerson = person
-      row.assignedResPersonName = person?.userTrueName || ''
-    })
+const onRemoveAssignedPerson = (rowIndex) => {
+  removeAssignedPerson(rowIndex, tableData.value)
+}
+
+const onBatchEdit = () => {
+  if (batchState.selectedRows.length === 0) {
+    ElMessage.warning('请先选择需要批量编辑的行')
+    return
   }
-})
+  batchState.selectedRowsSnapshot = [...batchState.selectedRows]
+  batchState.drawerVisible = true
+}
+
+const applyBatchEdit = () => {
+  const { negotiationReason, negotiationDate, assignedResPersonName, assignedResPerson, negotiationContent } =
+    batchState.formData
+
+  batchState.selectedRowsSnapshot.forEach((row) => {
+    if (negotiationReason) row.negotiationReason = negotiationReason
+    if (negotiationDate) row.negotiationDate = negotiationDate
+    if (negotiationContent) row.negotiationContent = negotiationContent
+
+    if (assignedResPersonName || assignedResPerson) {
+      row.assignedResPersonName = assignedResPersonName
+      row.assignedResPerson = assignedResPerson
+    }
+  })
+
+  clearFormValidation()
+}
+
+const resetBatchState = () => {
+  batchState.drawerVisible = false
+  batchState.selectedRowsSnapshot = []
+  Object.assign(batchState.formData, getDefaultBatchFormData())
+}
+
+const onDrawerConfirm = () => {
+  applyBatchEdit()
+  resetBatchState()
+}
+
+const onDrawerCancel = () => {
+  resetBatchState()
+}
 
 const handleCancel = () => {
   emit('cancel')
   emit('update:modelValue', false)
   resetPersonSelectorState()
+  resetBatchState()
 }
 
 const validateTable = async () => {
@@ -316,6 +459,15 @@ const handleConfirm = async () => {
   })
   emit('update:modelValue', false)
   resetPersonSelectorState()
+  resetBatchState()
+}
+
+const onPersonConfirm = (person) => {
+  handlePersonConfirm(person, tableData.value, batchState.formData)
+}
+
+const onPersonCancel = () => {
+  handlePersonCancel()
 }
 </script>
 
@@ -340,6 +492,12 @@ const handleConfirm = async () => {
   color: #606266;
 }
 
+.batch-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .assigned-person-container {
   display: flex;
   align-items: center;
@@ -359,5 +517,16 @@ const handleConfirm = async () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.drawer-content {
+  padding: 0 12px;
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 0;
 }
 </style>
