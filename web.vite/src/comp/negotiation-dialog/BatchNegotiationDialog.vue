@@ -150,10 +150,14 @@
       :destroy-on-close="true"
       append-to-body
     >
+      <template #header>
+        <h4>批量编辑 ({{ selectedRows.length }} 条记录)</h4>
+      </template>
+
       <div class="batch-edit-form">
         <el-form label-width="100px" :model="batchEditForm">
           <el-form-item label="协商原因">
-            <el-select v-model="batchEditForm.value.negotiationReason" placeholder="请选择协商原因" clearable filterable>
+            <el-select v-model="batchEditForm.negotiationReason" placeholder="请选择协商原因" clearable filterable>
               <el-option
                 v-for="option in reasonOptions"
                 :key="option.value"
@@ -164,7 +168,7 @@
           </el-form-item>
           <el-form-item label="协商日期">
             <el-date-picker
-              v-model="batchEditForm.value.negotiationDate"
+              v-model="batchEditForm.negotiationDate"
               type="date"
               placeholder="请选择"
               style="width: 100%"
@@ -175,22 +179,22 @@
           <el-form-item label="指定负责人">
             <div class="assigned-person-container">
               <el-tag
-                v-if="batchEditForm.value.assignedResPersonName"
+                v-if="batchEditForm.assignedResPersonName"
                 type="info"
                 size="small"
                 closable
                 @close="removeBatchEditAssignedPerson"
               >
-                {{ batchEditForm.value.assignedResPersonName }}
+                {{ batchEditForm.assignedResPersonName }}
               </el-tag>
               <el-button size="small" type="primary" link @click="openPersonSelectorForBatchEdit">
-                {{ batchEditForm.value.assignedResPersonName ? '重新选择' : '选择人员' }}
+                {{ batchEditForm.assignedResPersonName ? '重新选择' : '选择人员' }}
               </el-button>
             </div>
           </el-form-item>
           <el-form-item label="协商内容">
             <el-input
-              v-model="batchEditForm.value.negotiationContent"
+              v-model="batchEditForm.negotiationContent"
               type="textarea"
               :rows="3"
               placeholder="请输入协商内容"
@@ -211,7 +215,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, getCurrentInstance, onMounted } from 'vue'
+import { ref, watch, computed, getCurrentInstance, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import CompDialog from '@/comp/dialog/index.vue'
 import PersonSelector from '@/comp/person-selector/index.vue'
@@ -233,7 +237,7 @@ const reasonOptions = ref([])
 const selectedRows = ref([])
 
 const batchEditDrawerVisible = ref(false)
-const batchEditForm = ref({
+const batchEditForm = reactive({
   negotiationReason: '',
   negotiationDate: '',
   negotiationContent: '',
@@ -246,7 +250,7 @@ const currentRowIndex = ref(-1)
 const personSelectorMode = ref('row')
 const currentSelectedPersonId = computed(() => {
   if (personSelectorMode.value === 'batch') {
-    const person = batchEditForm.value.assignedResPerson
+    const person = batchEditForm.assignedResPerson
     if (!person) return ''
     return person.id || person.userId || person.userName || ''
   }
@@ -372,8 +376,8 @@ const openPersonSelectorForBatchEdit = () => {
 
 const handlePersonConfirm = (person) => {
   if (personSelectorMode.value === 'batch') {
-    batchEditForm.value.assignedResPerson = person
-    batchEditForm.value.assignedResPersonName = person?.userTrueName || person?.name || ''
+    batchEditForm.assignedResPerson = person
+    batchEditForm.assignedResPersonName = person?.userTrueName || person?.name || ''
   } else {
     if (currentRowIndex.value === -1) return
     const targetRow = tableData.value[currentRowIndex.value]
@@ -400,12 +404,20 @@ const removeAssignedPerson = (index) => {
 }
 
 const removeBatchEditAssignedPerson = () => {
-  batchEditForm.value.assignedResPerson = null
-  batchEditForm.value.assignedResPersonName = ''
+  batchEditForm.assignedResPerson = null
+  batchEditForm.assignedResPersonName = ''
 }
 
 const handleSelectionChange = (rows) => {
   selectedRows.value = rows || []
+}
+
+const resetBatchEditForm = () => {
+  batchEditForm.negotiationReason = ''
+  batchEditForm.negotiationDate = ''
+  batchEditForm.negotiationContent = ''
+  batchEditForm.assignedResPerson = null
+  batchEditForm.assignedResPersonName = ''
 }
 
 const openBatchEditDrawer = () => {
@@ -413,6 +425,7 @@ const openBatchEditDrawer = () => {
     ElMessage.warning('请先选择需要批量编辑的行')
     return
   }
+  resetBatchEditForm()
   batchEditDrawerVisible.value = true
 }
 
@@ -423,7 +436,7 @@ const applyBatchEdit = () => {
   }
 
   const { negotiationReason, negotiationDate, negotiationContent, assignedResPerson, assignedResPersonName } =
-    batchEditForm.value
+    batchEditForm
 
   selectedRows.value.forEach((row) => {
     if (negotiationReason) row.negotiationReason = negotiationReason
