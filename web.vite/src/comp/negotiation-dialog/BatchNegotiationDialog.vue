@@ -11,13 +11,32 @@
             class="mb-2"
           />
 
+          <div class="batch-operations" v-if="tableData.length > 0">
+            <el-button
+              size="small"
+              type="primary"
+              :disabled="selectedRows.length === 0"
+              @click="openBatchEditDrawer"
+            >
+              批量编辑 ({{ selectedRows.length }})
+            </el-button>
+          </div>
+
           <el-form ref="formRef" :model="{ tableData }" label-width="0">
-            <el-table :data="tableData" stripe border height="100%" empty-text="暂无数据">
+            <el-table
+              ref="tableRef"
+              :data="tableData"
+              stripe
+              border
+              height="100%"
+              empty-text="暂无数据"
+              @selection-change="handleSelectionChange"
+            >
+              <el-table-column type="selection" width="55" align="center" />
               <el-table-column type="index" label="#" width="50" align="center" />
               <el-table-column prop="billNo" label="采购订单编号" width="160" align="center" />
               <el-table-column prop="seq" label="行号" width="80" align="center" />
-              <el-table-column prop="planTrackNo" label="计划跟踪号" width="160" align="center" />
-              <el-table-column prop="businessKey" label="业务键" width="200" align="center" />
+              <el-table-column prop="planTraceNo" label="计划跟踪号" width="160" align="center" />
               <el-table-column label="协商原因" width="180" align="center">
                 <template #default="{ row, $index }">
                   <el-form-item
@@ -123,6 +142,71 @@
       @confirm="handlePersonConfirm"
       @cancel="handlePersonCancel"
     />
+
+    <el-drawer
+      v-model="batchEditDrawerVisible"
+      title="批量编辑"
+      size="40%"
+      :destroy-on-close="true"
+      append-to-body
+    >
+      <div class="batch-edit-form">
+        <el-form label-width="100px" :model="batchEditForm">
+          <el-form-item label="协商原因">
+            <el-select v-model="batchEditForm.value.negotiationReason" placeholder="请选择协商原因" clearable filterable>
+              <el-option
+                v-for="option in reasonOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="协商日期">
+            <el-date-picker
+              v-model="batchEditForm.value.negotiationDate"
+              type="date"
+              placeholder="请选择"
+              style="width: 100%"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+            />
+          </el-form-item>
+          <el-form-item label="指定负责人">
+            <div class="assigned-person-container">
+              <el-tag
+                v-if="batchEditForm.value.assignedResPersonName"
+                type="info"
+                size="small"
+                closable
+                @close="removeBatchEditAssignedPerson"
+              >
+                {{ batchEditForm.value.assignedResPersonName }}
+              </el-tag>
+              <el-button size="small" type="primary" link @click="openPersonSelectorForBatchEdit">
+                {{ batchEditForm.value.assignedResPersonName ? '重新选择' : '选择人员' }}
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="协商内容">
+            <el-input
+              v-model="batchEditForm.value.negotiationContent"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入协商内容"
+              clearable
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <template #footer>
+        <div class="batch-edit-footer">
+          <el-button @click="batchEditDrawerVisible = false">取消</el-button>
+          <el-button type="primary" @click="applyBatchEdit">应用</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -143,12 +227,30 @@ const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
 
 const visible = ref(false)
 const formRef = ref(null)
+const tableRef = ref(null)
 const tableData = ref([])
 const reasonOptions = ref([])
+const selectedRows = ref([])
+
+const batchEditDrawerVisible = ref(false)
+const batchEditForm = ref({
+  negotiationReason: '',
+  negotiationDate: '',
+  negotiationContent: '',
+  assignedResPerson: null,
+  assignedResPersonName: ''
+})
 
 const personSelectorVisible = ref(false)
 const currentRowIndex = ref(-1)
+const personSelectorMode = ref('row')
 const currentSelectedPersonId = computed(() => {
+  if (personSelectorMode.value === 'batch') {
+    const person = batchEditForm.value.assignedResPerson
+    if (!person) return ''
+    return person.id || person.userId || person.userName || ''
+  }
+
   const row = tableData.value[currentRowIndex.value]
   const person = row?.assignedResPerson
   if (!person) return ''
@@ -161,7 +263,7 @@ const normalizeRow = (row = {}) => ({
   ...row,
   billNo: row.billNo || row.POBillNo || '',
   seq: row.seq ?? row.Seq ?? '',
-  planTrackNo: row.planTrackNo || row.PlanTraceNo || row.PlanTrackNo || row.TrackId || row.PlanTrackId || '',
+  planTraceNo: row.planTraceNo || row.PlanTraceNo || row.PlanTrackNo || row.TrackId || row.PlanTrackId || '',
   trackId: row.trackId || row.TrackId || '',
   businessKey: row.businessKey || row.FENTRYID || '',
   negotiationReason: row.negotiationReason || row.NegotiationReason || '',
@@ -242,8 +344,9 @@ const handleConfirm = async () => {
   const payload = tableData.value.map((row) => ({
     billNo: row.billNo || '',
     seq: row.seq ?? '',
-    planTrackNo: row.planTrackNo || row.trackId || '',
-    trackId: row.trackId || row.planTrackNo || '',
+    planTraceNo: row.planTraceNo || row.trackId || '',
+    planTrackNo: row.planTraceNo || row.trackId || '',
+    trackId: row.trackId || row.planTraceNo || '',
     businessKey: row.businessKey || '',
     negotiationReason: row.negotiationReason,
     negotiationDate: row.negotiationDate,
@@ -258,21 +361,35 @@ const handleConfirm = async () => {
 
 const openPersonSelector = (index) => {
   currentRowIndex.value = index
+  personSelectorMode.value = 'row'
+  personSelectorVisible.value = true
+}
+
+const openPersonSelectorForBatchEdit = () => {
+  personSelectorMode.value = 'batch'
   personSelectorVisible.value = true
 }
 
 const handlePersonConfirm = (person) => {
-  if (currentRowIndex.value === -1) return
-  const targetRow = tableData.value[currentRowIndex.value]
-  targetRow.assignedResPerson = person
-  targetRow.assignedResPersonName = person?.userTrueName || person?.name || ''
+  if (personSelectorMode.value === 'batch') {
+    batchEditForm.value.assignedResPerson = person
+    batchEditForm.value.assignedResPersonName = person?.userTrueName || person?.name || ''
+  } else {
+    if (currentRowIndex.value === -1) return
+    const targetRow = tableData.value[currentRowIndex.value]
+    targetRow.assignedResPerson = person
+    targetRow.assignedResPersonName = person?.userTrueName || person?.name || ''
+  }
+
   personSelectorVisible.value = false
   currentRowIndex.value = -1
+  personSelectorMode.value = 'row'
 }
 
 const handlePersonCancel = () => {
   personSelectorVisible.value = false
   currentRowIndex.value = -1
+  personSelectorMode.value = 'row'
 }
 
 const removeAssignedPerson = (index) => {
@@ -280,6 +397,47 @@ const removeAssignedPerson = (index) => {
   if (!row) return
   row.assignedResPerson = null
   row.assignedResPersonName = ''
+}
+
+const removeBatchEditAssignedPerson = () => {
+  batchEditForm.value.assignedResPerson = null
+  batchEditForm.value.assignedResPersonName = ''
+}
+
+const handleSelectionChange = (rows) => {
+  selectedRows.value = rows || []
+}
+
+const openBatchEditDrawer = () => {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择需要批量编辑的行')
+    return
+  }
+  batchEditDrawerVisible.value = true
+}
+
+const applyBatchEdit = () => {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择需要批量编辑的行')
+    return
+  }
+
+  const { negotiationReason, negotiationDate, negotiationContent, assignedResPerson, assignedResPersonName } =
+    batchEditForm.value
+
+  selectedRows.value.forEach((row) => {
+    if (negotiationReason) row.negotiationReason = negotiationReason
+    if (negotiationDate) row.negotiationDate = negotiationDate
+    if (negotiationContent) row.negotiationContent = negotiationContent
+    if (assignedResPerson || assignedResPersonName) {
+      row.assignedResPerson = assignedResPerson
+      row.assignedResPersonName = assignedResPersonName
+    }
+  })
+
+  batchEditDrawerVisible.value = false
+  // 触发表单校验刷新
+  tableRef.value?.doLayout?.()
 }
 
 watch(
@@ -293,6 +451,7 @@ watch(
   () => props.data,
   (val) => {
     tableData.value = (val || []).map((row) => normalizeRow(row))
+    selectedRows.value = []
   },
   { immediate: true, deep: true }
 )
@@ -309,6 +468,10 @@ onMounted(() => {
   padding: 16px;
   max-height: 70vh;
   overflow: auto;
+}
+
+.batch-operations {
+  margin-bottom: 12px;
 }
 
 .dialog-footer {
@@ -335,5 +498,16 @@ onMounted(() => {
 
 .mb-2 {
   margin-bottom: 12px;
+}
+
+.batch-edit-form {
+  padding: 12px 8px;
+}
+
+.batch-edit-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 0;
 }
 </style>
