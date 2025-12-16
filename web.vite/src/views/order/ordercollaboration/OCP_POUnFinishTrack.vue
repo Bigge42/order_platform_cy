@@ -402,7 +402,9 @@ const handleBatchNegotiation = () => {
     planTraceNo: row.PlanTraceNo,
     businessKey: row.FENTRYID,
     businessType: 'PO',
-    SupplierCode: row.SupplierCode
+    SupplierCode: row.SupplierCode,
+    defaultResPersonName: row.DefaultResPersonName || '',
+    defaultResPerson: row.DefaultResPerson || ''
   }))
 
   batchNegotiationDialogVisible.value = true
@@ -421,6 +423,10 @@ const handleBatchNegotiationConfirm = async (eventData) => {
   let failCount = 0
 
   for (const item of negotiationList) {
+    const assignedResPersonName =
+      item.assignedResPersonName || item.AssignedResPersonName || item.assignedResPerson?.userTrueName || ''
+    const assignedResPerson = item.assignedResPerson || item.AssignedResPerson || item.assignedResPerson?.userName || ''
+
     const submitData = {
       BusinessType: item.businessType || 'PO',
       BusinessKey: item.businessKey,
@@ -431,10 +437,10 @@ const handleBatchNegotiationConfirm = async (eventData) => {
       NegotiationReason: item.negotiationReason,
       NegotiationDate: item.negotiationDate,
       NegotiationContent: item.negotiationContent,
-      DefaultResPersonName: item.DefaultResPersonName || '',
-      DefaultResPerson: item.DefaultResPerson || '',
-      AssignedResPersonName: item.assignedResPerson?.userTrueName || item.assignedResPersonName || '',
-      AssignedResPerson: item.assignedResPerson?.userName || item.AssignedResPerson || ''
+      DefaultResPersonName: item.defaultResPersonName || item.DefaultResPersonName || '',
+      DefaultResPerson: item.defaultResPerson || item.DefaultResPerson || '',
+      AssignedResPersonName: assignedResPersonName,
+      AssignedResPerson: assignedResPerson
     }
 
     try {
