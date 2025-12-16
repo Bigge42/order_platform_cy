@@ -45,16 +45,6 @@
     @cancel="handleBatchReminderCancel"
   />
 
-  <!-- 批量协商弹窗组件 -->
-  <BatchNegotiationDialog
-    v-model="batchNegotiationDialogVisible"
-    :data="batchNegotiationData"
-    title="批量协商"
-    width="90%"
-    @confirm="handleBatchNegotiationConfirm"
-    @cancel="handleBatchNegotiationCancel"
-  />
-
   <!-- 发起协商弹窗组件 -->
   <NegotiationDialog
     v-model="negotiationDialogVisible"
@@ -72,7 +62,6 @@ import viewOptions from './OCP_POUnFinishTrack/options.js'
 import ReminderDialog from '@/comp/reminder-dialog/index.vue'
 import BatchReminderDialog from '@/comp/reminder-dialog/batch.vue'
 import NegotiationDialog from '@/comp/negotiation-dialog/index.vue'
-import BatchNegotiationDialog from '@/comp/negotiation-dialog/batch.vue'
 import MessageBoard from '@/comp/message-board/index.vue'
 import { useRoute } from 'vue-router'
 import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
@@ -102,10 +91,6 @@ const followUpReminderData = ref({})
 // 批量催单弹窗相关
 const batchReminderDialogVisible = ref(false)
 const batchReminderData = ref([])
-
-// 批量协商弹窗相关
-const batchNegotiationDialogVisible = ref(false)
-const batchNegotiationData = ref([])
 
 // 发起协商弹窗相关
 const negotiationDialogVisible = ref(false)
@@ -139,40 +124,12 @@ const onInit = async ($vm) => {
 }
 //生成对象属性初始化后,操作明细表配置用到
 const onInited = async () => {
-  // 添加批量催单按钮（避免重复追加）
-  if (!gridRef.buttons.some((btn) => btn.name === '批量催单')) {
-    gridRef.buttons.push({
-      name: '批量催单',
-      icon: 'el-icon-bell',
-      type: 'warning',
-      onClick: handleBatchReminder
-    })
-  }
-
-  // 添加批量协商按钮（避免重复追加）
-  if (!gridRef.buttons.some((btn) => btn.name === '批量协商')) {
-    gridRef.buttons.push({
-      name: '批量协商',
-      icon: 'el-icon-chat-dot-round',
-      type: 'primary',
-      onClick: handleBatchNegotiation
-    })
-  }
-
-  // 添加批量协商按钮
+  // 添加批量催单按钮
   gridRef.buttons.push({
-    name: '批量协商',
-    icon: 'el-icon-chat-dot-round',
-    type: 'primary',
-    onClick: handleBatchNegotiation
-  })
-
-  // 添加批量协商按钮（参考批量催单逻辑）
-  gridRef.buttons.push({
-    name: '批量协商',
-    icon: 'el-icon-chat-dot-round',
-    type: 'primary',
-    onClick: handleBatchNegotiate
+    name: '批量催单',
+    icon: 'el-icon-bell',
+    type: 'warning',
+    onClick: handleBatchReminder
   })
 
   // 应用预警样式(在表格初始化完成后,添加列之前应用)
@@ -195,10 +152,10 @@ const onInited = async () => {
           >
             跳转缺料
           </el-button>
-          {/* <el-button 
-                            type="primary" 
-                            link 
-                            style={{padding: '2px 4px', fontSize: '12px'}} 
+          {/* <el-button
+                            type="primary"
+                            link
+                            style={{padding: '2px 4px', fontSize: '12px'}}
                             onClick={($e) => handleJumpToPurchase(row)}>跳转采购</el-button> */}
         </div>
       )
@@ -406,38 +363,6 @@ const handleBatchReminderCancel = () => {
   batchReminderData.value = []
 }
 
-// 批量协商处理（参考批量催单逻辑）
-const handleBatchNegotiate = () => {
-  const selectedRows = gridRef.getTable(true).getSelected()
-
-  if (!selectedRows || selectedRows.length === 0) {
-    ElMessage.warning('请先选择要协商的数据')
-    return
-  }
-
-  batchNegotiationData.value = selectedRows.map((row) => ({
-    ...row,
-    billNo: row.POBillNo,
-    seq: row.Seq,
-    planTraceNo: row.PlanTraceNo,
-    businessKey: row.FENTRYID,
-    businessType: 'PO',
-    defaultResPersonName: row.DefaultResPersonName || '',
-    defaultResPerson: row.DefaultResPerson || ''
-  }))
-  batchNegotiationDialogVisible.value = true
-}
-
-const handleBatchNegotiationConfirm = (eventData) => {
-  console.log('批量协商确认:', eventData)
-  batchNegotiationDialogVisible.value = false
-}
-
-const handleBatchNegotiationCancel = () => {
-  console.log('取消批量协商')
-  batchNegotiationData.value = []
-}
-
 // 协商操作
 const handleNegotiate = (row) => {
   console.log('协商操作:', row)
@@ -605,16 +530,6 @@ defineExpose({
   closeBatchReminderDialog: () => {
     batchReminderDialogVisible.value = false
     batchReminderData.value = []
-  },
-  openBatchNegotiationDialog: (selectedData) => {
-    if (selectedData && selectedData.length > 0) {
-      batchNegotiationData.value = selectedData
-    }
-    batchNegotiationDialogVisible.value = true
-  },
-  closeBatchNegotiationDialog: () => {
-    batchNegotiationDialogVisible.value = false
-    batchNegotiationData.value = []
   }
 })
 </script>
