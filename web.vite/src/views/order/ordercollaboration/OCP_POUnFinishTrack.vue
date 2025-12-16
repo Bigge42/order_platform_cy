@@ -139,13 +139,25 @@ const onInit = async ($vm) => {
 }
 //生成对象属性初始化后,操作明细表配置用到
 const onInited = async () => {
-  // 添加批量催单按钮
-  gridRef.buttons.push({
-    name: '批量催单',
-    icon: 'el-icon-bell',
-    type: 'warning',
-    onClick: handleBatchReminder
-  })
+  // 添加批量催单按钮（避免重复追加）
+  if (!gridRef.buttons.some((btn) => btn.name === '批量催单')) {
+    gridRef.buttons.push({
+      name: '批量催单',
+      icon: 'el-icon-bell',
+      type: 'warning',
+      onClick: handleBatchReminder
+    })
+  }
+
+  // 添加批量协商按钮（避免重复追加）
+  if (!gridRef.buttons.some((btn) => btn.name === '批量协商')) {
+    gridRef.buttons.push({
+      name: '批量协商',
+      icon: 'el-icon-chat-dot-round',
+      type: 'primary',
+      onClick: handleBatchNegotiation
+    })
+  }
 
   // 添加批量协商按钮
   gridRef.buttons.push({
