@@ -130,8 +130,10 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="handleCancel">取消</el-button>
-          <el-button type="primary" @click="handleConfirm">确定</el-button>
+          <el-button @click="handleCancel" :disabled="confirmLoading">取消</el-button>
+          <el-button type="primary" :loading="confirmLoading" :disabled="confirmLoading" @click="handleConfirm">
+            确定
+          </el-button>
         </div>
       </template>
     </CompDialog>
@@ -224,7 +226,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   data: { type: Array, default: () => [] },
   title: { type: String, default: '批量协商' },
-  width: { type: [String, Number], default: '90%' }
+  width: { type: [String, Number], default: '90%' },
+  confirmLoading: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
