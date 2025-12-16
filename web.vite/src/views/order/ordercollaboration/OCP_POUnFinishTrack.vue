@@ -59,6 +59,7 @@
     :data="batchNegotiationData"
     title="批量协商"
     width="90%"
+    :confirm-loading="batchNegotiationSubmitting"
     @confirm="handleBatchNegotiationConfirm"
     @cancel="handleBatchNegotiationCancel"
   />
@@ -76,7 +77,7 @@ import BatchNegotiationDialog from '@/comp/negotiation-dialog/BatchNegotiationDi
 import MessageBoard from '@/comp/message-board/index.vue'
 import { useRoute } from 'vue-router'
 import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 import { applyAlertWarningStyle } from '@/utils/alertWarning'
 
 const grid = ref(null)
@@ -110,6 +111,7 @@ const negotiationDialogData = ref({})
 // 批量协商弹窗相关
 const batchNegotiationDialogVisible = ref(false)
 const batchNegotiationData = ref([])
+const batchNegotiationSubmitting = ref(false)
 
 // 留言板ref
 const messageBoardRef = ref(null)
@@ -408,6 +410,8 @@ const handleBatchNegotiate = () => {
 
 // 批量协商确认
 const handleBatchNegotiationConfirm = async (negotiationRows) => {
+  if (batchNegotiationSubmitting.value) return
+
   if (!negotiationRows || negotiationRows.length === 0) {
     batchNegotiationDialogVisible.value = false
     return
@@ -431,6 +435,9 @@ const handleBatchNegotiationConfirm = async (negotiationRows) => {
       row.assignedResPersonName || row.assignedResPerson?.userTrueName || row.assignedResPerson?.name || ''
   }))
 
+  batchNegotiationSubmitting.value = true
+  const loadingInstance = ElLoading.service({ lock: true, text: '批量协商提交中...' })
+
   try {
     const failedItems = []
 
@@ -451,6 +458,9 @@ const handleBatchNegotiationConfirm = async (negotiationRows) => {
   } catch (error) {
     console.error('批量协商失败:', error)
     ElMessage.error('批量协商失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+    batchNegotiationSubmitting.value = false
   }
 }
 
