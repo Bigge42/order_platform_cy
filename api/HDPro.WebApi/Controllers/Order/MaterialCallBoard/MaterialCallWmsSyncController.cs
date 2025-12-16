@@ -24,7 +24,6 @@ namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
 
         /// <summary>内部调用 WMS → 刷新白名单快照 → 立即按白名单删除叫料看板缺席项</summary>
         [HttpPost("wms-sync-prune")]
-        [ApiTask]
         [AllowAnonymous]
         public async Task<IActionResult> SyncFromWmsAndPrune()
         {
