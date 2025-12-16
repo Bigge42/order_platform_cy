@@ -167,6 +167,14 @@ const onInited = async () => {
     onClick: handleBatchNegotiation
   })
 
+  // 添加批量协商按钮（参考批量催单逻辑）
+  gridRef.buttons.push({
+    name: '批量协商',
+    icon: 'el-icon-chat-dot-round',
+    type: 'primary',
+    onClick: handleBatchNegotiate
+  })
+
   // 应用预警样式(在表格初始化完成后,添加列之前应用)
   applyAlertWarningStyle(viewOpts.columns)
 
@@ -398,8 +406,8 @@ const handleBatchReminderCancel = () => {
   batchReminderData.value = []
 }
 
-// 批量协商处理
-const handleBatchNegotiation = () => {
+// 批量协商处理（参考批量催单逻辑）
+const handleBatchNegotiate = () => {
   const selectedRows = gridRef.getTable(true).getSelected()
 
   if (!selectedRows || selectedRows.length === 0) {
@@ -409,79 +417,24 @@ const handleBatchNegotiation = () => {
 
   batchNegotiationData.value = selectedRows.map((row) => ({
     ...row,
-    seq: row.Seq,
     billNo: row.POBillNo,
+    seq: row.Seq,
     planTraceNo: row.PlanTraceNo,
     businessKey: row.FENTRYID,
     businessType: 'PO',
-    SupplierCode: row.SupplierCode,
     defaultResPersonName: row.DefaultResPersonName || '',
     defaultResPerson: row.DefaultResPerson || ''
   }))
-
   batchNegotiationDialogVisible.value = true
 }
 
-// 批量协商确认
-const handleBatchNegotiationConfirm = async (eventData) => {
-  const negotiationList = eventData?.data || []
-
-  if (negotiationList.length === 0) {
-    ElMessage.warning('没有可提交的协商数据')
-    return
-  }
-
-  let successCount = 0
-  let failCount = 0
-
-  for (const item of negotiationList) {
-    const assignedResPersonName =
-      item.assignedResPersonName || item.AssignedResPersonName || item.assignedResPerson?.userTrueName || ''
-    const assignedResPerson = item.assignedResPerson || item.AssignedResPerson || item.assignedResPerson?.userName || ''
-
-    const submitData = {
-      BusinessType: item.businessType || 'PO',
-      BusinessKey: item.businessKey,
-      BillNo: item.billNo || '',
-      SupplierCode: item.SupplierCode || '',
-      Seq: item.seq || '',
-      PlanTraceNo: item.planTraceNo || '',
-      NegotiationReason: item.negotiationReason,
-      NegotiationDate: item.negotiationDate,
-      NegotiationContent: item.negotiationContent,
-      DefaultResPersonName: item.defaultResPersonName || item.DefaultResPersonName || '',
-      DefaultResPerson: item.defaultResPerson || item.DefaultResPerson || '',
-      AssignedResPersonName: assignedResPersonName,
-      AssignedResPerson: assignedResPerson
-    }
-
-    try {
-      const response = await proxy.http.post('/api/OCP_Negotiation/add', { mainData: submitData })
-      if (response.status) {
-        successCount += 1
-      } else {
-        failCount += 1
-      }
-    } catch (error) {
-      console.error('批量协商提交失败:', error)
-      failCount += 1
-    }
-  }
-
+const handleBatchNegotiationConfirm = (eventData) => {
+  console.log('批量协商确认:', eventData)
   batchNegotiationDialogVisible.value = false
-  batchNegotiationData.value = []
-  gridRef.search()
-
-  if (failCount === 0) {
-    ElMessage.success(`批量协商提交成功，共提交 ${successCount} 条`) 
-  } else {
-    ElMessage.warning(`批量协商完成，成功 ${successCount} 条，失败 ${failCount} 条`)
-  }
 }
 
-// 批量协商取消
 const handleBatchNegotiationCancel = () => {
-  batchNegotiationDialogVisible.value = false
+  console.log('取消批量协商')
   batchNegotiationData.value = []
 }
 
