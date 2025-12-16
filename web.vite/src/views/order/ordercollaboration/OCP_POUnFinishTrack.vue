@@ -393,7 +393,7 @@ const handleBatchNegotiate = () => {
     ...row,
     billNo: row.POBillNo,
     seq: row.Seq,
-    planTrackNo: row.TrackId || row.PlanTraceNo || row.PlanTrackNo,
+    planTraceNo: row.PlanTraceNo || row.PlanTrackNo || row.TrackId,
     trackId: row.TrackId,
     businessKey: row.FENTRYID
   }))
@@ -411,8 +411,9 @@ const handleBatchNegotiationConfirm = async (negotiationRows) => {
   const submitList = negotiationRows.map((row) => ({
     BillNo: row.billNo || '',
     Seq: row.seq || '',
-    PlanTrackNo: row.planTrackNo || row.trackId || '',
-    TrackId: row.trackId || row.planTrackNo || '',
+    PlanTraceNo: row.planTraceNo || row.trackId || '',
+    PlanTrackNo: row.planTraceNo || row.trackId || '',
+    TrackId: row.trackId || row.planTraceNo || '',
     BusinessKey: row.businessKey || '',
     NegotiationReason: row.negotiationReason,
     NegotiationDate: row.negotiationDate,
