@@ -395,7 +395,12 @@ const handleBatchNegotiate = () => {
     seq: row.Seq,
     planTraceNo: row.PlanTraceNo || row.PlanTrackNo || row.TrackId,
     trackId: row.TrackId,
-    businessKey: row.FENTRYID
+    businessKey: row.FENTRYID,
+    negotiationReason: row.NegotiationReason || row.negotiationReason || '',
+    negotiationDate: row.NegotiationDate || row.negotiationDate || '',
+    negotiationContent: row.NegotiationContent || row.negotiationContent || '',
+    assignedResPerson: row.AssignedResPerson || row.assignedResPerson || null,
+    assignedResPersonName: row.AssignedResPersonName || row.assignedResPersonName || ''
   }))
 
   batchNegotiationDialogVisible.value = true
@@ -409,28 +414,39 @@ const handleBatchNegotiationConfirm = async (negotiationRows) => {
   }
 
   const submitList = negotiationRows.map((row) => ({
+    BusinessType: 'PO',
+    BusinessKey: row.businessKey || '',
     BillNo: row.billNo || '',
     Seq: row.seq || '',
     PlanTraceNo: row.planTraceNo || row.trackId || '',
     PlanTrackNo: row.planTraceNo || row.trackId || '',
     TrackId: row.trackId || row.planTraceNo || '',
-    BusinessKey: row.businessKey || '',
+    SupplierCode: row.SupplierCode || row.supplierCode || '',
     NegotiationReason: row.negotiationReason,
     NegotiationDate: row.negotiationDate,
     NegotiationContent: row.negotiationContent,
-    AssignedResPerson: row.assignedResPerson || '',
-    AssignedResPersonName: row.assignedResPersonName || ''
+    AssignedResPerson:
+      row.assignedResPerson?.userName || row.assignedResPerson?.id || row.assignedResPerson || '',
+    AssignedResPersonName:
+      row.assignedResPersonName || row.assignedResPerson?.userTrueName || row.assignedResPerson?.name || ''
   }))
 
   try {
-    const response = await proxy.http.post('/api/OCP_Negotiation/BatchAdd', { items: submitList })
+    const failedItems = []
 
-    if (response?.status) {
-      ElMessage.success(response.message || '批量协商成功')
+    for (const item of submitList) {
+      const response = await proxy.http.post('/api/OCP_Negotiation/add', { mainData: item })
+      if (!response?.status) {
+        failedItems.push({ item, message: response?.message })
+      }
+    }
+
+    if (failedItems.length === 0) {
+      ElMessage.success('批量协商成功')
       batchNegotiationDialogVisible.value = false
       gridRef.search()
     } else {
-      ElMessage.error(response?.message || '批量协商失败')
+      ElMessage.error(failedItems[0].message || '部分协商提交失败，请重试')
     }
   } catch (error) {
     console.error('批量协商失败:', error)
