@@ -613,3 +613,153 @@ private async Task<int> ProcessSingleBatch(List<TESBData> batchData, int current
 ### 注意事项
 ⚠️ **不要自动git提交修改** - 请在充分测试后手动提交
 
+---
+
+## 2024-12-20 批量修复所有ESB同步服务的实体跟踪冲突
+
+### 会话主要目的
+参照 `OCP_POUnFinishTrack` 的修复方案，为所有其他ESB同步服务添加相同的实体跟踪冲突修复。
+
+### 修复的服务列表
+
+已完成修复的7个ESB同步服务：
+
+1. **OCP_SubOrderUnFinishTrack** - 委外未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\SubOrder\SubOrderUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`FENTRYID`
+
+2. **OCP_TechManagement** - 技术管理
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\TechManagement\TechManagementESBSyncService.cs`
+   - 匹配字段：`SOEntryID`
+
+3. **OCP_PartUnFinishTracking** - 部件未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Part\PartUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+4. **OCP_PrdMOTracking** - 整机跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\WholeUnit\WholeUnitTrackingESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+5. **OCP_JGUnFinishTrack** - 金工未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Metalwork\MetalworkUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+6. **OCP_OrderTracking** - 订单跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\OrderTracking\OrderTrackingESBSyncService.cs`
+   - 匹配字段：`SOEntryID`
+
+7. **OCP_LackMtrlResult** - 缺料运算结果
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\LackMaterial\LackMtrlResultESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+### 统一的修复方案
+
+每个服务都应用了以下两处修复：
+
+#### 1. QueryExistingRecords 方法修复
+```csharp
+protected override async Task<List<TEntity>> QueryExistingRecords(List<object> keys)
+{
+    var keyList = keys.Cast<TKeyType>().Distinct().ToList();  // 添加 Distinct()
+    return await Task.Run(() =>
+        _repository.FindAsIQueryable(x => keyList.Contains(x.MatchField))
+        .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
+        .ToList());
+}
+```
+
+#### 2. ExecuteBatchOperations 方法修复
+```csharp
+protected override async Task<WebResponseContent> ExecuteBatchOperations(List<TEntity> toUpdate, List<TEntity> toInsert)
+{
+    return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
+    {
+        try
+        {
+            // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+            _repository.DbContext.ChangeTracker.Clear();
+
+            // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的匹配字段
+            var distinctToUpdate = toUpdate.GroupBy(x => x.MatchField).Select(g => g.First()).ToList();
+            var distinctToInsert = toInsert.GroupBy(x => x.MatchField).Select(g => g.First()).ToList();
+
+            if (distinctToUpdate.Count < toUpdate.Count)
+            {
+                ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+            }
+            if (distinctToInsert.Count < toInsert.Count)
+            {
+                ESBLogger.LogWarning($"检测到 {toInsert.Count - distinctToInsert.Count} 条重复的插入记录已被去重");
+            }
+
+            // 使用去重后的列表进行批量操作
+            if (distinctToUpdate.Any())
+            {
+                _repository.UpdateRange(distinctToUpdate, false);
+            }
+            if (distinctToInsert.Any())
+            {
+                _repository.AddRange(distinctToInsert, false);
+            }
+
+            _repository.SaveChanges();
+
+            return webResponse.OK($"批量操作成功，更新 {distinctToUpdate.Count} 条，新增 {distinctToInsert.Count} 条");
+        }
+        catch (Exception ex)
+        {
+            ESBLogger.LogError(ex, "批量操作失败");
+            return webResponse.Error($"批量操作失败：{ex.Message}");
+        }
+    }));
+}
+```
+
+### 关键技术点
+
+1. **AsNoTracking()**: 查询时不跟踪实体，避免自动跟踪导致的冲突
+2. **ChangeTracker.Clear()**: 批量操作前清理所有已跟踪的实体
+3. **Distinct()**: 对查询键值去重，避免重复查询
+4. **GroupBy 去重**: 对待更新/插入列表按匹配字段去重
+5. **警告日志**: 记录去重信息，便于发现数据问题
+
+### 修改的文件总结
+
+| 序号 | 文件路径 | 实体 | 匹配字段 |
+|------|---------|------|---------|
+| 1 | `SubOrder\SubOrderUnFinishTrackESBSyncService.cs` | OCP_SubOrderUnFinishTrack | FENTRYID |
+| 2 | `TechManagement\TechManagementESBSyncService.cs` | OCP_TechManagement | SOEntryID |
+| 3 | `Part\PartUnFinishTrackESBSyncService.cs` | OCP_PartUnFinishTracking | ESBID |
+| 4 | `WholeUnit\WholeUnitTrackingESBSyncService.cs` | OCP_PrdMOTracking | ESBID |
+| 5 | `Metalwork\MetalworkUnFinishTrackESBSyncService.cs` | OCP_JGUnFinishTrack | ESBID |
+| 6 | `OrderTracking\OrderTrackingESBSyncService.cs` | OCP_OrderTracking | SOEntryID |
+| 7 | `LackMaterial\LackMtrlResultESBSyncService.cs` | OCP_LackMtrlResult | ESBID |
+| 8 | `Purchase\PurchaseOrderUnFinishTrackESBSyncService.cs` | OCP_POUnFinishTrack | FENTRYID |
+
+### 影响范围
+
+✅ **全面覆盖**: 所有主要的ESB同步服务都已修复
+✅ **统一方案**: 使用相同的修复模式，便于维护
+✅ **向后兼容**: 修复不影响现有功能，只是增强了健壮性
+
+### 测试建议
+
+1. **逐个测试**: 依次测试每个ESB同步服务
+2. **观察日志**: 检查是否有去重警告信息
+3. **数据验证**: 确认同步后的数据准确性
+4. **压力测试**: 测试大批量数据同步场景
+5. **异常场景**: 测试包含重复数据的ESB数据源
+
+### 预期效果
+
+✅ **消除错误**: 不再出现实体跟踪冲突错误
+✅ **数据准确**: 去重逻辑确保数据一致性
+✅ **可观测性**: 警告日志帮助发现数据质量问题
+✅ **性能优化**: AsNoTracking 减少不必要的跟踪开销
+
+### 注意事项
+
+⚠️ **不要自动git提交修改** - 请在充分测试后手动提交
+⚠️ **关注警告日志** - 如果频繁出现去重警告，需要检查ESB数据源
+⚠️ **数据验证** - 同步后务必验证数据的准确性和完整性
+
