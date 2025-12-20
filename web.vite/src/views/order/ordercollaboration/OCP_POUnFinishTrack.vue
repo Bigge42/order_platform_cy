@@ -53,6 +53,17 @@
     @cancel="handleNegotiationCancel"
   />
 
+  <!-- 批量协商弹窗组件 -->
+  <BatchNegotiationDialog
+    v-model="batchNegotiationDialogVisible"
+    :data="batchNegotiationData"
+    title="批量协商"
+    width="90%"
+    :confirm-loading="batchNegotiationSubmitting"
+    @confirm="handleBatchNegotiationConfirm"
+    @cancel="handleBatchNegotiationCancel"
+  />
+
   <!-- 留言板弹窗组件 -->
   <MessageBoard ref="messageBoardRef" />
 </template>
@@ -62,10 +73,11 @@ import viewOptions from './OCP_POUnFinishTrack/options.js'
 import ReminderDialog from '@/comp/reminder-dialog/index.vue'
 import BatchReminderDialog from '@/comp/reminder-dialog/batch.vue'
 import NegotiationDialog from '@/comp/negotiation-dialog/index.vue'
+import BatchNegotiationDialog from '@/comp/negotiation-dialog/BatchNegotiationDialog.vue'
 import MessageBoard from '@/comp/message-board/index.vue'
 import { useRoute } from 'vue-router'
 import { ref, reactive, getCurrentInstance, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 import { applyAlertWarningStyle } from '@/utils/alertWarning'
 
 const grid = ref(null)
@@ -95,6 +107,11 @@ const batchReminderData = ref([])
 // 发起协商弹窗相关
 const negotiationDialogVisible = ref(false)
 const negotiationDialogData = ref({})
+
+// 批量协商弹窗相关
+const batchNegotiationDialogVisible = ref(false)
+const batchNegotiationData = ref([])
+const batchNegotiationSubmitting = ref(false)
 
 // 留言板ref
 const messageBoardRef = ref(null)
@@ -132,6 +149,14 @@ const onInited = async () => {
     onClick: handleBatchReminder
   })
 
+  // 添加批量协商按钮
+  gridRef.buttons.push({
+    name: '批量协商',
+    icon: 'el-icon-chat-dot-square',
+    type: 'primary',
+    onClick: handleBatchNegotiate
+  })
+
   // 应用预警样式(在表格初始化完成后,添加列之前应用)
   applyAlertWarningStyle(viewOpts.columns)
 
@@ -152,10 +177,10 @@ const onInited = async () => {
           >
             跳转缺料
           </el-button>
-          {/* <el-button 
-                            type="primary" 
-                            link 
-                            style={{padding: '2px 4px', fontSize: '12px'}} 
+          {/* <el-button
+                            type="primary"
+                            link
+                            style={{padding: '2px 4px', fontSize: '12px'}}
                             onClick={($e) => handleJumpToPurchase(row)}>跳转采购</el-button> */}
         </div>
       )
@@ -355,6 +380,94 @@ const handleBatchReminderConfirm = (eventData) => {
 
   // 关闭弹窗
   batchReminderDialogVisible.value = false
+}
+
+// 批量协商处理
+const handleBatchNegotiate = () => {
+  const selectedRows = gridRef.getTable(true).getSelected()
+
+  if (!selectedRows || selectedRows.length === 0) {
+    ElMessage.warning('请先选择要协商的数据')
+    return
+  }
+
+  batchNegotiationData.value = selectedRows.map((row) => ({
+    ...row,
+    billNo: row.POBillNo,
+    seq: row.Seq,
+    planTraceNo: row.PlanTraceNo || row.PlanTrackNo || row.TrackId,
+    trackId: row.TrackId,
+    businessKey: row.FENTRYID,
+    negotiationReason: row.NegotiationReason || row.negotiationReason || '',
+    negotiationDate: row.NegotiationDate || row.negotiationDate || '',
+    negotiationContent: row.NegotiationContent || row.negotiationContent || '',
+    assignedResPerson: row.AssignedResPerson || row.assignedResPerson || null,
+    assignedResPersonName: row.AssignedResPersonName || row.assignedResPersonName || ''
+  }))
+
+  batchNegotiationDialogVisible.value = true
+}
+
+// 批量协商确认
+const handleBatchNegotiationConfirm = async (negotiationRows) => {
+  if (batchNegotiationSubmitting.value) return
+
+  if (!negotiationRows || negotiationRows.length === 0) {
+    batchNegotiationDialogVisible.value = false
+    return
+  }
+
+  const submitList = negotiationRows.map((row) => ({
+    BusinessType: 'PO',
+    BusinessKey: row.businessKey || '',
+    BillNo: row.billNo || '',
+    Seq: row.seq || '',
+    PlanTraceNo: row.planTraceNo || row.trackId || '',
+    PlanTrackNo: row.planTraceNo || row.trackId || '',
+    TrackId: row.trackId || row.planTraceNo || '',
+    SupplierCode: row.SupplierCode || row.supplierCode || '',
+    NegotiationReason: row.negotiationReason,
+    NegotiationDate: row.negotiationDate,
+    NegotiationContent: row.negotiationContent,
+    AssignedResPerson:
+      row.assignedResPerson?.userName || row.assignedResPerson?.id || row.assignedResPerson || '',
+    AssignedResPersonName:
+      row.assignedResPersonName || row.assignedResPerson?.userTrueName || row.assignedResPerson?.name || ''
+  }))
+
+  batchNegotiationSubmitting.value = true
+  const loadingInstance = ElLoading.service({ lock: true, text: '批量协商提交中...' })
+
+  try {
+    const failedItems = []
+
+    for (const item of submitList) {
+      const response = await proxy.http.post('/api/OCP_Negotiation/add', { mainData: item })
+      if (!response?.status) {
+        failedItems.push({ item, message: response?.message })
+      }
+    }
+
+    if (failedItems.length === 0) {
+      ElMessage.success('批量协商成功')
+      batchNegotiationDialogVisible.value = false
+      gridRef.search()
+    } else {
+      ElMessage.error(failedItems[0].message || '部分协商提交失败，请重试')
+    }
+  } catch (error) {
+    console.error('批量协商失败:', error)
+    ElMessage.error('批量协商失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+    batchNegotiationSubmitting.value = false
+  }
+}
+
+// 批量协商取消
+const handleBatchNegotiationCancel = () => {
+  batchNegotiationDialogVisible.value = false
+  batchNegotiationData.value = []
 }
 
 // 批量催单取消处理
