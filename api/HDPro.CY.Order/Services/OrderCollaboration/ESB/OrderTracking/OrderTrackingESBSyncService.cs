@@ -16,6 +16,7 @@ using HDPro.Entity.SystemModels;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.Core.BaseProvider;
 using HDPro.Core.ManageUser;
+using Microsoft.EntityFrameworkCore;
 
 namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
 {
@@ -87,10 +88,11 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
         protected override async Task<List<OCP_OrderTracking>> QueryExistingRecords(List<object> keys)
         {
             var repository = _repository as IRepository<OCP_OrderTracking>;
-            var longKeys = keys.Cast<long>().ToList();
-            
+            var longKeys = keys.Cast<long>().Distinct().ToList();
+
             return await Task.FromResult(
                 repository.FindAsIQueryable(x => longKeys.Contains(x.SOEntryID.Value))
+                    .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
                     .ToList()
             );
         }
@@ -269,27 +271,43 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
             var response = await Task.Run(() => _repository.DbContextBeginTransaction(() =>
             {
                 var webResponse = new WebResponseContent();
-                
+
                 try
                 {
-                    // 使用UpdateRange批量更新
-                    if (toUpdate.Any())
+                    // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+                    _repository.DbContext.ChangeTracker.Clear();
+
+                    // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 SOEntryID
+                    var distinctToUpdate = toUpdate.GroupBy(x => x.SOEntryID).Select(g => g.First()).ToList();
+                    var distinctToInsert = toInsert.GroupBy(x => x.SOEntryID).Select(g => g.First()).ToList();
+
+                    if (distinctToUpdate.Count < toUpdate.Count)
                     {
-                        _repository.UpdateRange(toUpdate, false); // 不立即保存
-                        ESBLogger.LogInfo("准备批量更新 {UpdateCount} 条记录", toUpdate.Count);
+                        ESBLogger.LogWarning("检测到 {DuplicateCount} 条重复的更新记录已被去重", toUpdate.Count - distinctToUpdate.Count);
+                    }
+                    if (distinctToInsert.Count < toInsert.Count)
+                    {
+                        ESBLogger.LogWarning("检测到 {DuplicateCount} 条重复的插入记录已被去重", toInsert.Count - distinctToInsert.Count);
+                    }
+
+                    // 使用UpdateRange批量更新
+                    if (distinctToUpdate.Any())
+                    {
+                        _repository.UpdateRange(distinctToUpdate, false); // 不立即保存
+                        ESBLogger.LogInfo("准备批量更新 {UpdateCount} 条记录", distinctToUpdate.Count);
                     }
 
                     // 使用AddRange批量插入
-                    if (toInsert.Any())
+                    if (distinctToInsert.Any())
                     {
-                        _repository.AddRange(toInsert, false); // 不立即保存
-                        ESBLogger.LogInfo("准备批量插入 {InsertCount} 条记录", toInsert.Count);
+                        _repository.AddRange(distinctToInsert, false); // 不立即保存
+                        ESBLogger.LogInfo("准备批量插入 {InsertCount} 条记录", distinctToInsert.Count);
                     }
 
                     // 一次性保存所有更改
                     _repository.SaveChanges();
 
-                    return webResponse.OK($"批量操作完成，更新 {toUpdate.Count} 条，插入 {toInsert.Count} 条");
+                    return webResponse.OK($"批量操作完成，更新 {distinctToUpdate.Count} 条，插入 {distinctToInsert.Count} 条");
                 }
                 catch (Exception ex)
                 {

@@ -162,3 +162,48 @@ foreach (var esbData in batchData)
 3. 🔍 **数据验证**: 同步后验证数据的准确性和完整性
 4. 🧪 **回归测试**: 测试其他ESB同步服务，确保基类修改没有引入新问题
 
+---
+
+## 批量修复总结 (2024-12-20)
+
+### 已修复的所有服务
+
+除了采购未完跟踪，还修复了以下7个ESB同步服务：
+
+| 序号 | 服务名称 | 实体 | 匹配字段 | 文件路径 |
+|------|---------|------|---------|---------|
+| 1 | 委外未完跟踪 | OCP_SubOrderUnFinishTrack | FENTRYID | SubOrder\SubOrderUnFinishTrackESBSyncService.cs |
+| 2 | 技术管理 | OCP_TechManagement | SOEntryID | TechManagement\TechManagementESBSyncService.cs |
+| 3 | 部件未完跟踪 | OCP_PartUnFinishTracking | ESBID | Part\PartUnFinishTrackESBSyncService.cs |
+| 4 | 整机跟踪 | OCP_PrdMOTracking | ESBID | WholeUnit\WholeUnitTrackingESBSyncService.cs |
+| 5 | 金工未完跟踪 | OCP_JGUnFinishTrack | ESBID | Metalwork\MetalworkUnFinishTrackESBSyncService.cs |
+| 6 | 订单跟踪 | OCP_OrderTracking | SOEntryID | OrderTracking\OrderTrackingESBSyncService.cs |
+| 7 | 缺料运算结果 | OCP_LackMtrlResult | ESBID | LackMaterial\LackMtrlResultESBSyncService.cs |
+| 8 | 采购未完跟踪 | OCP_POUnFinishTrack | FENTRYID | Purchase\PurchaseOrderUnFinishTrackESBSyncService.cs |
+
+### 统一修复模式
+
+所有服务都应用了相同的修复模式：
+
+1. **QueryExistingRecords**: 添加 `.AsNoTracking()` 和 `.Distinct()`
+2. **ExecuteBatchOperations**: 添加 `ChangeTracker.Clear()` 和去重逻辑
+3. **日志记录**: 添加去重警告日志
+
+### 测试清单
+
+- [ ] 委外未完跟踪ESB同步测试
+- [ ] 技术管理ESB同步测试
+- [ ] 部件未完跟踪ESB同步测试
+- [ ] 整机跟踪ESB同步测试
+- [ ] 金工未完跟踪ESB同步测试
+- [ ] 订单跟踪ESB同步测试
+- [ ] 缺料运算结果ESB同步测试
+- [ ] 采购未完跟踪ESB同步测试
+
+### 预期效果
+
+✅ **全面消除**: 所有ESB同步服务不再出现实体跟踪冲突错误
+✅ **统一标准**: 所有服务使用相同的修复模式，便于维护
+✅ **可观测性**: 通过日志可以发现数据质量问题
+✅ **性能优化**: AsNoTracking 减少不必要的跟踪开销
+
