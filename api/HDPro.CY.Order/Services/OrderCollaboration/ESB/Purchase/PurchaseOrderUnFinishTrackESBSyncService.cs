@@ -121,9 +121,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Purchase
         /// </summary>
         protected override async Task<List<OCP_POUnFinishTrack>> QueryExistingRecords(List<object> keys)
         {
-            var entryIds = keys.Cast<int>().Select(x => (long)x).ToList();
+            var entryIds = keys.Cast<int>().Select(x => (long)x).Distinct().ToList();
             return await Task.Run(() =>
                 _repository.FindAsIQueryable(x => x.FENTRYID.HasValue && entryIds.Contains(x.FENTRYID.Value))
+                .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
                 .ToList());
         }
 
@@ -225,7 +226,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Purchase
                 // 记录警告日志
                 if (materialId.HasValue && materialId.Value > 0)
                 {
-                    ESBLogger.LogWarning($"采购未完跟踪ESB同步：未找到物料信息，物料ID={materialId.Value}，订单明细ID={esbData.FENTRYID}");
+                    ESBLogger.LogWarning($"采购未完跟踪ESB同步：未找到物料信息，物料ID={materialId.Value}，订单明细ID={esbData.FENTRYID},订单单号={esbData.FBILLNO}，行号={esbData.FSEQ}");
                 }
             }
 
@@ -392,24 +393,41 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Purchase
 
                 try
                 {
-                    // 使用UpdateRange批量更新
-                    if (toUpdate.Any())
+                    // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+                    _repository.DbContext.ChangeTracker.Clear();
+
+                    // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 TrackID
+                    var distinctToUpdate = toUpdate.GroupBy(x => x.FENTRYID).Select(g => g.First()).ToList();
+                    var distinctToInsert = toInsert.GroupBy(x => x.FENTRYID).Select(g => g.First()).ToList();
+
+                    if (distinctToUpdate.Count < toUpdate.Count)
                     {
-                        _repository.UpdateRange(toUpdate, false); // 不立即保存
-                        ESBLogger.LogInfo($"准备批量更新 {toUpdate.Count} 条采购未完跟踪记录");
+                        ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+                    }
+
+                    if (distinctToInsert.Count < toInsert.Count)
+                    {
+                        ESBLogger.LogWarning($"检测到 {toInsert.Count - distinctToInsert.Count} 条重复的插入记录已被去重");
+                    }
+
+                    // 使用UpdateRange批量更新
+                    if (distinctToUpdate.Any())
+                    {
+                        _repository.UpdateRange(distinctToUpdate, false); // 不立即保存
+                        ESBLogger.LogInfo($"准备批量更新 {distinctToUpdate.Count} 条采购未完跟踪记录");
                     }
 
                     // 使用AddRange批量插入
-                    if (toInsert.Any())
+                    if (distinctToInsert.Any())
                     {
-                        _repository.AddRange(toInsert, false); // 不立即保存
-                        ESBLogger.LogInfo($"准备批量插入 {toInsert.Count} 条采购未完跟踪记录");
+                        _repository.AddRange(distinctToInsert, false); // 不立即保存
+                        ESBLogger.LogInfo($"准备批量插入 {distinctToInsert.Count} 条采购未完跟踪记录");
                     }
 
                     // 一次性保存所有更改
                     _repository.SaveChanges();
 
-                    var message = $"采购未完跟踪数据批量操作成功：更新 {toUpdate.Count} 条，插入 {toInsert.Count} 条";
+                    var message = $"采购未完跟踪数据批量操作成功：更新 {distinctToUpdate.Count} 条，插入 {distinctToInsert.Count} 条";
                     ESBLogger.LogInfo(message);
                     return webResponse.OK(message);
                 }
