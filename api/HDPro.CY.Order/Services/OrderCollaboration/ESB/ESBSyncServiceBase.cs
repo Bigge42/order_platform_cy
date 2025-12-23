@@ -10,6 +10,7 @@ using HDPro.Core.BaseProvider;
 using HDPro.Core.Configuration;
 using HDPro.Core.Extensions.AutofacManager;
 using HDPro.CY.Order.IRepositories;
+using HDPro.Entity.DomainModels.ESB;
 
 namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
 {
@@ -520,24 +521,37 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                 // 批量查询现有记录
                 var keys = batchData.Select(GetEntityKey).Distinct().ToList();
                 var existingRecords = await QueryExistingRecords(keys);
-                
+
                 var toUpdate = new List<TEntity>();
                 var toInsert = new List<TEntity>();
                 var currentTime = DateTime.Now;
 
+                // 🔧 关键修复：使用 HashSet 跟踪已处理的现有记录，避免重复添加到 toUpdate
+                var processedExistingRecords = new HashSet<TEntity>();
+
                 foreach (var esbData in batchData)
                 {
                     try
-                    {
+                    {                  
                         var existingRecord = existingRecords.FirstOrDefault(x => IsEntityMatch(x, esbData));
 
                         if (existingRecord != null)
                         {
-                            // 更新现有记录
-                            MapESBDataToEntityWithCache(esbData, existingRecord, masterRecordsCache, materialRecordsCache, supplierRecordsCache, customerRecordsCache);
-                            SetMasterTableId(esbData, existingRecord, masterRecordsCache); // 使用缓存设置主表ID
-                            SetAuditFields(existingRecord, currentTime, currentUserId, currentUserName, false);
-                            toUpdate.Add(existingRecord);
+                            // 🔧 检查该记录是否已经被处理过
+                            if (!processedExistingRecords.Contains(existingRecord))
+                            {
+                                // 更新现有记录
+                                MapESBDataToEntityWithCache(esbData, existingRecord, masterRecordsCache, materialRecordsCache, supplierRecordsCache, customerRecordsCache);
+                                SetMasterTableId(esbData, existingRecord, masterRecordsCache); // 使用缓存设置主表ID
+                                SetAuditFields(existingRecord, currentTime, currentUserId, currentUserName, false);
+                                toUpdate.Add(existingRecord);
+                                processedExistingRecords.Add(existingRecord);
+                            }
+                            else
+                            {
+                                // 记录警告：同一个现有记录被多个ESB数据匹配
+                                _logger.LogWarning($"{GetOperationType()}：检测到重复匹配，ESB数据键={GetEntityKey(esbData)}，已跳过重复更新");
+                            }
                         }
                         else
                         {

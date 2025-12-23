@@ -30,5 +30,12 @@ namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
             var res = await _svc.SyncSnapshotFromWmsAsync(true);
             return res.Status ? Ok(res) : BadRequest(res);
         }
+        [HttpPost("wms-sync-prune_task"),ApiTask]
+        [AllowAnonymous]
+        public async Task<IActionResult> SyncFromWmsAndPruneTask()
+        {
+            var res = await _svc.SyncSnapshotFromWmsAsync(true);
+            return res.Status ? Ok(res) : BadRequest(res);
+        }
     }
 }
