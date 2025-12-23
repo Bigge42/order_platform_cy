@@ -91,10 +91,11 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.LackMaterial
 
         protected override async Task<List<OCP_LackMtrlResult>> QueryExistingRecords(List<object> keys)
         {
-            var esbIds = keys.Cast<string>().ToList();
-            
+            var esbIds = keys.Cast<string>().Distinct().ToList();
+
             return await Task.FromResult(
                 _repository.FindAsIQueryable(x => esbIds.Contains(x.ESBID))
+                    .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
                     .ToList()
             );
         }
@@ -202,27 +203,43 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.LackMaterial
             return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
             {
                 var response = new WebResponseContent();
-                
+
                 try
                 {
-                    // 使用UpdateRange批量更新
-                    if (toUpdate.Any())
+                    // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+                    _repository.DbContext.ChangeTracker.Clear();
+
+                    // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 ESBID
+                    var distinctToUpdate = toUpdate.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+                    var distinctToInsert = toInsert.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+
+                    if (distinctToUpdate.Count < toUpdate.Count)
                     {
-                        _repository.UpdateRange(toUpdate, false);
-                        ESBLogger.LogInfo("准备批量更新缺料记录 {UpdateCount} 条", toUpdate.Count);
+                        ESBLogger.LogWarning("检测到 {DuplicateCount} 条重复的更新记录已被去重", toUpdate.Count - distinctToUpdate.Count);
+                    }
+                    if (distinctToInsert.Count < toInsert.Count)
+                    {
+                        ESBLogger.LogWarning("检测到 {DuplicateCount} 条重复的插入记录已被去重", toInsert.Count - distinctToInsert.Count);
+                    }
+
+                    // 使用UpdateRange批量更新
+                    if (distinctToUpdate.Any())
+                    {
+                        _repository.UpdateRange(distinctToUpdate, false);
+                        ESBLogger.LogInfo("准备批量更新缺料记录 {UpdateCount} 条", distinctToUpdate.Count);
                     }
 
                     // 使用AddRange批量插入
-                    if (toInsert.Any())
+                    if (distinctToInsert.Any())
                     {
-                        _repository.AddRange(toInsert, false);
-                        ESBLogger.LogInfo("准备批量插入缺料记录 {InsertCount} 条", toInsert.Count);
+                        _repository.AddRange(distinctToInsert, false);
+                        ESBLogger.LogInfo("准备批量插入缺料记录 {InsertCount} 条", distinctToInsert.Count);
                     }
 
                     // 一次性保存所有更改
                     _repository.SaveChanges();
-                    
-                    return response.OK($"缺料数据批量操作完成，更新 {toUpdate.Count} 条，插入 {toInsert.Count} 条");
+
+                    return response.OK($"缺料数据批量操作完成，更新 {distinctToUpdate.Count} 条，插入 {distinctToInsert.Count} 条");
                 }
                 catch (Exception ex)
                 {

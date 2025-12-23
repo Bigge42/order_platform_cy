@@ -8,6 +8,7 @@ using HDPro.Entity.DomainModels;
 using HDPro.Entity.DomainModels.ESB;
 using HDPro.CY.Order.IRepositories;
 using HDPro.Core.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Metalwork
 {
@@ -122,9 +123,10 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Metalwork
         /// </summary>
         protected override async Task<List<OCP_JGUnFinishTrack>> QueryExistingRecords(List<object> keys)
         {
-            var idList = keys.Select(k => k.ToString()).ToList();
+            var idList = keys.Select(k => k.ToString()).Distinct().ToList();
             return await Task.Run(() =>
                 _repository.FindAsIQueryable(x => !string.IsNullOrEmpty(x.ESBID) && idList.Contains(x.ESBID))
+                .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
                 .ToList());
         }
 
@@ -188,29 +190,45 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Metalwork
             return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
             {
                 var webResponse = new WebResponseContent();
-                
+
                 try
                 {
-                    // 使用UpdateRange批量更新
-                    if (toUpdate.Any())
+                    // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+                    _repository.DbContext.ChangeTracker.Clear();
+
+                    // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 ESBID
+                    var distinctToUpdate = toUpdate.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+                    var distinctToInsert = toInsert.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+
+                    if (distinctToUpdate.Count < toUpdate.Count)
                     {
-                        _repository.UpdateRange(toUpdate, false);
-                        ESBLogger.LogInfo($"准备批量更新 {toUpdate.Count} 条金工未完工跟踪记录");
+                        ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+                    }
+                    if (distinctToInsert.Count < toInsert.Count)
+                    {
+                        ESBLogger.LogWarning($"检测到 {toInsert.Count - distinctToInsert.Count} 条重复的插入记录已被去重");
+                    }
+
+                    // 使用UpdateRange批量更新
+                    if (distinctToUpdate.Any())
+                    {
+                        _repository.UpdateRange(distinctToUpdate, false);
+                        ESBLogger.LogInfo($"准备批量更新 {distinctToUpdate.Count} 条金工未完工跟踪记录");
                     }
 
                     // 使用AddRange批量插入
-                    if (toInsert.Any())
+                    if (distinctToInsert.Any())
                     {
-                        _repository.AddRange(toInsert, false);
-                        ESBLogger.LogInfo($"准备批量插入 {toInsert.Count} 条金工未完工跟踪记录");
+                        _repository.AddRange(distinctToInsert, false);
+                        ESBLogger.LogInfo($"准备批量插入 {distinctToInsert.Count} 条金工未完工跟踪记录");
                     }
 
                     _repository.SaveChanges();
-                    
-                    var totalProcessed = toUpdate.Count + toInsert.Count;
+
+                    var totalProcessed = distinctToUpdate.Count + distinctToInsert.Count;
                     ESBLogger.LogInfo($"金工未完工跟踪批量操作成功完成，总计处理 {totalProcessed} 条记录");
-                    
-                    return webResponse.OK($"批量操作成功，更新 {toUpdate.Count} 条，新增 {toInsert.Count} 条");
+
+                    return webResponse.OK($"批量操作成功，更新 {distinctToUpdate.Count} 条，新增 {distinctToInsert.Count} 条");
                 }
                 catch (Exception ex)
                 {
