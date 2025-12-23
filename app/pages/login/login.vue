@@ -33,26 +33,26 @@
 				</view>
 			</view>
 
-			<view class="agreement">
+			<!-- <view class="agreement">
 				<u-checkbox-group>
 					<u-checkbox @change="ckChange" :size="13" labelSize="26rpx" label="我已同意并阅读" :checked="ck">
 					</u-checkbox>
 				</u-checkbox-group>
 				<text @click="toAgreement" class="link">《用户服务协议》</text>与
 				<text @click="toPolicy" class="link">《隐私政策》</text>
-			</view>
+			</view> -->
 			<view class="login-btn">
 				<u-button @click="loginClick" shape="circle" :loading="loading" :loadingText="loading?'登录中..':''"
 					:customStyle="{'box-shadow': '3px 3px 8px #5babff80'}" size="large" type="primary" text="登录">
 				</u-button>
 			</view>
 		</view>
-		<u-divider text="其他方式登陆"></u-divider>
+		<!-- <u-divider text="其他方式登陆"></u-divider>
 		<view class="login-other">
 			<button type="default" class="login-wechat-btn" @getphonenumber="getPhoneNumber" open-type="getPhoneNumber">
 				<u-image width="110rpx" height="110rpx" src="@/static/share-icon-wechat.png"></u-image>
 			</button>
-		</view>
+		</view> -->
 	</view>
 </template>
 <script setup>
