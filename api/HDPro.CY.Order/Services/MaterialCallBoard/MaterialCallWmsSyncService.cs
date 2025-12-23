@@ -63,6 +63,20 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
                     var resp = await http.PostAsync(reportUrl, req);
                     var text = await resp.Content.ReadAsStringAsync();
 
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        var desc = string.IsNullOrWhiteSpace(resp.ReasonPhrase)
+                            ? ((int)resp.StatusCode).ToString()
+                            : $"{(int)resp.StatusCode} {resp.ReasonPhrase}";
+
+                        var snippet = string.IsNullOrWhiteSpace(text)
+                            ? "<空响应>"
+                            : (text.Length > 500 ? text.Substring(0, 500) + "..." : text);
+
+                        return WebResponseContent.Instance.Error(
+                            $"WMS 查询失败：HTTP {desc}；响应：{snippet}");
+                    }
+
                     using var doc = JsonDocument.Parse(text);
                     var root = doc.RootElement;
 
