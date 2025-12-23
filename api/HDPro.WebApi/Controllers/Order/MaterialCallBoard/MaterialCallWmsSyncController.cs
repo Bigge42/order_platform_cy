@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices.MaterialCallBoard;
 using HDPro.Core.Filters;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
 {
@@ -11,24 +13,56 @@ namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
     public class MaterialCallWmsSyncController : ControllerBase
     {
         private readonly IMaterialCallWmsSyncService _svc;
-        public MaterialCallWmsSyncController(IMaterialCallWmsSyncService svc) => _svc = svc;
+        private readonly ILogger<MaterialCallWmsSyncController> _logger;
 
-        /// <summary>ÄÚ²¿µ÷ÓÃ WMS ¡ú Ë¢ĞÂ°×Ãûµ¥¿ìÕÕ£¨²»É¾³ı½ĞÁÏ¿´°å£©</summary>
+        public MaterialCallWmsSyncController(
+            IMaterialCallWmsSyncService svc,
+            ILogger<MaterialCallWmsSyncController> logger)
+        {
+            _svc = svc;
+            _logger = logger;
+        }
+
+        /// <summary>å†…éƒ¨è°ƒç”¨ WMS â†’ åˆ·æ–°ç™½åå•å¿«ç…§ï¼ˆä¸åˆ é™¤å«æ–™çœ‹æ¿ï¼‰</summary>
         [HttpPost("wms-sync")]
         [AllowAnonymous]
         public async Task<IActionResult> SyncFromWms()
         {
             var res = await _svc.SyncSnapshotFromWmsAsync(false);
-            return res.Status ? Ok(res) : BadRequest(res);
+            if (!res.Status)
+            {
+                _logger.LogWarning("WMS åŒæ­¥å¤±è´¥è¿”å› 400ï¼Œpayload={Payload}", SerializePayload(res));
+                return BadRequest(res);
+            }
+
+            return Ok(res);
         }
 
-        /// <summary>ÄÚ²¿µ÷ÓÃ WMS ¡ú Ë¢ĞÂ°×Ãûµ¥¿ìÕÕ ¡ú Á¢¼´°´°×Ãûµ¥É¾³ı½ĞÁÏ¿´°åÈ±Ï¯Ïî</summary>
+        /// <summary>å†…éƒ¨è°ƒç”¨ WMS â†’ åˆ·æ–°ç™½åå•å¿«ç…§ â†’ ç«‹å³æŒ‰ç™½åå•åˆ é™¤å«æ–™çœ‹æ¿ç¼ºå¸­é¡¹</summary>
         [HttpPost("wms-sync-prune")]
         [AllowAnonymous]
         public async Task<IActionResult> SyncFromWmsAndPrune()
         {
             var res = await _svc.SyncSnapshotFromWmsAsync(true);
-            return res.Status ? Ok(res) : BadRequest(res);
+            if (!res.Status)
+            {
+                _logger.LogWarning("WMS åŒæ­¥+prune å¤±è´¥è¿”å› 400ï¼Œpayload={Payload}", SerializePayload(res));
+                return BadRequest(res);
+            }
+
+            return Ok(res);
+        }
+
+        private static string SerializePayload(object res)
+        {
+            try
+            {
+                return JsonSerializer.Serialize(res);
+            }
+            catch
+            {
+                return "<æ— æ³•åºåˆ—åŒ–>";
+            }
         }
     }
 }
