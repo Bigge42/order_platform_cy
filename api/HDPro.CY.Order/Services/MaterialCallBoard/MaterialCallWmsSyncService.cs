@@ -54,6 +54,10 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
             var http = _httpFactory.CreateClient(nameof(MaterialCallWmsSyncService));
             http.Timeout = TimeSpan.FromMinutes(5);
 
+            var wmsWatch = Stopwatch.StartNew();
+            int? lastHttpStatusCode = null;
+            string lastHttpReason = null;
+
             try
             {
                 // 1) 拿 token
@@ -61,6 +65,9 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
                 var tokenWatch = Stopwatch.StartNew();
                 using var tokenResp = await http.GetAsync(tokenReq);
                 var tokenText = await tokenResp.Content.ReadAsStringAsync();
+
+                lastHttpStatusCode = (int)tokenResp.StatusCode;
+                lastHttpReason = tokenResp.ReasonPhrase;
 
                 _logger.LogInformation(
                     "WMS 同步 token 请求完成，status={StatusCode}, elapsed_ms={ElapsedMs}, body={Body}",
@@ -70,6 +77,18 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
 
                 if (!tokenResp.IsSuccessStatusCode)
                 {
+                    _logger.LogWarning(
+                        "WMS 同步阶段：调用 WMS 失败，step=token, status={StatusCode}, elapsed_ms={ElapsedMs}, reason={Reason}",
+                        (int)tokenResp.StatusCode,
+                        tokenWatch.ElapsedMilliseconds,
+                        tokenResp.ReasonPhrase);
+
+                    _logger.LogInformation(
+                        "WMS 同步阶段：调用 WMS 结束，elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                        wmsWatch.ElapsedMilliseconds,
+                        lastHttpStatusCode,
+                        lastHttpReason);
+
                     return ErrorWithCode(
                         "WMS_TOKEN_HTTP_ERROR",
                         $"获取 WMS token 失败：HTTP {(int)tokenResp.StatusCode} {tokenResp.ReasonPhrase}; 响应：{SafeSnippet(tokenText)}");
@@ -94,6 +113,9 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
                         var resp = await http.PostAsync(reportUrl, req);
                         var text = await resp.Content.ReadAsStringAsync();
 
+                        lastHttpStatusCode = (int)resp.StatusCode;
+                        lastHttpReason = resp.ReasonPhrase;
+
                         _logger.LogInformation(
                             "WMS 同步调用 WMS，page={Page}, skip={Skip}, status={StatusCode}, elapsed_ms={ElapsedMs}",
                             page,
@@ -114,6 +136,12 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
                                 desc,
                                 pageWatch.ElapsedMilliseconds,
                                 SafeTrim(text));
+
+                            _logger.LogInformation(
+                                "WMS 同步阶段：调用 WMS 结束，elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                                wmsWatch.ElapsedMilliseconds,
+                                lastHttpStatusCode,
+                                lastHttpReason);
 
                             return ErrorWithCode(
                                 "WMS_QUERY_HTTP_ERROR",
@@ -165,56 +193,90 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "WMS 同步调用 WMS 异常，page={Page}, skip={Skip}", page, skip);
+                    _logger.LogError(
+                        ex,
+                        "WMS 同步阶段：调用 WMS 异常，page={Page}, skip={Skip}, elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                        page,
+                        skip,
+                        wmsWatch.ElapsedMilliseconds,
+                        lastHttpStatusCode,
+                        lastHttpReason);
                     return ErrorWithCode("WMS_QUERY_EXCEPTION", "调用 WMS 接口异常：" + ex.Message);
                 }
 
                 _logger.LogInformation(
-                    "WMS 同步调用 WMS 完成，pages={Pages}, total={Total}, elapsed_ms={ElapsedMs}",
+                    "WMS 同步调用 WMS 完成，pages={Pages}, total={Total}, elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
                     page - 1,
                     total,
-                    pullWatch.ElapsedMilliseconds);
+                    pullWatch.ElapsedMilliseconds,
+                    lastHttpStatusCode,
+                    lastHttpReason);
+
+                _logger.LogInformation(
+                    "WMS 同步阶段：调用 WMS 结束，elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                    wmsWatch.ElapsedMilliseconds,
+                    lastHttpStatusCode,
+                    lastHttpReason);
 
                 // 3) 刷新白名单快照
                 var codes = new List<string>(all);
                 var snapshotWatch = Stopwatch.StartNew();
                 int totalSet;
                 int matched;
+                _logger.LogInformation(
+                    "WMS 同步阶段：写入快照开始，count={Count}",
+                    codes.Count);
                 try
                 {
                     (totalSet, matched) = await _setRepo.RefreshSnapshotAsync(codes);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "WMS 同步写入快照异常，elapsed_ms={ElapsedMs}", snapshotWatch.ElapsedMilliseconds);
+                    _logger.LogError(
+                        ex,
+                        "WMS 同步写入快照异常，elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                        snapshotWatch.ElapsedMilliseconds,
+                        lastHttpStatusCode,
+                        lastHttpReason);
                     return ErrorWithCode("WMS_SNAPSHOT_FAILED", "WMS 快照写入失败：" + ex.Message);
                 }
 
                 _logger.LogInformation(
-                    "WMS 同步写入快照完成，elapsed_ms={ElapsedMs}, totalSet={TotalSet}, matched={Matched}",
+                    "WMS 同步写入快照完成，elapsed_ms={ElapsedMs}, totalSet={TotalSet}, matched={Matched}, last_status={LastStatus}",
                     snapshotWatch.ElapsedMilliseconds,
                     totalSet,
-                    matched);
+                    matched,
+                    lastHttpStatusCode);
 
                 // 4) 可选：按白名单删除叫料看板中缺席项
                 int deleted = 0;
                 if (pruneAfter)
                 {
                     var pruneWatch = Stopwatch.StartNew();
+                    _logger.LogInformation(
+                        "WMS 同步阶段：prune 删除开始，pruneAfter={PruneAfter}, last_status={LastStatus}",
+                        pruneAfter,
+                        lastHttpStatusCode);
                     try
                     {
                         deleted = await _setRepo.PruneMaterialCallBoardAsync();
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "WMS 同步 prune 删除异常，elapsed_ms={ElapsedMs}", pruneWatch.ElapsedMilliseconds);
+                        _logger.LogError(
+                            ex,
+                            "WMS 同步 prune 删除异常，elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                            pruneWatch.ElapsedMilliseconds,
+                            lastHttpStatusCode,
+                            lastHttpReason);
                         return ErrorWithCode("WMS_PRUNE_FAILED", "WMS prune 删除失败：" + ex.Message);
                     }
 
                     _logger.LogInformation(
-                        "WMS 同步 prune 删除完成，elapsed_ms={ElapsedMs}, deleted={Deleted}",
+                        "WMS 同步 prune 删除完成，elapsed_ms={ElapsedMs}, deleted={Deleted}, last_status={LastStatus}",
                         pruneWatch.ElapsedMilliseconds,
-                        deleted);
+                        deleted,
+                        lastHttpStatusCode);
                 }
 
                 var ok = WebResponseContent.Instance.OK(
@@ -226,7 +288,13 @@ namespace HDPro.CY.Order.Services.MaterialCallBoard
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "WMS 同步发生异常: {Message}", ex.Message);
+                _logger.LogError(
+                    ex,
+                    "WMS 同步发生异常: {Message}, elapsed_ms={ElapsedMs}, last_status={LastStatus}, last_reason={LastReason}",
+                    ex.Message,
+                    wmsWatch.ElapsedMilliseconds,
+                    lastHttpStatusCode,
+                    lastHttpReason);
                 return ErrorWithCode("WMS_SYNC_EXCEPTION", "WMS 同步失败：" + ex.Message);
             }
         }

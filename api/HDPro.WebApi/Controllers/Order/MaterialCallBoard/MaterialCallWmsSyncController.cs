@@ -46,8 +46,21 @@ namespace HDPro.WebApi.Controllers.Order.MaterialCallBoard
             var res = await _svc.SyncSnapshotFromWmsAsync(true);
             if (!res.Status)
             {
-                _logger.LogWarning("WMS 同步+prune 失败返回 400，payload={Payload}", SerializePayload(res));
-                return BadRequest(res);
+                _logger.LogWarning(
+                    "WMS 同步+prune 失败返回 400，code={Code}, message={Message}, payload={Payload}",
+                    res.Code,
+                    res.Message,
+                    SerializePayload(res));
+
+                var errorPayload = new
+                {
+                    res.Status,
+                    res.Code,
+                    res.Message,
+                    res.Data
+                };
+
+                return BadRequest(errorPayload);
             }
 
             return Ok(res);
