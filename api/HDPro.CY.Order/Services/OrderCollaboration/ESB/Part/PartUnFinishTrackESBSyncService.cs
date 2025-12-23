@@ -109,11 +109,12 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Part
         {
             try
             {
-                var idList = keys.Select(k => k.ToString()).ToList();
-                
+                var idList = keys.Select(k => k.ToString()).Distinct().ToList();
+
                 // 优先使用ESBID进行查询
                 var entities = await ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.Set<OCP_PartUnFinishTracking>()
                     .Where(x => !string.IsNullOrEmpty(x.ESBID) && idList.Contains(x.ESBID))
+                    .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
                     .ToListAsync();
 
                 // 如果通过ESBID找不到记录，再尝试通过FENTRYID查找（兼容旧数据）
@@ -238,24 +239,40 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Part
                 {
                     try
                     {
-                        // 批量更新
-                        if (toUpdate.Any())
+                        // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+                        ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.ChangeTracker.Clear();
+
+                        // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 ESBID
+                        var distinctToUpdate = toUpdate.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+                        var distinctToInsert = toInsert.GroupBy(x => x.ESBID).Select(g => g.First()).ToList();
+
+                        if (distinctToUpdate.Count < toUpdate.Count)
                         {
-                            ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.Set<OCP_PartUnFinishTracking>().UpdateRange(toUpdate);
-                            ESBLogger.LogInfo($"准备更新 {toUpdate.Count} 条部件未完跟踪记录");
+                            ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+                        }
+                        if (distinctToInsert.Count < toInsert.Count)
+                        {
+                            ESBLogger.LogWarning($"检测到 {toInsert.Count - distinctToInsert.Count} 条重复的插入记录已被去重");
+                        }
+
+                        // 批量更新
+                        if (distinctToUpdate.Any())
+                        {
+                            ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.Set<OCP_PartUnFinishTracking>().UpdateRange(distinctToUpdate);
+                            ESBLogger.LogInfo($"准备更新 {distinctToUpdate.Count} 条部件未完跟踪记录");
                         }
 
                         // 批量插入
-                        if (toInsert.Any())
+                        if (distinctToInsert.Any())
                         {
-                            await ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.Set<OCP_PartUnFinishTracking>().AddRangeAsync(toInsert);
-                            ESBLogger.LogInfo($"准备插入 {toInsert.Count} 条部件未完跟踪记录");
+                            await ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.Set<OCP_PartUnFinishTracking>().AddRangeAsync(distinctToInsert);
+                            ESBLogger.LogInfo($"准备插入 {distinctToInsert.Count} 条部件未完跟踪记录");
                         }
 
                         var affectedRows = await ((IRepository<OCP_PartUnFinishTracking>)_repository).DbContext.SaveChangesAsync();
                         await transaction.CommitAsync();
 
-                        var message = $"部件未完跟踪数据批量操作成功：更新 {toUpdate.Count} 条，插入 {toInsert.Count} 条，影响行数 {affectedRows}";
+                        var message = $"部件未完跟踪数据批量操作成功：更新 {distinctToUpdate.Count} 条，插入 {distinctToInsert.Count} 条，影响行数 {affectedRows}";
                         ESBLogger.LogInfo(message);
                         return response.OK(message);
                     }

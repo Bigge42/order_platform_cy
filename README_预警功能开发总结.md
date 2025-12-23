@@ -438,3 +438,328 @@ else
 
 **核心改进**: 从"停止/启用/暂停"三状态简化为"暂停/启用"双状态,利用Quartz的原生功能实现快速切换,避免频繁操作调度器。
 
+---
+
+## 2024-12-20 ESB同步实体跟踪冲突修复
+
+### 会话主要目的
+修复采购未完跟踪ESB数据同步时出现的EF Core实体跟踪冲突错误。
+
+### 问题描述
+**错误信息**:
+```
+同步采购未完跟踪ESB数据失败，耗时：9.89 秒，错误：采购未完跟踪批量数据库操作失败：采购未完跟踪数据批量操作失败：The instance of entity type 'OCP_POUnFinishTrack' cannot be tracked because another instance with the same key value for {'TrackID'} is already being tracked.
+```
+
+**根本原因**:
+1. `OCP_POUnFinishTrack` 实体的主键 `TrackID` 是自增长字段
+2. 在批量更新时，如果同一批次中有多条ESB数据匹配到同一个现有记录（通过 `FENTRYID` 匹配）
+3. 这导致同一个 `TrackID` 的实体被多次添加到 EF Core 的 ChangeTracker 中
+4. EF Core 不允许跟踪具有相同主键的多个实体实例
+
+### 完成的主要任务
+
+#### 1. 修复 `PurchaseOrderUnFinishTrackESBSyncService.cs`
+
+**文件**: `api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Purchase\PurchaseOrderUnFinishTrackESBSyncService.cs`
+
+**修改1**: 查询现有记录时使用 `AsNoTracking()`
+```csharp
+protected override async Task<List<OCP_POUnFinishTrack>> QueryExistingRecords(List<object> keys)
+{
+    var entryIds = keys.Cast<int>().Select(x => (long)x).Distinct().ToList();
+    return await Task.Run(() =>
+        _repository.FindAsIQueryable(x => x.FENTRYID.HasValue && entryIds.Contains(x.FENTRYID.Value))
+        .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
+        .ToList());
+}
+```
+
+**修改2**: 批量操作前清理 ChangeTracker 并去重
+```csharp
+protected override async Task<WebResponseContent> ExecuteBatchOperations(List<OCP_POUnFinishTrack> toUpdate, List<OCP_POUnFinishTrack> toInsert)
+{
+    return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
+    {
+        try
+        {
+            // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+            _repository.DbContext.ChangeTracker.Clear();
+
+            // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的 TrackID
+            var distinctToUpdate = toUpdate.GroupBy(x => x.TrackID).Select(g => g.First()).ToList();
+            var distinctToInsert = toInsert.GroupBy(x => x.TrackID).Select(g => g.First()).ToList();
+
+            if (distinctToUpdate.Count < toUpdate.Count)
+            {
+                ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+            }
+
+            // ... 后续批量操作
+        }
+    }));
+}
+```
+
+#### 2. 修复基类 `ESBSyncServiceBase.cs`
+
+**文件**: `api\HDPro.CY.Order\Services\OrderCollaboration\ESB\ESBSyncServiceBase.cs`
+
+**修改**: 防止同一个现有记录被多次匹配
+```csharp
+private async Task<int> ProcessSingleBatch(List<TESBData> batchData, int currentUserId, string currentUserName)
+{
+    // 批量查询现有记录
+    var keys = batchData.Select(GetEntityKey).Distinct().ToList();
+    var existingRecords = await QueryExistingRecords(keys);
+
+    var toUpdate = new List<TEntity>();
+    var toInsert = new List<TEntity>();
+
+    // 🔧 关键修复：使用 HashSet 跟踪已处理的现有记录，避免重复添加到 toUpdate
+    var processedExistingRecords = new HashSet<TEntity>();
+
+    foreach (var esbData in batchData)
+    {
+        var existingRecord = existingRecords.FirstOrDefault(x => IsEntityMatch(x, esbData));
+
+        if (existingRecord != null)
+        {
+            // 🔧 检查该记录是否已经被处理过
+            if (!processedExistingRecords.Contains(existingRecord))
+            {
+                // 更新现有记录
+                MapESBDataToEntityWithCache(esbData, existingRecord, ...);
+                toUpdate.Add(existingRecord);
+                processedExistingRecords.Add(existingRecord);
+            }
+            else
+            {
+                // 记录警告：同一个现有记录被多个ESB数据匹配
+                _logger.LogWarning($"{GetOperationType()}：检测到重复匹配，ESB数据键={GetEntityKey(esbData)}，已跳过重复更新");
+            }
+        }
+        else
+        {
+            // 创建新记录
+            var newRecord = new TEntity();
+            MapESBDataToEntityWithCache(esbData, newRecord, ...);
+            toInsert.Add(newRecord);
+        }
+    }
+}
+```
+
+### 关键决策和解决方案
+
+#### 1. 使用 AsNoTracking 查询
+**决策**: 在查询现有记录时使用 `AsNoTracking()`
+**理由**:
+- 避免 EF Core 自动跟踪查询出来的实体
+- 后续通过 `UpdateRange` 显式跟踪需要更新的实体
+- 防止同一实体被重复跟踪
+
+#### 2. 清理 ChangeTracker
+**决策**: 在批量操作前调用 `ChangeTracker.Clear()`
+**理由**:
+- 清除所有已跟踪的实体
+- 确保批量操作时的干净状态
+- 避免之前的查询操作留下的跟踪状态
+
+#### 3. 去重处理
+**决策**: 使用 `GroupBy` 对 `toUpdate` 和 `toInsert` 去重
+**理由**:
+- 防止同一个 `TrackID` 的实体被多次添加
+- 记录警告日志，便于发现数据问题
+- 保证数据一致性
+
+#### 4. 防止重复匹配
+**决策**: 使用 `HashSet` 跟踪已处理的现有记录
+**理由**:
+- 防止同一个现有记录被多个ESB数据匹配
+- 记录警告日志，便于发现业务逻辑问题
+- 提高代码健壮性
+
+### 使用的技术栈
+- **EF Core**: Entity Framework Core 实体跟踪机制
+- **LINQ**: 数据查询和去重
+- **C# 泛型**: 基类通用处理逻辑
+- **日志记录**: ESBLogger 记录警告和错误
+
+### 修改的文件
+1. `api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Purchase\PurchaseOrderUnFinishTrackESBSyncService.cs`
+   - 添加 `AsNoTracking()` 到查询方法
+   - 添加 `ChangeTracker.Clear()` 和去重逻辑到批量操作方法
+
+2. `api\HDPro.CY.Order\Services\OrderCollaboration\ESB\ESBSyncServiceBase.cs`
+   - 添加 `HashSet` 防止重复匹配
+   - 添加警告日志记录
+
+### 影响范围
+- **直接影响**: 采购未完跟踪ESB同步服务
+- **间接影响**: 所有继承自 `ESBSyncServiceBase` 的ESB同步服务都将受益于基类的修复
+  - 委外未完跟踪同步
+  - 部件未完跟踪同步
+  - 金工未完跟踪同步
+  - 订单跟踪同步
+  - 等其他ESB同步服务
+
+### 测试建议
+1. 测试采购未完跟踪ESB同步功能，确保不再出现实体跟踪冲突错误
+2. 检查日志，观察是否有重复匹配的警告信息
+3. 验证同步后的数据准确性
+4. 测试其他ESB同步服务，确保基类修改没有引入新问题
+
+### 注意事项
+⚠️ **不要自动git提交修改** - 请在充分测试后手动提交
+
+---
+
+## 2024-12-20 批量修复所有ESB同步服务的实体跟踪冲突
+
+### 会话主要目的
+参照 `OCP_POUnFinishTrack` 的修复方案，为所有其他ESB同步服务添加相同的实体跟踪冲突修复。
+
+### 修复的服务列表
+
+已完成修复的7个ESB同步服务：
+
+1. **OCP_SubOrderUnFinishTrack** - 委外未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\SubOrder\SubOrderUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`FENTRYID`
+
+2. **OCP_TechManagement** - 技术管理
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\TechManagement\TechManagementESBSyncService.cs`
+   - 匹配字段：`SOEntryID`
+
+3. **OCP_PartUnFinishTracking** - 部件未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Part\PartUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+4. **OCP_PrdMOTracking** - 整机跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\WholeUnit\WholeUnitTrackingESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+5. **OCP_JGUnFinishTrack** - 金工未完跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\Metalwork\MetalworkUnFinishTrackESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+6. **OCP_OrderTracking** - 订单跟踪
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\OrderTracking\OrderTrackingESBSyncService.cs`
+   - 匹配字段：`SOEntryID`
+
+7. **OCP_LackMtrlResult** - 缺料运算结果
+   - 文件：`api\HDPro.CY.Order\Services\OrderCollaboration\ESB\LackMaterial\LackMtrlResultESBSyncService.cs`
+   - 匹配字段：`ESBID`
+
+### 统一的修复方案
+
+每个服务都应用了以下两处修复：
+
+#### 1. QueryExistingRecords 方法修复
+```csharp
+protected override async Task<List<TEntity>> QueryExistingRecords(List<object> keys)
+{
+    var keyList = keys.Cast<TKeyType>().Distinct().ToList();  // 添加 Distinct()
+    return await Task.Run(() =>
+        _repository.FindAsIQueryable(x => keyList.Contains(x.MatchField))
+        .AsNoTracking()  // 🔧 关键修复：使用 AsNoTracking 避免实体跟踪冲突
+        .ToList());
+}
+```
+
+#### 2. ExecuteBatchOperations 方法修复
+```csharp
+protected override async Task<WebResponseContent> ExecuteBatchOperations(List<TEntity> toUpdate, List<TEntity> toInsert)
+{
+    return await Task.Run(() => _repository.DbContextBeginTransaction(() =>
+    {
+        try
+        {
+            // 🔧 关键修复：在批量操作前清理 ChangeTracker，避免实体跟踪冲突
+            _repository.DbContext.ChangeTracker.Clear();
+
+            // 🔧 去重处理：确保 toUpdate 和 toInsert 中没有重复的匹配字段
+            var distinctToUpdate = toUpdate.GroupBy(x => x.MatchField).Select(g => g.First()).ToList();
+            var distinctToInsert = toInsert.GroupBy(x => x.MatchField).Select(g => g.First()).ToList();
+
+            if (distinctToUpdate.Count < toUpdate.Count)
+            {
+                ESBLogger.LogWarning($"检测到 {toUpdate.Count - distinctToUpdate.Count} 条重复的更新记录已被去重");
+            }
+            if (distinctToInsert.Count < toInsert.Count)
+            {
+                ESBLogger.LogWarning($"检测到 {toInsert.Count - distinctToInsert.Count} 条重复的插入记录已被去重");
+            }
+
+            // 使用去重后的列表进行批量操作
+            if (distinctToUpdate.Any())
+            {
+                _repository.UpdateRange(distinctToUpdate, false);
+            }
+            if (distinctToInsert.Any())
+            {
+                _repository.AddRange(distinctToInsert, false);
+            }
+
+            _repository.SaveChanges();
+
+            return webResponse.OK($"批量操作成功，更新 {distinctToUpdate.Count} 条，新增 {distinctToInsert.Count} 条");
+        }
+        catch (Exception ex)
+        {
+            ESBLogger.LogError(ex, "批量操作失败");
+            return webResponse.Error($"批量操作失败：{ex.Message}");
+        }
+    }));
+}
+```
+
+### 关键技术点
+
+1. **AsNoTracking()**: 查询时不跟踪实体，避免自动跟踪导致的冲突
+2. **ChangeTracker.Clear()**: 批量操作前清理所有已跟踪的实体
+3. **Distinct()**: 对查询键值去重，避免重复查询
+4. **GroupBy 去重**: 对待更新/插入列表按匹配字段去重
+5. **警告日志**: 记录去重信息，便于发现数据问题
+
+### 修改的文件总结
+
+| 序号 | 文件路径 | 实体 | 匹配字段 |
+|------|---------|------|---------|
+| 1 | `SubOrder\SubOrderUnFinishTrackESBSyncService.cs` | OCP_SubOrderUnFinishTrack | FENTRYID |
+| 2 | `TechManagement\TechManagementESBSyncService.cs` | OCP_TechManagement | SOEntryID |
+| 3 | `Part\PartUnFinishTrackESBSyncService.cs` | OCP_PartUnFinishTracking | ESBID |
+| 4 | `WholeUnit\WholeUnitTrackingESBSyncService.cs` | OCP_PrdMOTracking | ESBID |
+| 5 | `Metalwork\MetalworkUnFinishTrackESBSyncService.cs` | OCP_JGUnFinishTrack | ESBID |
+| 6 | `OrderTracking\OrderTrackingESBSyncService.cs` | OCP_OrderTracking | SOEntryID |
+| 7 | `LackMaterial\LackMtrlResultESBSyncService.cs` | OCP_LackMtrlResult | ESBID |
+| 8 | `Purchase\PurchaseOrderUnFinishTrackESBSyncService.cs` | OCP_POUnFinishTrack | FENTRYID |
+
+### 影响范围
+
+✅ **全面覆盖**: 所有主要的ESB同步服务都已修复
+✅ **统一方案**: 使用相同的修复模式，便于维护
+✅ **向后兼容**: 修复不影响现有功能，只是增强了健壮性
+
+### 测试建议
+
+1. **逐个测试**: 依次测试每个ESB同步服务
+2. **观察日志**: 检查是否有去重警告信息
+3. **数据验证**: 确认同步后的数据准确性
+4. **压力测试**: 测试大批量数据同步场景
+5. **异常场景**: 测试包含重复数据的ESB数据源
+
+### 预期效果
+
+✅ **消除错误**: 不再出现实体跟踪冲突错误
+✅ **数据准确**: 去重逻辑确保数据一致性
+✅ **可观测性**: 警告日志帮助发现数据质量问题
+✅ **性能优化**: AsNoTracking 减少不必要的跟踪开销
+
+### 注意事项
+
+⚠️ **不要自动git提交修改** - 请在充分测试后手动提交
+⚠️ **关注警告日志** - 如果频繁出现去重警告，需要检查ESB数据源
+⚠️ **数据验证** - 同步后务必验证数据的准确性和完整性
+
