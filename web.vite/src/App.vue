@@ -3,6 +3,7 @@
   <el-config-provider :locale="locale">
     <router-view />
     <Watermark />
+    <DifyChatbot />
   </el-config-provider>
 </template>
 <script>
@@ -12,11 +13,13 @@ import { ElConfigProvider } from "element-plus";
 // import en from 'element-plus/es/locale/lang/en'
 import { locale } from "@/components/lang";
 import Watermark from "@/components/Watermark.vue";
+import DifyChatbot from "@/components/DifyChatbot.vue";
 export default {
   name: "order_app",
   components: {
     [ElConfigProvider.name]: ElConfigProvider, //添加组件
     Watermark,
+    DifyChatbot,
   },
   data() {
     return {
