@@ -569,7 +569,7 @@ onMounted(()=>{ renderAll() })
 .ph-title{font-weight:700;font-size:18px}
 .ph-sub{font-size:12px;color:var(--muted)}
 .ph-header{position:sticky;top:0;backdrop-filter:saturate(150%) blur(6px);background:rgba(255,255,255,.8);border-bottom:1px solid var(--border);z-index:10}
-.ph-container{max-width:1200px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ph-container{width:100%;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 
 .btn-amber{--el-button-bg-color:var(--amber);--el-button-text-color:#fff;border:none}
 
