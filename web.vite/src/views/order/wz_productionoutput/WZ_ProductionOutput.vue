@@ -597,9 +597,10 @@ svg text{font-family:inherit}
 .thr-lines{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:8px}
 .line-edit{display:flex;align-items:center;gap:8px;font-size:12px;color:#475569}
 .line-name{min-width:80px;text-align:right}
-.threshold-dialog :deep(.el-dialog__header){padding:18px 24px;border-bottom:1px solid var(--border)}
-.threshold-dialog :deep(.el-dialog__body){padding:20px 24px 24px}
-.threshold-dialog :deep(.el-dialog__footer){padding:16px 24px 20px}
+.threshold-dialog :deep(.el-dialog){--el-dialog-padding-primary:24px}
+.threshold-dialog :deep(.el-dialog__header){padding:20px 24px 18px !important;border-bottom:1px solid var(--border)}
+.threshold-dialog :deep(.el-dialog__body){padding:20px 24px 26px !important}
+.threshold-dialog :deep(.el-dialog__footer){padding:18px 24px 22px !important}
 
 /* 紧凑模式整体缩紧 */
 .compact .ph-container{padding:8px 12px}
