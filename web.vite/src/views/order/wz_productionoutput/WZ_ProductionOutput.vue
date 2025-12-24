@@ -87,7 +87,12 @@
     <div id="tooltip" class="tooltip" style="display:none"></div>
 
     <!-- 阈值弹窗 -->
-    <el-dialog v-model="thrDialog" title="编辑阈值" width="720px">
+    <el-dialog
+      v-model="thrDialog"
+      title="编辑阈值"
+      width="720px"
+      class="threshold-dialog"
+    >
       <div class="grid-lines">
         <div v-for="cat in state.categories" :key="cat.name" class="thr-section">
           <div class="thr-title">{{ cat.name }}</div>
@@ -569,7 +574,7 @@ onMounted(()=>{ renderAll() })
 .ph-title{font-weight:700;font-size:18px}
 .ph-sub{font-size:12px;color:var(--muted)}
 .ph-header{position:sticky;top:0;backdrop-filter:saturate(150%) blur(6px);background:rgba(255,255,255,.8);border-bottom:1px solid var(--border);z-index:10}
-.ph-container{max-width:1200px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ph-container{width:100%;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 
 .btn-amber{--el-button-bg-color:var(--amber);--el-button-text-color:#fff;border:none}
 
@@ -592,6 +597,9 @@ svg text{font-family:inherit}
 .thr-lines{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:8px}
 .line-edit{display:flex;align-items:center;gap:8px;font-size:12px;color:#475569}
 .line-name{min-width:80px;text-align:right}
+.threshold-dialog :deep(.el-dialog__header){padding:16px 20px;border-bottom:1px solid var(--border)}
+.threshold-dialog :deep(.el-dialog__body){padding:12px 20px 20px}
+.threshold-dialog :deep(.el-dialog__footer){padding:12px 20px 16px}
 
 /* 紧凑模式整体缩紧 */
 .compact .ph-container{padding:8px 12px}
