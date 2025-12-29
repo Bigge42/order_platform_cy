@@ -19,6 +19,49 @@ import ServiceSelect from './components/ServiceSelect'
 import VolEdit from './components/basic/VolEdit'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import './assets/css/common.less'
+import './styles/global.css'
+
+const defaultDifyToken = 'bcG6xSHDIPDB1uBu'
+const defaultDifyBaseUrl = 'http://10.11.10.101'
+
+const difyToken = import.meta.env?.VITE_DIFY_TOKEN || defaultDifyToken
+const difyBaseUrl = import.meta.env?.VITE_DIFY_BASE_URL || defaultDifyBaseUrl
+
+const difyScriptId = 'dify-chatbot-embed-script'
+
+const mountDifyChatbot = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (window.__difyChatbotInitialized) {
+    return
+  }
+
+  window.difyChatbotConfig = {
+    token: difyToken,
+    baseUrl: difyBaseUrl,
+    inputs: {},
+    systemVariables: {},
+    userVariables: {}
+  }
+
+  const existingScript = document.getElementById(difyScriptId)
+  const scriptLoaded = window.__difyChatbotScriptAppended
+
+  if (!existingScript && !scriptLoaded) {
+    const script = document.createElement('script')
+    script.id = difyScriptId
+    script.src = `${difyBaseUrl.replace(/\/$/, '')}/embed.min.js`
+    script.defer = true
+    document.body.appendChild(script)
+    window.__difyChatbotScriptAppended = true
+  }
+
+  window.__difyChatbotInitialized = true
+}
+
+mountDifyChatbot()
 
 const search = window.location.search;
 const code = new URLSearchParams(search).get('code');
