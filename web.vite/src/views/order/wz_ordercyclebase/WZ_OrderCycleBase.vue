@@ -224,12 +224,15 @@
 
         const pagination = gridRef?.$refs?.table?.paginations || {};
         const query = typeof gridRef.getSearchParameters === 'function' ? gridRef.getSearchParameters() : { wheres: [] };
-        const wheres = Array.isArray(query.wheres) ? [...query.wheres] : [];
-        wheres.push({
-            name: 'FixedCycleDays',
-            value: '',
-            displayType: 'EMPTY'
-        });
+        const wheres = Array.isArray(query?.wheres) ? [...query.wheres] : [];
+
+        if (!wheres.some((item) => item?.name === 'FixedCycleDays')) {
+            wheres.push({
+                name: 'FixedCycleDays',
+                value: '',
+                displayType: 'EMPTY'
+            });
+        }
 
         if (typeof gridRef.getSelectRows === 'function' && gridRef.table?.key) {
             const selectedIds = gridRef
@@ -237,7 +240,7 @@
                 ?.map((row) => row?.[gridRef.table.key])
                 .filter(Boolean);
 
-            if (selectedIds?.length && !wheres.some((item) => item.name === gridRef.table.key)) {
+            if (selectedIds?.length && !wheres.some((item) => item?.name === gridRef.table.key)) {
                 wheres.push({
                     name: gridRef.table.key,
                     value: selectedIds.join(','),
@@ -257,23 +260,7 @@
             params.columns = exportColumns;
         }
 
-        if (typeof params.wheres === 'object') {
-            params.wheres = JSON.stringify(params.wheres);
-        }
-
         return params;
-    };
-
-    const downloadBlobFile = (blobData, fileName) => {
-        const blob = blobData instanceof Blob ? blobData : new Blob([blobData]);
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = fileName;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        window.URL.revokeObjectURL(link.href);
-        document.body.removeChild(link);
     };
 
     const handleExportMissingCycle = async () => {
@@ -288,12 +275,15 @@
             ElMessage.error('导出失败，界面尚未初始化');
             return;
         }
-        const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
         const exportAction = gridRef.const?.EXPORT || 'Export';
         const tableConfig = gridRef.table || table;
+        const fallbackUrl = `/api${tableConfig?.url || '/WZ_OrderCycleBase/'}${exportAction}`;
         const url = typeof gridRef.getUrl === 'function' && tableConfig
             ? gridRef.getUrl(exportAction, null, tableConfig)
-            : '/api/WZ_OrderCycleBase/Export';
+            : fallbackUrl;
+
+        const fileName = gridRef.downloadFileName
+            || (typeof gridRef.getFileName === 'function' ? gridRef.getFileName(false) : `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`);
 
         try {
             if (typeof gridRef.exportBefore === 'function' && gridRef.exportBefore(payload) === false) {
@@ -301,16 +291,16 @@
                 return;
             }
 
-            const response = await proxy.http.post(url, payload, '正在导出...', {
-                responseType: 'blob'
-            });
-            if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(response) === false) {
-                exportLoading.value = false;
-                return;
+            if (payload.wheres && typeof payload.wheres === 'object') {
+                payload.wheres = JSON.stringify(payload.wheres);
             }
 
-            downloadBlobFile(response, fileName);
-            ElMessage.success('导出成功');
+            proxy.http.download(url, payload, fileName, '正在导出...', (res) => {
+                if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(res, payload) === false) {
+                    return;
+                }
+                ElMessage.success('导出成功');
+            });
         } catch (error) {
             ElMessage.error('导出失败，请稍后重试');
         } finally {
