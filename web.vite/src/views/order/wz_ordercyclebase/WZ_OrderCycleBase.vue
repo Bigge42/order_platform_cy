@@ -191,28 +191,25 @@
     };
 
     const getExportColumns = () => {
-        if (!Array.isArray(columns)) {
+        const gridColumns = gridRef?.columns || columns;
+        if (!Array.isArray(gridColumns)) {
             return [];
         }
 
         const exportColumns = [];
-
-        columns.forEach((item) => {
+        gridColumns.forEach((item) => {
             if (item.hidden || item.render) {
                 return;
             }
 
-            if (item.children && Array.isArray(item.children)) {
+            if (Array.isArray(item.children) && item.children.length) {
                 exportColumns.push(
                     ...item.children
                         .filter((child) => !child.hidden && !child.render)
                         .map((child) => child.field)
                         .filter(Boolean)
                 );
-                return;
-            }
-
-            if (item.field) {
+            } else if (item.field) {
                 exportColumns.push(item.field);
             }
         });
@@ -221,25 +218,29 @@
     };
 
     const getMissingCycleExportParams = () => {
-        const pagination = gridRef?.$refs?.table?.paginations || {};
-        const wheres = gridRef?.base?.getSearchParameters?.(gridRef, searchFormFields, searchFormOptions) || [];
+        if (!gridRef) {
+            return null;
+        }
 
+        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const query = typeof gridRef.getSearchParameters === 'function' ? gridRef.getSearchParameters() : { wheres: [] };
+        const wheres = Array.isArray(query.wheres) ? [...query.wheres] : [];
         wheres.push({
             name: 'FixedCycleDays',
-            value: null,
+            value: '',
             displayType: 'EMPTY'
         });
 
-        if (!wheres.some((x) => x.name === table.key)) {
-            const ids = gridRef?.getSelectRows?.()
-                ?.map((row) => row[table.key])
-                .filter(Boolean)
-                .join(',');
+        if (typeof gridRef.getSelectRows === 'function' && gridRef.table?.key) {
+            const selectedIds = gridRef
+                .getSelectRows()
+                ?.map((row) => row?.[gridRef.table.key])
+                .filter(Boolean);
 
-            if (ids) {
+            if (selectedIds?.length && !wheres.some((item) => item.name === gridRef.table.key)) {
                 wheres.push({
-                    name: table.key,
-                    value: ids,
+                    name: gridRef.table.key,
+                    value: selectedIds.join(','),
                     displayType: 'selectList'
                 });
             }
@@ -256,7 +257,23 @@
             params.columns = exportColumns;
         }
 
+        if (typeof params.wheres === 'object') {
+            params.wheres = JSON.stringify(params.wheres);
+        }
+
         return params;
+    };
+
+    const downloadBlobFile = (blobData, fileName) => {
+        const blob = blobData instanceof Blob ? blobData : new Blob([blobData]);
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        window.URL.revokeObjectURL(link.href);
+        document.body.removeChild(link);
     };
 
     const handleExportMissingCycle = async () => {
@@ -266,23 +283,36 @@
 
         exportLoading.value = true;
         const payload = getMissingCycleExportParams();
-        const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
-
-        if (payload.wheres && typeof payload.wheres === 'object') {
-            payload.wheres = JSON.stringify(payload.wheres);
+        if (!payload) {
+            exportLoading.value = false;
+            ElMessage.error('导出失败，界面尚未初始化');
+            return;
         }
+        const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const exportAction = gridRef.const?.EXPORT || 'Export';
+        const tableConfig = gridRef.table || table;
+        const url = typeof gridRef.getUrl === 'function' && tableConfig
+            ? gridRef.getUrl(exportAction, null, tableConfig)
+            : '/api/WZ_OrderCycleBase/Export';
 
         try {
-            await new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => reject(new Error('导出超时')), 600000);
-                proxy.http.download('/api/WZ_OrderCycleBase/Export', payload, fileName, '正在导出...', () => {
-                    clearTimeout(timeoutId);
-                    resolve(true);
-                });
+            if (typeof gridRef.exportBefore === 'function' && gridRef.exportBefore(payload) === false) {
+                exportLoading.value = false;
+                return;
+            }
+
+            const response = await proxy.http.post(url, payload, '正在导出...', {
+                responseType: 'blob'
             });
+            if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(response) === false) {
+                exportLoading.value = false;
+                return;
+            }
+
+            downloadBlobFile(response, fileName);
             ElMessage.success('导出成功');
         } catch (error) {
-            ElMessage.error(error?.message || '导出失败，请稍后重试');
+            ElMessage.error('导出失败，请稍后重试');
         } finally {
             exportLoading.value = false;
         }
