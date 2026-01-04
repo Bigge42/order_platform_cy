@@ -28,6 +28,10 @@
         <template #btnLeft>
             <div class="wz-ordercyclebase-action">
                 <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
+                <el-button type="primary"
+                           :loading="exportLoading"
+                           :disabled="ruleLoading || exportLoading"
+                           @click="handleExportMissingCycle">一键导出</el-button>
             </div>
         </template>
     </view-grid>
@@ -66,12 +70,15 @@
     import viewOptions from './WZ_OrderCycleBase/options.js'
     import { ref, reactive, getCurrentInstance, computed } from "vue";
     import { ElMessage } from 'element-plus'
+    import { getUrl } from '@/components/basic/ViewGrid/ViewGridProvider.jsx'
+    import action from '@/components/basic/ViewGrid/Action.js'
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
     //http请求，proxy.http.post/get
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
     const ruleLoading = ref(false);
+    const exportLoading = ref(false);
     const progressVisible = ref(false);
     const progressSummary = reactive({
         total: 0,
@@ -182,6 +189,148 @@
             ElMessage.error('智能体优化失败');
         } finally {
             ruleLoading.value = false;
+        }
+    };
+
+    const getExportColumns = () => {
+        const gridColumns = gridRef?.columns || columns;
+        if (!Array.isArray(gridColumns)) {
+            return [];
+        }
+
+        const exportColumns = [];
+        gridColumns.forEach((item) => {
+            if (item.hidden || item.render) {
+                return;
+            }
+
+            if (Array.isArray(item.children) && item.children.length) {
+                exportColumns.push(
+                    ...item.children
+                        .filter((child) => !child.hidden && !child.render)
+                        .map((child) => child.field)
+                        .filter(Boolean)
+                );
+            } else if (item.field) {
+                exportColumns.push(item.field);
+            }
+        });
+
+        return exportColumns;
+    };
+
+    const getMissingCycleExportParams = async () => {
+        if (!gridRef) {
+            return null;
+        }
+
+        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const searchParams = typeof proxy.base?.getSearchParameters === 'function'
+            ? proxy.base.getSearchParameters(proxy, searchFormFields, searchFormOptions)
+            : typeof gridRef.getSearchParameters === 'function'
+                ? gridRef.getSearchParameters()
+                : { wheres: [] };
+
+        const wheres = Array.isArray(searchParams?.wheres)
+            ? [...searchParams.wheres]
+            : Array.isArray(searchParams)
+                ? [...searchParams]
+                : [];
+
+        if (!wheres.some((item) => item?.name === 'FixedCycleDays')) {
+            wheres.push({
+                name: 'FixedCycleDays',
+                value: '',
+                displayType: 'EMPTY'
+            });
+        }
+
+        if (typeof gridRef.getSelectRows === 'function' && gridRef.table?.key) {
+            const selectedIds = gridRef
+                .getSelectRows()
+                ?.map((row) => row?.[gridRef.table.key])
+                .filter(Boolean);
+
+            if (selectedIds?.length && !wheres.some((item) => item?.name === gridRef.table.key)) {
+                wheres.push({
+                    name: gridRef.table.key,
+                    value: selectedIds.join(','),
+                    displayType: 'selectList'
+                });
+            }
+        }
+
+        const params = {
+            order: pagination.order,
+            sort: pagination.sort,
+            wheres
+        };
+
+        const exportColumns = getExportColumns();
+        if (exportColumns.length) {
+            params.columns = exportColumns;
+        }
+
+        return params;
+    };
+
+    const handleExportMissingCycle = async () => {
+        if (ruleLoading.value || exportLoading.value) {
+            return;
+        }
+
+        exportLoading.value = true;
+        const payload = await getMissingCycleExportParams();
+        if (!payload) {
+            exportLoading.value = false;
+            ElMessage.error('导出失败，界面尚未初始化');
+            return;
+        }
+
+        const exportAction = gridRef.const?.EXPORT || action.EXPORT || 'Export';
+        const tableConfig = gridRef.table || table;
+        const url = getUrl(exportAction, null, tableConfig);
+
+        let fileName = gridRef.downloadFileName
+            || (typeof gridRef.getFileName === 'function' ? gridRef.getFileName(false) : '');
+        if (!fileName) {
+            fileName = `${tableConfig?.cnName || '固定周期缺失'}.xlsx`;
+        }
+
+        try {
+            if (typeof gridRef.exportBefore === 'function') {
+                const result = await gridRef.exportBefore(payload);
+                if (result === false) {
+                    exportLoading.value = false;
+                    return;
+                }
+            }
+
+            if (typeof proxy.exportBefore === 'function') {
+                const proxyResult = await proxy.exportBefore.call(proxy, payload);
+                if (proxyResult === false) {
+                    exportLoading.value = false;
+                    return;
+                }
+            }
+
+            if (payload.wheres && typeof payload.wheres === 'object') {
+                payload.wheres = JSON.stringify(payload.wheres);
+            }
+
+            proxy.http.download(url, payload, fileName, 'loading....', (res) => {
+                if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(res, payload) === false) {
+                    return;
+                }
+                if (typeof proxy.exportAfter === 'function' && proxy.exportAfter.call(proxy, res, payload) === false) {
+                    return;
+                }
+                ElMessage.success('导出成功');
+            });
+        } catch (error) {
+            ElMessage.error('导出失败，请稍后重试');
+        } finally {
+            exportLoading.value = false;
         }
     };
     //监听表单输入，做实时计算
