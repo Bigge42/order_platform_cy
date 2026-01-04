@@ -6,7 +6,7 @@ using HDPro.Entity.DomainModels.OrderCollaboration;
 
 namespace HDPro.CY.Order.IServices.WZ
 {
-    /// <summary>
+    /// <summary>                 
     /// 产线产量（热力图数据）服务接口
     /// </summary>
     public partial interface IWZProductionOutputService
