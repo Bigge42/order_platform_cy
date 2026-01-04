@@ -12,7 +12,6 @@ using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -63,7 +62,6 @@ namespace HDPro.CY.Order.Controllers
         /// <returns>导入结果</returns>
         [HttpPost("Import")]
         [AllowAnonymous]
-        [OverrideActionFilters]
         [ApiExplorerSettings(IgnoreApi = false)]
         public override ActionResult Import([FromForm] List<IFormFile> fileInput)
         {
