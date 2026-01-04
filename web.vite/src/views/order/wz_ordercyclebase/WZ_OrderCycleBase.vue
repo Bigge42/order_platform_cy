@@ -70,6 +70,8 @@
     import viewOptions from './WZ_OrderCycleBase/options.js'
     import { ref, reactive, getCurrentInstance, computed } from "vue";
     import { ElMessage } from 'element-plus'
+    import { getUrl } from '@/components/basic/ViewGrid/ViewGridProvider.jsx'
+    import action from '@/components/basic/ViewGrid/Action.js'
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
     //http请求，proxy.http.post/get
@@ -217,14 +219,23 @@
         return exportColumns;
     };
 
-    const getMissingCycleExportParams = () => {
+    const getMissingCycleExportParams = async () => {
         if (!gridRef) {
             return null;
         }
 
         const pagination = gridRef?.$refs?.table?.paginations || {};
-        const query = typeof gridRef.getSearchParameters === 'function' ? gridRef.getSearchParameters() : { wheres: [] };
-        const wheres = Array.isArray(query?.wheres) ? [...query.wheres] : [];
+        const searchParams = typeof proxy.base?.getSearchParameters === 'function'
+            ? proxy.base.getSearchParameters(proxy, searchFormFields, searchFormOptions)
+            : typeof gridRef.getSearchParameters === 'function'
+                ? gridRef.getSearchParameters()
+                : { wheres: [] };
+
+        const wheres = Array.isArray(searchParams?.wheres)
+            ? [...searchParams.wheres]
+            : Array.isArray(searchParams)
+                ? [...searchParams]
+                : [];
 
         if (!wheres.some((item) => item?.name === 'FixedCycleDays')) {
             wheres.push({
@@ -269,34 +280,49 @@
         }
 
         exportLoading.value = true;
-        const payload = getMissingCycleExportParams();
+        const payload = await getMissingCycleExportParams();
         if (!payload) {
             exportLoading.value = false;
             ElMessage.error('导出失败，界面尚未初始化');
             return;
         }
-        const exportAction = gridRef.const?.EXPORT || 'Export';
-        const tableConfig = gridRef.table || table;
-        const fallbackUrl = `/api${tableConfig?.url || '/WZ_OrderCycleBase/'}${exportAction}`;
-        const url = typeof gridRef.getUrl === 'function' && tableConfig
-            ? gridRef.getUrl(exportAction, null, tableConfig)
-            : fallbackUrl;
 
-        const fileName = gridRef.downloadFileName
-            || (typeof gridRef.getFileName === 'function' ? gridRef.getFileName(false) : `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        const exportAction = gridRef.const?.EXPORT || action.EXPORT || 'Export';
+        const tableConfig = gridRef.table || table;
+        const url = getUrl(exportAction, null, tableConfig);
+
+        let fileName = gridRef.downloadFileName
+            || (typeof gridRef.getFileName === 'function' ? gridRef.getFileName(false) : '');
+        if (!fileName) {
+            fileName = `${tableConfig?.cnName || '固定周期缺失'}.xlsx`;
+        }
 
         try {
-            if (typeof gridRef.exportBefore === 'function' && gridRef.exportBefore(payload) === false) {
-                exportLoading.value = false;
-                return;
+            if (typeof gridRef.exportBefore === 'function') {
+                const result = await gridRef.exportBefore(payload);
+                if (result === false) {
+                    exportLoading.value = false;
+                    return;
+                }
+            }
+
+            if (typeof proxy.exportBefore === 'function') {
+                const proxyResult = await proxy.exportBefore.call(proxy, payload);
+                if (proxyResult === false) {
+                    exportLoading.value = false;
+                    return;
+                }
             }
 
             if (payload.wheres && typeof payload.wheres === 'object') {
                 payload.wheres = JSON.stringify(payload.wheres);
             }
 
-            proxy.http.download(url, payload, fileName, '正在导出...', (res) => {
+            proxy.http.download(url, payload, fileName, 'loading....', (res) => {
                 if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(res, payload) === false) {
+                    return;
+                }
+                if (typeof proxy.exportAfter === 'function' && proxy.exportAfter.call(proxy, res, payload) === false) {
                     return;
                 }
                 ElMessage.success('导出成功');
