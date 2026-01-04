@@ -28,6 +28,10 @@
         <template #btnLeft>
             <div class="wz-ordercyclebase-action">
                 <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
+                <el-button type="primary"
+                           :loading="exportLoading"
+                           :disabled="ruleLoading || exportLoading"
+                           @click="handleExportMissingCycle">一键导出</el-button>
             </div>
         </template>
     </view-grid>
@@ -72,6 +76,7 @@
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
     const ruleLoading = ref(false);
+    const exportLoading = ref(false);
     const progressVisible = ref(false);
     const progressSummary = reactive({
         total: 0,
@@ -182,6 +187,75 @@
             ElMessage.error('智能体优化失败');
         } finally {
             ruleLoading.value = false;
+        }
+    };
+
+    const getExportColumns = () => {
+        if (!Array.isArray(columns)) {
+            return [];
+        }
+
+        return columns
+            .filter((item) => !item.hidden)
+            .map((item) => item.field)
+            .filter(Boolean);
+    };
+
+    const getMissingCycleExportParams = () => {
+        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const wheres = [
+            {
+                name: 'FixedCycleDays',
+                value: '',
+                displayType: 'EMPTY'
+            }
+        ];
+
+        const params = {
+            order: pagination.order,
+            sort: pagination.sort,
+            wheres: JSON.stringify(wheres)
+        };
+
+        const exportColumns = getExportColumns();
+        if (exportColumns.length) {
+            params.columns = exportColumns;
+        }
+
+        return params;
+    };
+
+    const downloadBlobFile = (blobData, fileName) => {
+        const blob = blobData instanceof Blob ? blobData : new Blob([blobData]);
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        window.URL.revokeObjectURL(link.href);
+        document.body.removeChild(link);
+    };
+
+    const handleExportMissingCycle = async () => {
+        if (ruleLoading.value || exportLoading.value) {
+            return;
+        }
+
+        exportLoading.value = true;
+        const payload = getMissingCycleExportParams();
+        const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        try {
+            const response = await proxy.http.post('/api/WZ_OrderCycleBase/Export', payload, '正在导出...', {
+                responseType: 'blob'
+            });
+            downloadBlobFile(response, fileName);
+            ElMessage.success('导出成功');
+        } catch (error) {
+            ElMessage.error('导出失败，请稍后重试');
+        } finally {
+            exportLoading.value = false;
         }
     };
     //监听表单输入，做实时计算
