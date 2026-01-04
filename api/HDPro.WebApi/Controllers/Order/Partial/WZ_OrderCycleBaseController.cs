@@ -61,6 +61,7 @@ namespace HDPro.CY.Order.Controllers
         /// <returns>导入结果</returns>
         [HttpPost, Route("Import")]
         [ApiExplorerSettings(IgnoreApi = false)]
+        [AllowAnonymous]
         public override ActionResult Import(List<IFormFile> fileInput)
         {
             if (fileInput == null || fileInput.Count == 0)
