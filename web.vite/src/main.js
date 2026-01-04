@@ -19,7 +19,7 @@ import ServiceSelect from './components/ServiceSelect'
 import VolEdit from './components/basic/VolEdit'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import './assets/css/common.less'
-import './styles/global.css'
+/*import './styles/global.css'
 
 const defaultDifyToken = 'bcG6xSHDIPDB1uBu'
 const defaultDifyBaseUrl = 'http://10.11.10.101'
@@ -61,7 +61,7 @@ const mountDifyChatbot = () => {
   window.__difyChatbotInitialized = true
 }
 
-mountDifyChatbot()
+mountDifyChatbot()*/
 
 const search = window.location.search;
 const code = new URLSearchParams(search).get('code');
