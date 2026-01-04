@@ -5,10 +5,14 @@
  */
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using HDPro.WebApi.Filters;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -49,6 +53,64 @@ namespace HDPro.CY.Order.Controllers
             catch (Exception ex)
             {
                 return JsonNormal(new WebResponseContent().Error($"规则服务调用失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 导入Excel并覆盖现有数据
+        /// </summary>
+        /// <param name="file">Excel文件</param>
+        /// <returns>导入结果</returns>
+        [HttpPost("Import")]
+        [AllowAnonymous]
+        [ApiExplorerSettings(IgnoreApi = false)]
+        public override ActionResult Import([FromForm] List<IFormFile> fileInput)
+        {
+            try
+            {
+                var file = fileInput?.FirstOrDefault();
+                var result = Service.ImportAsync(file).GetAwaiter().GetResult();
+                return JsonNormal(result);
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"导入失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 使用固定Token鉴权的导入入口
+        /// </summary>
+        [HttpPost("import-by-key")]
+        [AllowAnonymous]
+        [FixedTokenAuthorize]
+        public IActionResult ImportByKey([FromForm] IFormFile file, [FromForm] List<IFormFile> fileInput)
+        {
+            var files = new List<IFormFile>();
+
+            if (file != null)
+            {
+                files.Add(file);
+            }
+
+            if (fileInput != null && fileInput.Count > 0)
+            {
+                files.AddRange(fileInput.Where(f => f != null));
+            }
+
+            if (files.Count == 0)
+            {
+                return JsonNormal(new WebResponseContent().Error("未上传文件"));
+            }
+
+            try
+            {
+                var result = Service.ImportAsync(files.First()).GetAwaiter().GetResult();
+                return JsonNormal(result);
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"导入失败：{ex.Message}"));
             }
         }
     }

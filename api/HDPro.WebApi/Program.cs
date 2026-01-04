@@ -42,6 +42,8 @@ using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.Repositories;
 using HDPro.CY.Order.IRepositories.MaterialCallBoard;
 using HDPro.CY.Order.Repositories.MaterialCallBoard;
+using HDPro.WebApi.Filters;
+using HDPro.WebApi.Options;
 
 
 
@@ -60,6 +62,8 @@ builder.Services.AddHttpClient("WZ", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(10); // 按需调大/调小
 });
+builder.Services.Configure<FixedTokenAuthOptions>(builder.Configuration.GetSection("FixedTokenAuth"));
+builder.Services.AddScoped<FixedTokenAuthorizeFilter>();
 // 配置NLog作为日志提供程序
 builder.Logging.ClearProviders();
 builder.Host.UseNLog();

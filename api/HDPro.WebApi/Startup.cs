@@ -43,6 +43,8 @@ using HDPro.Core.Print;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using HDPro.Core.Controllers.Basic;
+using HDPro.WebApi.Filters;
+using HDPro.WebApi.Options;
 
 namespace HDPro.WebApi
 {
@@ -52,6 +54,11 @@ namespace HDPro.WebApi
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
+        }
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.Configure<FixedTokenAuthOptions>(Configuration.GetSection("FixedTokenAuth"));
+            services.AddScoped<FixedTokenAuthorizeFilter>();
         }
         public void ConfigureContainer()
         {
