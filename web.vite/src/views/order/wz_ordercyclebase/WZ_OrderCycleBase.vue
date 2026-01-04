@@ -191,35 +191,74 @@
     };
 
     const getExportColumns = () => {
-        if (!Array.isArray(columns)) {
+        const gridColumns = gridRef?.columns || columns;
+        if (!Array.isArray(gridColumns)) {
             return [];
         }
 
-        return columns
-            .filter((item) => !item.hidden)
-            .map((item) => item.field)
-            .filter(Boolean);
+        const exportColumns = [];
+        gridColumns.forEach((item) => {
+            if (item.hidden || item.render) {
+                return;
+            }
+
+            if (Array.isArray(item.children) && item.children.length) {
+                exportColumns.push(
+                    ...item.children
+                        .filter((child) => !child.hidden && !child.render)
+                        .map((child) => child.field)
+                        .filter(Boolean)
+                );
+            } else if (item.field) {
+                exportColumns.push(item.field);
+            }
+        });
+
+        return exportColumns;
     };
 
     const getMissingCycleExportParams = () => {
+        if (!gridRef) {
+            return null;
+        }
+
         const pagination = gridRef?.$refs?.table?.paginations || {};
-        const wheres = [
-            {
-                name: 'FixedCycleDays',
-                value: '',
-                displayType: 'EMPTY'
+        const query = typeof gridRef.getSearchParameters === 'function' ? gridRef.getSearchParameters() : { wheres: [] };
+        const wheres = Array.isArray(query.wheres) ? [...query.wheres] : [];
+        wheres.push({
+            name: 'FixedCycleDays',
+            value: '',
+            displayType: 'EMPTY'
+        });
+
+        if (typeof gridRef.getSelectRows === 'function' && gridRef.table?.key) {
+            const selectedIds = gridRef
+                .getSelectRows()
+                ?.map((row) => row?.[gridRef.table.key])
+                .filter(Boolean);
+
+            if (selectedIds?.length && !wheres.some((item) => item.name === gridRef.table.key)) {
+                wheres.push({
+                    name: gridRef.table.key,
+                    value: selectedIds.join(','),
+                    displayType: 'selectList'
+                });
             }
-        ];
+        }
 
         const params = {
             order: pagination.order,
             sort: pagination.sort,
-            wheres: JSON.stringify(wheres)
+            wheres
         };
 
         const exportColumns = getExportColumns();
         if (exportColumns.length) {
             params.columns = exportColumns;
+        }
+
+        if (typeof params.wheres === 'object') {
+            params.wheres = JSON.stringify(params.wheres);
         }
 
         return params;
@@ -244,12 +283,30 @@
 
         exportLoading.value = true;
         const payload = getMissingCycleExportParams();
+        if (!payload) {
+            exportLoading.value = false;
+            ElMessage.error('导出失败，界面尚未初始化');
+            return;
+        }
         const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const url = typeof gridRef.getUrl === 'function' && gridRef.const?.EXPORT
+            ? gridRef.getUrl(gridRef.const.EXPORT)
+            : '/api/WZ_OrderCycleBase/Export';
 
         try {
-            const response = await proxy.http.post('/api/WZ_OrderCycleBase/Export', payload, '正在导出...', {
+            if (typeof gridRef.exportBefore === 'function' && gridRef.exportBefore(payload) === false) {
+                exportLoading.value = false;
+                return;
+            }
+
+            const response = await proxy.http.post(url, payload, '正在导出...', {
                 responseType: 'blob'
             });
+            if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(response) === false) {
+                exportLoading.value = false;
+                return;
+            }
+
             downloadBlobFile(response, fileName);
             ElMessage.success('导出成功');
         } catch (error) {
