@@ -193,12 +193,9 @@
     };
 
     const getExportColumns = () => {
-        const gridColumns = gridRef?.columns || columns;
-        if (!Array.isArray(gridColumns)) {
-            return [];
-        }
-
         const exportColumns = [];
+        const gridColumns = Array.isArray(columns) ? columns : [];
+
         gridColumns.forEach((item) => {
             if (item.hidden || item.render) {
                 return;
@@ -219,12 +216,14 @@
         return exportColumns;
     };
 
-    const getMissingCycleExportParams = async () => {
+    const getMissingCycleExportParams = () => {
         if (!gridRef) {
+            console.error('[MissingCycleExport] gridRef is not ready');
             return null;
         }
 
-        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const tableRef = gridRef?.$refs?.table;
+        const pagination = tableRef?.paginations || {};
         const searchParams = typeof proxy.base?.getSearchParameters === 'function'
             ? proxy.base.getSearchParameters(proxy, searchFormFields, searchFormOptions)
             : typeof gridRef.getSearchParameters === 'function'
@@ -245,31 +244,39 @@
             });
         }
 
-        if (typeof gridRef.getSelectRows === 'function' && gridRef.table?.key) {
+        const keyField = gridRef.table?.key || table?.key;
+        if (typeof gridRef.getSelectRows === 'function' && keyField) {
             const selectedIds = gridRef
                 .getSelectRows()
-                ?.map((row) => row?.[gridRef.table.key])
+                ?.map((row) => row?.[keyField])
                 .filter(Boolean);
 
-            if (selectedIds?.length && !wheres.some((item) => item?.name === gridRef.table.key)) {
+            if (selectedIds?.length && !wheres.some((item) => item?.name === keyField)) {
                 wheres.push({
-                    name: gridRef.table.key,
+                    name: keyField,
                     value: selectedIds.join(','),
                     displayType: 'selectList'
                 });
             }
         }
 
+        const exportColumns = getExportColumns();
         const params = {
             order: pagination.order,
             sort: pagination.sort,
             wheres
         };
 
-        const exportColumns = getExportColumns();
         if (exportColumns.length) {
             params.columns = exportColumns;
         }
+
+        console.info('[MissingCycleExport] collected params', {
+            url: getUrl(action.EXPORT, null, gridRef.table || table),
+            pagination,
+            wheres,
+            exportColumns
+        });
 
         return params;
     };
@@ -280,7 +287,7 @@
         }
 
         exportLoading.value = true;
-        const payload = await getMissingCycleExportParams();
+        const payload = getMissingCycleExportParams();
         if (!payload) {
             exportLoading.value = false;
             ElMessage.error('导出失败，界面尚未初始化');
@@ -297,11 +304,13 @@
             fileName = `${tableConfig?.cnName || '固定周期缺失'}.xlsx`;
         }
 
+        const payloadSnapshot = JSON.parse(JSON.stringify(payload || {}));
         try {
             if (typeof gridRef.exportBefore === 'function') {
                 const result = await gridRef.exportBefore(payload);
                 if (result === false) {
                     exportLoading.value = false;
+                    console.info('[MissingCycleExport] blocked by gridRef.exportBefore');
                     return;
                 }
             }
@@ -310,6 +319,7 @@
                 const proxyResult = await proxy.exportBefore.call(proxy, payload);
                 if (proxyResult === false) {
                     exportLoading.value = false;
+                    console.info('[MissingCycleExport] blocked by proxy.exportBefore');
                     return;
                 }
             }
@@ -318,16 +328,19 @@
                 payload.wheres = JSON.stringify(payload.wheres);
             }
 
+            console.info('[MissingCycleExport] request start', { url, fileName, payload });
             proxy.http.download(url, payload, fileName, 'loading....', (res) => {
-                if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(res, payload) === false) {
+                console.info('[MissingCycleExport] response', res);
+                if (typeof gridRef.exportAfter === 'function' && gridRef.exportAfter(res, payloadSnapshot) === false) {
                     return;
                 }
-                if (typeof proxy.exportAfter === 'function' && proxy.exportAfter.call(proxy, res, payload) === false) {
+                if (typeof proxy.exportAfter === 'function' && proxy.exportAfter.call(proxy, res, payloadSnapshot) === false) {
                     return;
                 }
                 ElMessage.success('导出成功');
             });
         } catch (error) {
+            console.error('[MissingCycleExport] failed', error);
             ElMessage.error('导出失败，请稍后重试');
         } finally {
             exportLoading.value = false;
