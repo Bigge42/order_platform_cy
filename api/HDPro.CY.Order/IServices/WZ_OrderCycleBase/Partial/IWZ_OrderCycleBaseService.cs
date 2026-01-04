@@ -9,6 +9,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
 namespace HDPro.CY.Order.IServices
 {
     public partial interface IWZ_OrderCycleBaseService
@@ -16,6 +17,8 @@ namespace HDPro.CY.Order.IServices
         Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default);
 
         Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
+
+        Task<WebResponseContent> ImportAsync(IFormFile file, CancellationToken cancellationToken = default);
     }
 
     public sealed class ValveRuleBatchSummary
