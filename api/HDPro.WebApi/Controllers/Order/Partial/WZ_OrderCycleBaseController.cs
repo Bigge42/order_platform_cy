@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -49,6 +50,26 @@ namespace HDPro.CY.Order.Controllers
             catch (Exception ex)
             {
                 return JsonNormal(new WebResponseContent().Error($"规则服务调用失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 导入Excel并覆盖现有数据
+        /// </summary>
+        /// <param name="file">Excel文件</param>
+        /// <returns>导入结果</returns>
+        [HttpPost("import")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Import([FromForm] IFormFile file)
+        {
+            try
+            {
+                var result = await Service.ImportAsync(file);
+                return JsonNormal(result);
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"导入失败：{ex.Message}"));
             }
         }
     }

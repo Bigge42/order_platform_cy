@@ -30,6 +30,24 @@
         <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
       </div>
     </template>
+    <template #btnRight>
+      <div class="wz-ordercyclebase-action">
+        <el-upload
+          ref="importUploader"
+          :accept="'.xlsx,.xls'"
+          :show-file-list="false"
+          :auto-upload="true"
+          :before-upload="beforeImportUpload"
+          :http-request="handleImportRequest"
+          :disabled="importLoading"
+        >
+          <el-button type="warning" :loading="importLoading">
+            <i class="el-icon-upload2"></i>
+            导入（覆盖）
+          </el-button>
+        </el-upload>
+      </div>
+    </template>
   </view-grid>
 
   <el-dialog v-model="progressVisible"
@@ -65,7 +83,7 @@
 import extend from "@/extension/order//wz_ordercyclebase/WZ_OrderCycleBase.jsx";
 import viewOptions from './WZ_OrderCycleBase/options.js'
 import { ref, reactive, getCurrentInstance, computed } from "vue";
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 const grid = ref(null);
 const { proxy } = getCurrentInstance()
 //http请求，proxy.http.post/get
@@ -81,6 +99,10 @@ const progressSummary = reactive({
   batchCount: 0,
   logFiles: []
 });
+
+const importUploader = ref(null);
+const importLoading = ref(false);
+const importUrl = '/api/WZ_OrderCycleBase/import';
 
 const progressPercent = computed(() => {
   if (progressSummary.total === 0) {
@@ -140,6 +162,54 @@ const modelOpenBefore = async (row) => {//弹出框打开后方法
 const modelOpenAfter = (row) => {
   //弹出框打开后方法,设置表单默认值,按钮操作等
 }
+
+const beforeImportUpload = async (file) => {
+  const ext = file.name?.split('.').pop()?.toLowerCase();
+  if (!['xlsx', 'xls'].includes(ext)) {
+    ElMessage.error('仅支持上传 .xlsx 或 .xls 文件');
+    return false;
+  }
+
+  try {
+    await ElMessageBox.confirm('导入会完全覆盖现有数据，是否继续？', '提示', {
+      type: 'warning',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消'
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+const handleImportRequest = async (options) => {
+  const formData = new FormData();
+  formData.append('file', options.file);
+
+  importLoading.value = true;
+  try {
+    const res = await proxy.http.post(importUrl, formData, true, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    if (res.status) {
+      const count = res.data?.successCount ?? 0;
+      ElMessage.success(res.message || `导入成功，成功 ${count} 条`);
+      if (gridRef && gridRef.search) {
+        gridRef.search();
+      }
+    } else {
+      ElMessage.error(res.message || '导入失败');
+    }
+
+    options?.onSuccess?.(res);
+  } catch (error) {
+    options?.onError?.(error);
+    ElMessage.error('导入失败');
+  } finally {
+    importLoading.value = false;
+  }
+};
 
 const resetProgressSummary = () => {
   progressSummary.total = 0;
