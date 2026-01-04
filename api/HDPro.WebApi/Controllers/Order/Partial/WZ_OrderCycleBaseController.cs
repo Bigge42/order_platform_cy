@@ -60,8 +60,9 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <param name="file">Excel文件</param>
         /// <returns>导入结果</returns>
-        [HttpPost("import")]
+        [HttpPost("Import")]
         [AllowAnonymous]
+        [ApiExplorerSettings(IgnoreApi = false)]
         public override ActionResult Import([FromForm] List<IFormFile> fileInput)
         {
             try
