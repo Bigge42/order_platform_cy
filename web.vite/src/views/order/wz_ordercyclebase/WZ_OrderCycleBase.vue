@@ -195,7 +195,34 @@
             return [];
         }
 
-        return columns.map((item) => item.field).filter(Boolean);
+        return columns
+            .filter((item) => !item.hidden)
+            .map((item) => item.field)
+            .filter(Boolean);
+    };
+
+    const getMissingCycleExportParams = () => {
+        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const wheres = [
+            {
+                name: 'FixedCycleDays',
+                value: '',
+                displayType: 'EMPTY'
+            }
+        ];
+
+        const params = {
+            order: pagination.order,
+            sort: pagination.sort,
+            wheres: JSON.stringify(wheres)
+        };
+
+        const exportColumns = getExportColumns();
+        if (exportColumns.length) {
+            params.columns = exportColumns;
+        }
+
+        return params;
     };
 
     const downloadBlobFile = (blobData, fileName) => {
@@ -216,25 +243,17 @@
         }
 
         exportLoading.value = true;
-        const payload = {
-            Filter: [
-                {
-                    Name: 'FixedCycleDays',
-                    Value: '',
-                    DisplayType: 'EMPTY'
-                }
-            ],
-            Columns: getExportColumns()
-        };
-
+        const payload = getMissingCycleExportParams();
         const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
         try {
-            const response = await proxy.http.post('/api/WZ_OrderCycleBase/Export', payload, '正在导出...', { responseType: 'blob' });
+            const response = await proxy.http.post('/api/WZ_OrderCycleBase/Export', payload, '正在导出...', {
+                responseType: 'blob'
+            });
             downloadBlobFile(response, fileName);
             ElMessage.success('导出成功');
         } catch (error) {
-            ElMessage.error('导出失败');
+            ElMessage.error('导出失败，请稍后重试');
         } finally {
             exportLoading.value = false;
         }
