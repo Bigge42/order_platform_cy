@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
@@ -57,21 +58,16 @@ namespace HDPro.CY.Order.Controllers
         /// <summary>
         /// 导入Excel并覆盖现有数据
         /// </summary>
-        /// <param name="fileInput">Excel文件</param>
+        /// <param name="file">Excel文件</param>
         /// <returns>导入结果</returns>
-        [HttpPost, Route("Import")]
-        [ApiExplorerSettings(IgnoreApi = false)]
+        [HttpPost("import")]
         [AllowAnonymous]
-        public override ActionResult Import(List<IFormFile> fileInput)
+        public override ActionResult Import([FromForm] List<IFormFile> fileInput)
         {
-            if (fileInput == null || fileInput.Count == 0)
-            {
-                return JsonNormal(new WebResponseContent().Error("未获取到上传文件"));
-            }
-
             try
             {
-                var result = Service.ImportAsync(fileInput[0]).GetAwaiter().GetResult();
+                var file = fileInput?.FirstOrDefault();
+                var result = Service.ImportAsync(file).GetAwaiter().GetResult();
                 return JsonNormal(result);
             }
             catch (Exception ex)
