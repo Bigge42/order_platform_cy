@@ -28,6 +28,10 @@
         <template #btnLeft>
             <div class="wz-ordercyclebase-action">
                 <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
+                <el-button type="primary"
+                           :loading="exportLoading"
+                           :disabled="ruleLoading || exportLoading"
+                           @click="handleExportMissingCycle">一键导出</el-button>
             </div>
         </template>
     </view-grid>
@@ -72,6 +76,7 @@
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
     const ruleLoading = ref(false);
+    const exportLoading = ref(false);
     const progressVisible = ref(false);
     const progressSummary = reactive({
         total: 0,
@@ -182,6 +187,104 @@
             ElMessage.error('智能体优化失败');
         } finally {
             ruleLoading.value = false;
+        }
+    };
+
+    const getExportColumns = () => {
+        if (!Array.isArray(columns)) {
+            return [];
+        }
+
+        const exportColumns = [];
+
+        columns.forEach((item) => {
+            if (item.hidden || item.render) {
+                return;
+            }
+
+            if (item.children && Array.isArray(item.children)) {
+                exportColumns.push(
+                    ...item.children
+                        .filter((child) => !child.hidden && !child.render)
+                        .map((child) => child.field)
+                        .filter(Boolean)
+                );
+                return;
+            }
+
+            if (item.field) {
+                exportColumns.push(item.field);
+            }
+        });
+
+        return exportColumns;
+    };
+
+    const getMissingCycleExportParams = () => {
+        const pagination = gridRef?.$refs?.table?.paginations || {};
+        const wheres = gridRef?.base?.getSearchParameters?.(gridRef, searchFormFields, searchFormOptions) || [];
+
+        wheres.push({
+            name: 'FixedCycleDays',
+            value: null,
+            displayType: 'EMPTY'
+        });
+
+        if (!wheres.some((x) => x.name === table.key)) {
+            const ids = gridRef?.getSelectRows?.()
+                ?.map((row) => row[table.key])
+                .filter(Boolean)
+                .join(',');
+
+            if (ids) {
+                wheres.push({
+                    name: table.key,
+                    value: ids,
+                    displayType: 'selectList'
+                });
+            }
+        }
+
+        const params = {
+            order: pagination.order,
+            sort: pagination.sort,
+            wheres
+        };
+
+        const exportColumns = getExportColumns();
+        if (exportColumns.length) {
+            params.columns = exportColumns;
+        }
+
+        return params;
+    };
+
+    const handleExportMissingCycle = async () => {
+        if (ruleLoading.value || exportLoading.value) {
+            return;
+        }
+
+        exportLoading.value = true;
+        const payload = getMissingCycleExportParams();
+        const fileName = `固定周期缺失_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        if (payload.wheres && typeof payload.wheres === 'object') {
+            payload.wheres = JSON.stringify(payload.wheres);
+        }
+
+        try {
+            await new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => reject(new Error('导出超时')), 600000);
+                proxy.http.download('/api/WZ_OrderCycleBase/Export', payload, fileName, '正在导出...', () => {
+                    clearTimeout(timeoutId);
+                    resolve(true);
+                });
+            });
+            ElMessage.success('导出成功');
+        } catch (error) {
+            ElMessage.error(error?.message || '导出失败，请稍后重试');
+        } finally {
+            exportLoading.value = false;
         }
     };
     //监听表单输入，做实时计算
