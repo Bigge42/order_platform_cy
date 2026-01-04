@@ -19,7 +19,7 @@ export default function(){
     const editFormOptions = [];
     const searchFormFields = {};
     const searchFormOptions = [];
-    const columns = [{field:'Id',title:'Id',type:'int',width:110,hidden:true,readonly:true,require:true,align:'left'},
+    const columns = [{field:'Id',title:'ID',type:'int',width:110,readonly:true,require:true,align:'left'},
                        {field:'SalesOrderNo',title:'销售订单号',type:'string',width:120,align:'left'},
                        {field:'PlanTrackingNo',title:'计划跟踪号',type:'string',width:120,align:'left'},
                        {field:'OrderApprovedDate',title:'订单审核日期',type:'datetime',width:110,align:'left'},
