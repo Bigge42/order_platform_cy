@@ -333,6 +333,7 @@ namespace HDPro.CY.Order.Services
                     OrderApprovedDate = item.OrderApprovedDate,
                     ReplyDeliveryDate = item.ReplyDeliveryDate,
                     RequestedDeliveryDate = item.RequestedDeliveryDate,
+                    BodyMaterial = item.BodyMaterial,
                     InnerMaterial = item.InnerMaterial,
                     FlangeConnection = item.FlangeConnection,
                     BonnetForm = item.BonnetForm,
@@ -375,6 +376,9 @@ namespace HDPro.CY.Order.Services
 
             [JsonProperty("RequestedDeliveryDate")]
             public DateTime? RequestedDeliveryDate { get; set; }
+
+            [JsonProperty("fa_ti_cai_zhi")]
+            public string BodyMaterial { get; set; }
 
             [JsonProperty("nei_jian_cai_zhi")]
             public string InnerMaterial { get; set; }
