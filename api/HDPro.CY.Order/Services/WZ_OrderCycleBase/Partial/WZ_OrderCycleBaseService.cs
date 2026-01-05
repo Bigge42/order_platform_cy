@@ -478,6 +478,7 @@ namespace HDPro.CY.Order.Services
                 target.BonnetForm = materialInfo.BonnetForm;
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;
                 target.Actuator = materialInfo.ActuatorModel;
+                target.BodyMaterial = materialInfo.BodyMaterial;
                 target.SealFaceForm = materialInfo.SealFaceForm;
                 target.ProductName = materialInfo.ProductModel;
                 target.NominalDiameter = materialInfo.NominalDiameter;
