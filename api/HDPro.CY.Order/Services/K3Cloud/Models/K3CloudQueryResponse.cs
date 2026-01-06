@@ -197,6 +197,11 @@ namespace HDPro.CY.Order.Services.K3Cloud.Models
         /// 禁用状态 - FForbidStatus
         /// </summary>
         public string FForbidStatus { get; set; }
+
+        /// <summary>
+        /// 上阀盖型式
+        /// </summary>
+        public string F_BLN_SFGXS { get; set; }
     }
 
     /// <summary>
