@@ -477,13 +477,13 @@ namespace HDPro.CY.Order.Services
 
             if (materialInfo != null)
             {
-                target.InnerMaterial = materialInfo.InnerMaterial;
+                target.InnerMaterial = materialInfo.TrimMaterial;
                 target.FlangeConnection = materialInfo.FlangeConnection;
                 target.BonnetForm = materialInfo.BonnetForm;
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;
                 target.Actuator = materialInfo.ActuatorModel;
                 target.BodyMaterial = materialInfo.BodyMaterial;
-                target.SealFaceForm = materialInfo.SealFaceForm;
+                target.SealFaceForm = materialInfo.FlangeSealType;
                 target.ProductName = materialInfo.ProductModel;
                 target.NominalDiameter = materialInfo.NominalDiameter;
                 target.NominalPressure = materialInfo.NominalPressure;
