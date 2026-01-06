@@ -28,6 +28,7 @@ export default function(){
                        {field:'StandardDeliveryDate',title:'标准交货日期',type:'datetime',width:110,align:'left'},
                        {field:'ScheduleDate',title:'排产日期',type:'datetime',width:110,align:'left'},
                        {field:'MaterialCode',title:'物料编码',type:'string',width:120,align:'left'},
+                       {field:'OrderQty',title:'订单数量',type:'decimal',width:120,align:'left'},
                        {field:'BodyMaterial',title:'阀体材质',type:'string',width:150,align:'left'},
                        {field:'InnerMaterial',title:'内件材质',type:'string',width:150,align:'left'},
                        {field:'FlangeConnection',title:'法兰连接方式',type:'string',width:150,align:'left'},

@@ -94,6 +94,15 @@ namespace HDPro.Entity.DomainModels
        public string MaterialCode { get; set; }
 
        /// <summary>
+       ///订单数量
+       /// </summary>
+       [Display(Name ="订单数量")]
+       [DisplayFormat(DataFormatString="18,6")]
+       [Column(TypeName="decimal(18,6)")]
+       [Editable(true)]
+       public decimal? OrderQty { get; set; }
+
+       /// <summary>
        ///阀体材质
        /// </summary>
        [Display(Name ="阀体材质")]
