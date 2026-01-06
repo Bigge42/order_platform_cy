@@ -474,6 +474,7 @@ namespace HDPro.CY.Order.Services
             target.ReplyDeliveryDate = orderTracking.ReplyDeliveryDate;
             target.RequestedDeliveryDate = orderTracking.DeliveryDate;
             target.MaterialCode = orderTracking.MaterialNumber;
+            target.OrderQty = orderTracking.OrderQty;
 
             if (materialInfo != null)
             {
@@ -483,7 +484,7 @@ namespace HDPro.CY.Order.Services
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;
                 target.Actuator = materialInfo.ActuatorModel;
                 target.BodyMaterial = materialInfo.BodyMaterial;
-                target.SealFaceForm = materialInfo.FlangeSealType;
+                target.SealFaceForm = materialInfo.SealFaceForm;
                 target.ProductName = materialInfo.ProductModel;
                 target.NominalDiameter = materialInfo.NominalDiameter;
                 target.NominalPressure = materialInfo.NominalPressure;
