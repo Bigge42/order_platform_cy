@@ -478,7 +478,7 @@ namespace HDPro.CY.Order.Services
 
             if (materialInfo != null)
             {
-                target.InnerMaterial = materialInfo.InnerMaterial;
+                target.InnerMaterial = materialInfo.TrimMaterial;
                 target.FlangeConnection = materialInfo.FlangeConnection;
                 target.BonnetForm = materialInfo.BonnetForm;
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;

@@ -490,8 +490,9 @@ namespace HDPro.CY.Order.Services
             entity.FlangeStandard = k3Material.F_BLN_Flbz;             // F_BLN_Flbz -> FlangeStandard (法兰标准)
             entity.BodyMaterial = k3Material.F_BLN_Ftcz;               // F_BLN_Ftcz -> BodyMaterial (阀体材质)
             entity.TrimMaterial = k3Material.F_BLN_Fljcz;              // F_BLN_Fljcz -> TrimMaterial (阀内件材质)
-            entity.FlangeSealType = k3Material.F_BLN_Flmfmxs;          // F_BLN_Flmfmxs -> FlangeSealType (法兰密封面型式)
+            entity.FlangeSealType = k3Material.F_BLN_Flmfmxs;          // F_BLN_Flmfmxs -> FlangeSealType (法兰密封面型F式)
             entity.TCReleaser = k3Material.F_TC_RELEASER;              // F_TC_RELEASER -> TCReleaser (TC发布人)
+            entity.BonnetForm= k3Material.F_BLN_SFGXS;
 
             // 是否关联BOM映射
             if (!string.IsNullOrEmpty(k3Material.FIsBOM))
