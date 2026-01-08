@@ -17,5 +17,13 @@ namespace HDPro.Entity.DomainModels
     public partial class WZ_OrderCycleBase
     {
         //此处配置字段(字段配置见此model的另一个partial),如果表中没有此字段请加上 [NotMapped]属性，否则会异常
+        /// <summary>
+        /// 指派生产线
+        /// </summary>
+        [Display(Name = "指派生产线")]
+        [MaxLength(2000)]
+        [Column(TypeName = "nvarchar(2000)")]
+        [Editable(true)]
+        public string AssignedProductionLine { get; set; }
     }
 }
