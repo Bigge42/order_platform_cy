@@ -128,7 +128,7 @@ const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
-const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 10, rows: 7 }
+const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -354,10 +354,10 @@ function renderAll(){
     const cols = daysCount, rows = cat.lines.length
     const githubLine = getGithubLine(v)
     const useGithub = Boolean(githubLine)
-    const cellSize = useGithub ? GITHUB.size : baseCellSize
-    const gap = useGithub ? GITHUB.gap : baseGap
-    const pad = useGithub ? GITHUB.pad : basePad
-    const labelGap = useGithub ? GITHUB.labelGap : baseLabelGap
+    const cellSize = useGithub ? (state.big ? SIZE.big : GITHUB.size) : baseCellSize
+    const gap = useGithub ? (state.big ? baseGap : GITHUB.gap) : baseGap
+    const pad = useGithub ? (state.big ? basePad : GITHUB.pad) : basePad
+    const labelGap = useGithub ? (state.big ? baseLabelGap : GITHUB.labelGap) : baseLabelGap
     const padX = pad + labelGap
     const weekCols = useGithub ? Math.ceil(daysCount / GITHUB.rows) : cols
     const githubRows = GITHUB.rows
