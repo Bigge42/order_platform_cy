@@ -475,6 +475,7 @@ namespace HDPro.CY.Order.Services
             target.RequestedDeliveryDate = orderTracking.DeliveryDate;
             target.MaterialCode = orderTracking.MaterialNumber;
             target.OrderQty = orderTracking.OrderQty;
+            target.FENTRYID = orderTracking.SOEntryID;
 
             if (materialInfo != null)
             {
