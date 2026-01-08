@@ -27,6 +27,10 @@
              :modelOpenAfter="modelOpenAfter">
     <template #btnLeft>
       <div class="wz-ordercyclebase-action">
+        <el-button type="primary"
+                   :loading="syncLoading"
+                   :disabled="ruleLoading"
+                   @click="handleSync">同步排产数据</el-button>
         <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
       </div>
     </template>
@@ -65,12 +69,13 @@
 import extend from "@/extension/order//wz_ordercyclebase/WZ_OrderCycleBase.jsx";
 import viewOptions from './WZ_OrderCycleBase/options.js'
 import { ref, reactive, getCurrentInstance, computed } from "vue";
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 const grid = ref(null);
 const { proxy } = getCurrentInstance()
 //http请求，proxy.http.post/get
 const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
+const syncLoading = ref(false);
 const ruleLoading = ref(false);
 const progressVisible = ref(false);
 const progressSummary = reactive({
@@ -148,6 +153,43 @@ const resetProgressSummary = () => {
   progressSummary.updated = 0;
   progressSummary.batchCount = 0;
   progressSummary.logFiles = [];
+};
+
+const handleSync = async () => {
+  if (syncLoading.value || ruleLoading.value) {
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '同步排产数据会重置当前页面全部数据，需要重新排产，是否继续？',
+      '提示',
+      {
+        type: 'warning',
+        confirmButtonText: '继续',
+        cancelButtonText: '取消'
+      }
+    );
+  } catch (error) {
+    return;
+  }
+
+  syncLoading.value = true;
+  try {
+    const response = await proxy.http.post('/api/WZ_OrderCycleBase/sync-from-order-tracking');
+    if (response.status) {
+      ElMessage.success(response.message || '同步排产数据成功');
+      if (gridRef && gridRef.search) {
+        gridRef.search();
+      }
+    } else {
+      ElMessage.error(response.message || '同步排产数据失败');
+    }
+  } catch (error) {
+    ElMessage.error('同步排产数据失败');
+  } finally {
+    syncLoading.value = false;
+  }
 };
 
 const handleOptimize = async () => {
