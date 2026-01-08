@@ -33,7 +33,7 @@ namespace HDPro.CY.Order.IServices
 
         public string ProductionLine { get; set; }
 
-        public int Quantity { get; set; }
+        public decimal Quantity { get; set; }
     }
 
     public sealed class ValveRuleBatchSummary

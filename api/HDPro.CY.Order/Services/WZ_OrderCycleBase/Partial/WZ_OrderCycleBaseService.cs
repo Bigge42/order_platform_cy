@@ -232,7 +232,7 @@ namespace HDPro.CY.Order.Services
                     ProductionDate = g.Key.Date,
                     ValveCategory = g.Key.Cat,
                     ProductionLine = g.Key.Line,
-                    Quantity = g.Count()
+                    Quantity = g.Sum(x => x.OrderQty ?? 0m)
                 })
                 .OrderBy(x => x.ProductionDate)
                 .ThenBy(x => x.ValveCategory)
