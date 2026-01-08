@@ -26,5 +26,26 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 规则直判：批量计算并更新 AssignedProductionLine
+        /// </summary>
+        Task<WZProductionOutputAssignResult> AssignProductionLineAsync(
+            int batchSize,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 获取规则直判 SQL 更新语句
+        /// </summary>
+        string GetAssignedProductionLineSql();
+    }
+
+    public sealed class WZProductionOutputAssignResult
+    {
+        public int BatchSize { get; set; }
+        public int TotalCount { get; set; }
+        public int UpdatedCount { get; set; }
+        public int SkippedCount { get; set; }
+        public int ErrorCount { get; set; }
     }
 }

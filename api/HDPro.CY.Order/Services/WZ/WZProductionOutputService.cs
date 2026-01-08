@@ -32,6 +32,29 @@ namespace HDPro.CY.Order.Services.WZ
         private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
         private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
+        private const int AssignBatchDefaultSize = 1000;
+
+        private const string AssignedProductionLineSql = @"
+UPDATE dbo.WZ_ProductionOutput
+SET AssignedProductionLine =
+    CASE
+        WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'' THEN
+            CASE
+                WHEN ProductionLine LIKE N'旋转%' AND ValveCategory = N'蝶阀' THEN
+                    CASE
+                        WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN50', N'DN65', N'DN80', N'DN100', N'DN125', N'DN150') THEN N'蝶阀1'
+                        WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN200', N'DN250', N'DN300', N'DN100') THEN N'蝶阀2'
+                        WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN350', N'DN400', N'DN450', N'DN500', N'DN600') THEN N'蝶阀3'
+                        ELSE N'蝶阀4'
+                    END
+                WHEN ProductionLine IN (N'旋转1', N'旋转2', N'旋转3', N'旋转4', N'旋转5') AND ValveCategory = N'软密封球阀'
+                    THEN ProductionLine + N'A'
+                ELSE NULL
+            END
+        ELSE NULL
+    END
+WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';
+";
 
         private readonly ServiceDbContext _db;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -79,6 +102,47 @@ namespace HDPro.CY.Order.Services.WZ
         /// <summary>字符串规整：Trim + 全/半角等标准化，避免“看起来一样但字符串不同”</summary>
         private static string NormalizeStr(string s)
             => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().Normalize(NormalizationForm.FormKC);
+
+        /// <summary>
+        /// 规则直判：计算 AssignedProductionLine
+        /// </summary>
+        public static string CalcAssignedProductionLine(string productionLine, string valveCategory, string nominalDiameter)
+        {
+            var line = string.IsNullOrWhiteSpace(productionLine) ? null : productionLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                return null;
+
+            var category = string.IsNullOrWhiteSpace(valveCategory) ? null : valveCategory.Trim();
+            var dn = string.IsNullOrWhiteSpace(nominalDiameter) ? string.Empty : nominalDiameter.Trim();
+
+            if (line.StartsWith("旋转", StringComparison.Ordinal) &&
+                string.Equals(category, "蝶阀", StringComparison.Ordinal))
+            {
+                if (dn == "DN50" || dn == "DN65" || dn == "DN80" || dn == "DN100" || dn == "DN125" || dn == "DN150")
+                    return "蝶阀1";
+
+                if (dn == "DN200" || dn == "DN250" || dn == "DN300" || dn == "DN100")
+                    return "蝶阀2";
+
+                if (dn == "DN350" || dn == "DN400" || dn == "DN450" || dn == "DN500" || dn == "DN600")
+                    return "蝶阀3";
+
+                return "蝶阀4";
+            }
+
+            if ((line == "旋转1" || line == "旋转2" || line == "旋转3" || line == "旋转4" || line == "旋转5") &&
+                string.Equals(category, "软密封球阀", StringComparison.Ordinal))
+            {
+                return $"{line}A";
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 获取规则直判 SQL 更新语句
+        /// </summary>
+        public string GetAssignedProductionLineSql() => AssignedProductionLineSql;
 
         /// <summary>
         /// 选择用于 ProductionDate 的日期（优先排产日 F_ORA_DATE1 ；否则回落到订单日/要货日）
@@ -259,6 +323,85 @@ namespace HDPro.CY.Order.Services.WZ
                          .ThenBy(x => x.ProductionLine);
 
             return query.ToListAsync(ct);
+        }
+
+        /// <summary>
+        /// 规则直判：批量计算并更新 AssignedProductionLine
+        /// </summary>
+        public async Task<WZProductionOutputAssignResult> AssignProductionLineAsync(int batchSize, CancellationToken ct = default)
+        {
+            var effectiveBatchSize = batchSize > 0 ? batchSize : AssignBatchDefaultSize;
+            var result = new WZProductionOutputAssignResult { BatchSize = effectiveBatchSize };
+
+            int lastId = 0;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var batch = await _db.Set<WZ_ProductionOutput>()
+                    .Where(x => x.Id > lastId && !string.IsNullOrEmpty(x.ProductionLine))
+                    .OrderBy(x => x.Id)
+                    .Take(effectiveBatchSize)
+                    .ToListAsync(ct);
+
+                if (batch.Count == 0)
+                    break;
+
+                result.TotalCount += batch.Count;
+
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
+                try
+                {
+                    var updatedInBatch = 0;
+                    foreach (var item in batch)
+                    {
+                        try
+                        {
+                            var assigned = CalcAssignedProductionLine(item.ProductionLine, item.ValveCategory, item.NominalDiameter);
+                            var normalizedAssigned = string.IsNullOrWhiteSpace(assigned) ? null : assigned;
+                            var currentAssigned = string.IsNullOrWhiteSpace(item.AssignedProductionLine) ? null : item.AssignedProductionLine;
+
+                            if (!string.Equals(currentAssigned, normalizedAssigned, StringComparison.Ordinal))
+                            {
+                                item.AssignedProductionLine = normalizedAssigned;
+                                updatedInBatch++;
+                                result.UpdatedCount++;
+                            }
+                            else
+                            {
+                                result.SkippedCount++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            result.ErrorCount++;
+                            _logger.LogError(ex, "AssignedProductionLine 计算异常，Id={Id}", item.Id);
+                        }
+                    }
+
+                    if (updatedInBatch > 0)
+                        await _db.SaveChangesAsync(ct);
+
+                    await tx.CommitAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    await tx.RollbackAsync(ct);
+                    _logger.LogError(ex, "AssignedProductionLine 批量更新失败，批次起始Id={StartId}", batch.First().Id);
+                    throw;
+                }
+                finally
+                {
+                    _db.ChangeTracker.Clear();
+                }
+
+                lastId = batch[^1].Id;
+            }
+
+            _logger.LogInformation("AssignedProductionLine 批量更新完成，总数 {Total}，更新 {Updated}，跳过 {Skipped}，异常 {Error}",
+                result.TotalCount, result.UpdatedCount, result.SkippedCount, result.ErrorCount);
+
+            return result;
         }
     }
 }

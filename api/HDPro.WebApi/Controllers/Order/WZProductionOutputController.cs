@@ -5,15 +5,15 @@ using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using HDPro.CY.Order.IServices.WZ;
 using HDPro.Entity.DomainModels.OrderCollaboration;
-// Èç¹ûÄãÃÇÏîÄ¿Ê¹ÓÃÈ¨ÏŞ±ê¼Ç/»ùÀà¿ØÖÆÆ÷£¬Çë°´ĞèÒıÈë£º
+// å¦‚æœä½ ä»¬é¡¹ç›®ä½¿ç”¨æƒé™æ ‡è®°/åŸºç±»æ§åˆ¶å™¨ï¼Œè¯·æŒ‰éœ€å¼•å…¥ï¼š
 // using HDPro.Core.Filters;
-// using HDPro.Core.Controllers; µÈ
+// using HDPro.Core.Controllers; ç­‰
 
 namespace HDPro.CY.Order.Controllers.WZ
 {
     [ApiController]
     [Route("api/WZ/ProductionOutput")]
-    // [PermissionTable(Name = "WZ_ProductionOutput")] // ÈçÓĞÈ¨ÏŞ¿ØÖÆ£¬°´Ğè¿ªÆô
+    // [PermissionTable(Name = "WZ_ProductionOutput")] // å¦‚æœ‰æƒé™æ§åˆ¶ï¼ŒæŒ‰éœ€å¼€å¯
     public class WZProductionOutputController : ControllerBase
     {
         private readonly IWZProductionOutputService _service;
@@ -24,8 +24,8 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
-        /// ²éÑ¯£º°´·§Ìå¡¢²úÏß¡¢Ê±¼ä·¶Î§»ñÈ¡Ã¿ÈÕ²úÁ¿
-        /// GET /api/WZ/ProductionOutput?valveCategory=Ö±Í¨·§&productionLine=²úÏß1&start=2025-01-01&end=2025-12-31
+        /// æŸ¥è¯¢ï¼šæŒ‰é˜€ä½“ã€äº§çº¿ã€æ—¶é—´èŒƒå›´è·å–æ¯æ—¥äº§é‡
+        /// GET /api/WZ/ProductionOutput?valveCategory=ç›´é€šé˜€&productionLine=äº§çº¿1&start=2025-01-01&end=2025-12-31
         /// </summary>
         [HttpGet]
         public async Task<ActionResult<List<WZ_ProductionOutput>>> Get(
@@ -46,7 +46,28 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
-        /// ÊÖ¶¯Ë¢ĞÂ£ºÇå¿Õ²¢ÖØ½¨»º´æ£¨½ö¹ÜÀíÔ±µ÷ÓÃ£©
+
+        /// <summary>
+        /// Ö±Ğ£ã²¢ AssignedProductionLine
+        /// POST /api/WZ/ProductionOutput/assign-production-line?batchSize=1000
+        /// </summary>
+        [HttpPost("assign-production-line")]
+        public async Task<ActionResult<WZProductionOutputAssignResult>> AssignProductionLine([FromQuery] int batchSize = 1000, CancellationToken ct = default)
+        {
+            var result = await _service.AssignProductionLineAsync(batchSize, ct);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// È¡Ö± SQL 
+        /// GET /api/WZ/ProductionOutput/assign-production-line/sql
+        /// </summary>
+        [HttpGet("assign-production-line/sql")]
+        public ActionResult<string> GetAssignProductionLineSql()
+        {
+            return Ok(_service.GetAssignedProductionLineSql());
+        }
+        /// æ‰‹åŠ¨åˆ·æ–°ï¼šæ¸…ç©ºå¹¶é‡å»ºç¼“å­˜ï¼ˆä»…ç®¡ç†å‘˜è°ƒç”¨ï¼‰
         /// POST /api/WZ/ProductionOutput/refresh
         /// body: { "start":"2025-08-11", "end":"2025-08-12" }
         /// </summary>
