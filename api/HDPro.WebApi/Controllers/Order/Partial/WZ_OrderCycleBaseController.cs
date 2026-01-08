@@ -110,5 +110,24 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 计算产能排产日期
+        /// </summary>
+        /// <returns>计算结果摘要</returns>
+        [HttpPost("calculate-capacity-schedule-date")]
+        [AllowAnonymous]
+        public async Task<IActionResult> CalculateCapacityScheduleDate()
+        {
+            try
+            {
+                var result = await Service.CalculateCapacityScheduleDateAsync();
+                return JsonNormal(new WebResponseContent().OK("计算完成", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"计算失败：{ex.Message}"));
+            }
+        }
     }
 }
