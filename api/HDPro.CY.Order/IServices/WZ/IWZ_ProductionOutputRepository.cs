@@ -43,5 +43,14 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 计算并回写产能排产日期：基于产线日产量与阈值，更新 WZ_OrderCycleBase.CapacityScheduleDate
+        /// </summary>
+        Task<int> UpdateCapacityScheduleAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string productionLine,
+            CancellationToken ct = default);
     }
 }
