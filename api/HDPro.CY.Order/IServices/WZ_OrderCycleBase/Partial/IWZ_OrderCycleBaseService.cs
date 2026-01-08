@@ -9,6 +9,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using HDPro.CY.Order.Models.OrderCycleBaseDtos;
 namespace HDPro.CY.Order.IServices
 {
     public partial interface IWZ_OrderCycleBaseService
@@ -24,6 +25,10 @@ namespace HDPro.CY.Order.IServices
         Task<int> SyncPreProductionOutputAsync(CancellationToken cancellationToken = default);
 
         string GetAssignedProductionLineSql();
+
+        Task<CapacityScheduleResultDto> CalcCapacityScheduleAsync(
+            CapacityScheduleRequestDto request,
+            CancellationToken cancellationToken = default);
     }
 
     public sealed class ValveRuleBatchSummary
