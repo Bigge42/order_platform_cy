@@ -14,6 +14,13 @@ namespace HDPro.CY.Order.Controllers
 {
     public partial class WZ_OrderCycleBaseController
     {
+        public sealed class CapacityScheduleDto
+        {
+            public DateTime Start { get; set; }
+            public DateTime End { get; set; }
+            public string ProductionLine { get; set; }
+        }
+
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
@@ -108,6 +115,26 @@ namespace HDPro.CY.Order.Controllers
             catch (Exception ex)
             {
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 计算并回写产能排产日期
+        /// </summary>
+        /// <param name="dto">日期范围及产线</param>
+        /// <returns>更新数量</returns>
+        [HttpPost("capacity-schedule")]
+        [AllowAnonymous]
+        public async Task<IActionResult> UpdateCapacitySchedule([FromBody] CapacityScheduleDto dto)
+        {
+            try
+            {
+                var updated = await Service.UpdateCapacityScheduleByOutputAsync(dto.Start, dto.End, dto.ProductionLine);
+                return JsonNormal(new WebResponseContent().OK($"计算完成，共更新 {updated} 条数据", updated, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"计算失败：{ex.Message}"));
             }
         }
     }

@@ -23,6 +23,15 @@ namespace HDPro.CY.Order.IServices
 
         Task<int> SyncPreProductionOutputAsync(CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// 基于产线产量与阈值计算并回写 CapacityScheduleDate
+        /// </summary>
+        Task<int> UpdateCapacityScheduleByOutputAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string productionLine,
+            CancellationToken cancellationToken = default);
+
         string GetAssignedProductionLineSql();
     }
 

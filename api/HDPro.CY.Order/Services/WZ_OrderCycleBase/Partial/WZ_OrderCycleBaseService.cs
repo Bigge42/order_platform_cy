@@ -684,6 +684,177 @@ END
 WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         }
 
+        /// <summary>
+        /// 基于产线产量与阈值计算并回写 CapacityScheduleDate
+        /// </summary>
+        public async Task<int> UpdateCapacityScheduleByOutputAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string productionLine,
+            CancellationToken cancellationToken = default)
+        {
+            if (endDate < startDate)
+            {
+                throw new ArgumentException("endDate 不能早于 startDate");
+            }
+
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var orderQuery = context.Set<WZ_OrderCycleBase>()
+                .Where(x => x.ScheduleDate.HasValue
+                            && x.ScheduleDate.Value.Date >= startDate.Date
+                            && x.ScheduleDate.Value.Date <= endDate.Date);
+
+            if (!string.IsNullOrWhiteSpace(productionLine))
+            {
+                orderQuery = orderQuery.Where(x => x.AssignedProductionLine == productionLine);
+            }
+
+            var orders = await orderQuery.ToListAsync(cancellationToken);
+            if (orders.Count == 0)
+            {
+                return 0;
+            }
+
+            var linesRaw = orders
+                .Select(x => x.AssignedProductionLine)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (linesRaw.Count == 0)
+            {
+                return 0;
+            }
+
+            var lines = linesRaw
+                .Select(NormalizeStr)
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var outputs = await context.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .Where(x => linesRaw.Contains(x.ProductionLine))
+                .Where(x => x.ProductionDate.Date >= startDate.Date && x.ProductionDate.Date <= endDate.Date)
+                .Select(x => new
+                {
+                    Line = NormalizeStr(x.ProductionLine),
+                    Date = x.ProductionDate.Date,
+                    x.Quantity,
+                    x.CurrentThreshold
+                })
+                .ToListAsync(cancellationToken);
+
+            var usageByLineDate = new Dictionary<(string Line, DateTime Date), decimal>();
+            var thresholdByLineDate = new Dictionary<(string Line, DateTime Date), decimal>();
+            var lineDefaultThreshold = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in outputs.GroupBy(x => new { x.Line, x.Date }))
+            {
+                var key = (group.Key.Line, group.Key.Date);
+                usageByLineDate[key] = group.Sum(x => x.Quantity);
+                var threshold = group
+                    .Select(x => x.CurrentThreshold ?? 0m)
+                    .Where(x => x > 0)
+                    .DefaultIfEmpty(0m)
+                    .Max();
+                if (threshold > 0)
+                {
+                    thresholdByLineDate[key] = threshold;
+                    if (!lineDefaultThreshold.TryGetValue(group.Key.Line, out var existing) || threshold > existing)
+                    {
+                        lineDefaultThreshold[group.Key.Line] = threshold;
+                    }
+                }
+            }
+
+            var updated = 0;
+
+            foreach (var line in lines)
+            {
+                var lineOrders = orders
+                    .Where(x => NormalizeStr(x.AssignedProductionLine) == line)
+                    .OrderBy(x => x.ScheduleDate)
+                    .ThenBy(x => x.Id)
+                    .ToList();
+
+                foreach (var order in lineOrders)
+                {
+                    if (!order.ScheduleDate.HasValue)
+                    {
+                        continue;
+                    }
+
+                    var scheduleDate = order.ScheduleDate.Value.Date;
+                    var qtyRemaining = order.OrderQty ?? 0m;
+
+                    if (qtyRemaining <= 0)
+                    {
+                        order.CapacityScheduleDate = scheduleDate;
+                        updated++;
+                        continue;
+                    }
+
+                    var currentDate = scheduleDate;
+                    var lastDate = scheduleDate;
+                    var guard = 0;
+
+                    while (qtyRemaining > 0 && guard < 3650)
+                    {
+                        var key = (line, currentDate);
+                        var used = usageByLineDate.TryGetValue(key, out var curUsed) ? curUsed : 0m;
+
+                        if (!thresholdByLineDate.TryGetValue(key, out var threshold) || threshold <= 0)
+                        {
+                            lineDefaultThreshold.TryGetValue(line, out threshold);
+                        }
+
+                        if (threshold <= 0)
+                        {
+                            usageByLineDate[key] = used + qtyRemaining;
+                            qtyRemaining = 0;
+                            lastDate = currentDate;
+                            break;
+                        }
+
+                        var available = threshold - used;
+                        if (available <= 0)
+                        {
+                            currentDate = currentDate.AddDays(1);
+                            guard++;
+                            continue;
+                        }
+
+                        var allocated = qtyRemaining <= available ? qtyRemaining : available;
+                        usageByLineDate[key] = used + allocated;
+                        qtyRemaining -= allocated;
+                        lastDate = currentDate;
+
+                        if (qtyRemaining > 0)
+                        {
+                            currentDate = currentDate.AddDays(1);
+                            guard++;
+                        }
+                    }
+
+                    order.CapacityScheduleDate = lastDate;
+                    updated++;
+                }
+            }
+
+            if (updated > 0)
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
+            return updated;
+        }
+
+        private static string NormalizeStr(string value)
+            => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().Normalize(NormalizationForm.FormKC);
+
         private static readonly HashSet<string> ButterflyGroup1 = new HashSet<string>(StringComparer.Ordinal)
         {
             "DN50", "DN65", "DN80", "DN100", "DN125", "DN150"
