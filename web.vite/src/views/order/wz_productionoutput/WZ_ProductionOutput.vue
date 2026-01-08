@@ -128,6 +128,7 @@ const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
+const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 10 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -186,6 +187,7 @@ const state = reactive({
   categories: [],      // [{ name, lines: [] }]
   data: {},            // { [valve]: { [line]: number[] } }
   thresholds: {},      // { [valve]: { [line]: number } }
+  githubView: {},      // { [valve]: boolean }
   big: false,
   compact: false,
 })
@@ -264,6 +266,14 @@ function setThr(valve, line, val){
   if (!thrDraft.value[valve]) thrDraft.value[valve] = {}
   thrDraft.value[valve][line] = Number(val ?? 0)
 }
+function isGithub(valve){
+  return Boolean(state.githubView?.[valve])
+}
+function toggleGithub(valve){
+  if (!state.githubView) state.githubView = {}
+  state.githubView[valve] = !state.githubView[valve]
+  renderAll()
+}
 
 /* 渲染（SVG） */
 function renderAll(){
@@ -290,11 +300,10 @@ function renderAll(){
   stats.rangeText = `${fmtYMD(days[0])} ~ ${fmtYMD(days[daysCount-1])}（${daysCount} 天）`
 
   // 画布
-  const cellSize = state.big ? SIZE.big : SIZE.small
-  const gap = state.compact ? GAP.compact : GAP.normal
-  const pad = state.compact ? PAD.compact : PAD.normal
-  const labelGap = state.compact ? LABEL_GAP.compact : LABEL_GAP.normal
-  const padX = pad + labelGap
+  const baseCellSize = state.big ? SIZE.big : SIZE.small
+  const baseGap = state.compact ? GAP.compact : GAP.normal
+  const basePad = state.compact ? PAD.compact : PAD.normal
+  const baseLabelGap = state.compact ? LABEL_GAP.compact : LABEL_GAP.normal
   const svgNS='http://www.w3.org/2000/svg'
   const container = chartsEl.value
   container.style.gap = state.compact ? '12px' : '16px'
@@ -343,6 +352,12 @@ function renderAll(){
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
+    const useGithub = isGithub(v)
+    const cellSize = useGithub ? GITHUB.size : baseCellSize
+    const gap = useGithub ? GITHUB.gap : baseGap
+    const pad = useGithub ? GITHUB.pad : basePad
+    const labelGap = useGithub ? GITHUB.labelGap : baseLabelGap
+    const padX = pad + labelGap
     const width = padX + pad + cols*(cellSize+gap) - gap
     const height= pad*2 + rows*(cellSize+gap) - gap
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
@@ -359,6 +374,8 @@ function renderAll(){
     cat.lines.forEach((l,r)=>{
       const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + r*(cellSize+gap) + Math.min(9, cellSize-3))
       t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
+      t.style.cursor = 'pointer'
+      t.addEventListener('click', ()=> toggleGithub(v))
       svg.appendChild(t)
     })
 
