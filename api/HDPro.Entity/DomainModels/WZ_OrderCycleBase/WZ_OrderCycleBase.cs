@@ -103,6 +103,14 @@ namespace HDPro.Entity.DomainModels
        public decimal? OrderQty { get; set; }
 
        /// <summary>
+       ///订单明细ID
+       /// </summary>
+       [Display(Name ="订单明细ID")]
+       [Column(TypeName="bigint")]
+       [Editable(true)]
+       public long? FENTRYID { get; set; }
+
+       /// <summary>
        ///阀体材质
        /// </summary>
        [Display(Name ="阀体材质")]
