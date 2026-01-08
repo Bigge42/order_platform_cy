@@ -57,8 +57,9 @@
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
-        <el-button size="small" :type="preProductionMode ? 'primary' : 'default'" @click="loadPreProduction">展示预排产</el-button>
-        <el-button size="small" :type="preProductionMode ? 'default' : 'primary'" @click="loadData">仅看实际</el-button>
+        <el-button size="small" :type="buttonType('preproduction')" @click="loadPreProduction">展示预排产</el-button>
+        <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
+        <el-button size="small" :type="buttonType('actual')" @click="loadData">仅看实际</el-button>
         <el-button size="small" :loading="refreshLoading" @click="refreshCurrentMonth">同步当月数据</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
       </div>
@@ -199,7 +200,7 @@ const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const refreshLoading = ref(false)
-const preProductionMode = ref(false)
+const viewMode = ref('actual')
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -522,7 +523,7 @@ async function loadData(){
         Array.isArray(res?.data) ? res.data :
           Array.isArray(res?.Data) ? res.Data :
             Array.isArray(res?.result) ? res.result : []
-    preProductionMode.value = false
+    viewMode.value = 'actual'
     applyRows(rows, '数据加载成功')
   }catch(e){
     console.error(e)
@@ -546,12 +547,40 @@ async function loadPreProduction(){
         Array.isArray(res?.data) ? res.data :
           Array.isArray(res?.Data) ? res.Data :
             Array.isArray(res?.result) ? res.result : []
-    preProductionMode.value = true
+    viewMode.value = 'preproduction'
     applyRows(rows, '预排产合并数据加载成功')
   }catch(e){
     console.error(e)
     ElMessage.error('预排产合并加载失败')
   }
+}
+
+async function loadOptimizedPreProduction(){
+  try{
+    const start = fmtYMD(state.rangeStart)
+    const end   = fmtYMD(state.rangeEnd)
+    const payload = {
+      start,
+      end,
+      valveCategory: valveCategory.value?.trim() || '',
+      productionLine: productionLine.value?.trim() || ''
+    }
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/optimize', payload)
+    const rows =
+      Array.isArray(res) ? res :
+        Array.isArray(res?.data) ? res.data :
+          Array.isArray(res?.Data) ? res.Data :
+            Array.isArray(res?.result) ? res.result : []
+    viewMode.value = 'optimized'
+    applyRows(rows, '排产优化合并数据加载成功')
+  }catch(e){
+    console.error(e)
+    ElMessage.error('排产优化加载失败')
+  }
+}
+
+function buttonType(mode){
+  return viewMode.value === mode ? 'success' : 'default'
 }
 
 function applyRows(rows, successMessage){
