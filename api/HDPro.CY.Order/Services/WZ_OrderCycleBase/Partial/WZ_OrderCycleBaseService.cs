@@ -15,7 +15,6 @@ using System.Linq.Expressions;
 using HDPro.Core.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.IServices;
@@ -930,6 +929,512 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         {
             "旋转1", "旋转2", "旋转3", "旋转4", "旋转5"
         };
+
+        public async Task<CapacityScheduleResultDto> CalcCapacityScheduleAsync(
+            CapacityScheduleRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            request ??= new CapacityScheduleRequestDto();
+            var normalizedLines = request.ProductionLines?
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => line.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+
+            if (!request.RecalcAll
+                && request.FromDate == null
+                && request.ToDate == null
+                && normalizedLines.Count == 0)
+            {
+                request.RecalcAll = true;
+            }
+            var batchId = Guid.NewGuid();
+            var stopwatch = Stopwatch.StartNew();
+            var defaultThreshold = GetDefaultThreshold();
+            var maxForwardDays = GetMaxForwardDays();
+
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var orderQuery = context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(p => p.ScheduleDate.HasValue);
+            if (!request.RecalcAll)
+            {
+                orderQuery = orderQuery.Where(p => p.CapacityScheduleDate == null);
+            }
+
+            if (normalizedLines.Count > 0)
+            {
+                orderQuery = orderQuery.Where(p => normalizedLines.Contains(p.AssignedProductionLine));
+            }
+
+            if (request.FromDate.HasValue)
+            {
+                var fromDate = request.FromDate.Value.Date;
+                orderQuery = orderQuery.Where(p => p.ScheduleDate.HasValue && p.ScheduleDate.Value >= fromDate);
+            }
+
+            if (request.ToDate.HasValue)
+            {
+                var toDate = request.ToDate.Value.Date;
+                orderQuery = orderQuery.Where(p => p.ScheduleDate.HasValue && p.ScheduleDate.Value <= toDate);
+            }
+
+            var orders = await orderQuery.Select(p => new CapacityScheduleOrderItem
+            {
+                Id = p.Id,
+                AssignedProductionLine = p.AssignedProductionLine,
+                ScheduleDate = p.ScheduleDate,
+                OrderQty = p.OrderQty,
+                PlanTrackingNo = p.PlanTrackingNo,
+                CapacityScheduleDate = p.CapacityScheduleDate
+            }).ToListAsync(cancellationToken);
+
+            var failedOrders = new List<FailedOrderDto>();
+            var validOrders = new List<CapacityScheduleOrderItem>();
+            foreach (var order in orders)
+            {
+                if (order == null)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(order.AssignedProductionLine))
+                {
+                    failedOrders.Add(new FailedOrderDto
+                    {
+                        Id = order.Id,
+                        ProductionLine = order.AssignedProductionLine,
+                        OrderQty = order.OrderQty,
+                        ScheduleDate = order.ScheduleDate?.Date,
+                        Reason = "指派生产线为空，无法排产"
+                    });
+                    continue;
+                }
+
+                if (!order.ScheduleDate.HasValue)
+                {
+                    failedOrders.Add(new FailedOrderDto
+                    {
+                        Id = order.Id,
+                        ProductionLine = order.AssignedProductionLine,
+                        OrderQty = order.OrderQty,
+                        ScheduleDate = null,
+                        Reason = "排产日期为空，无法排产"
+                    });
+                    continue;
+                }
+
+                validOrders.Add(order);
+            }
+
+            var candidateLines = validOrders.Select(p => p.AssignedProductionLine)
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var usedMap = new Dictionary<string, Dictionary<DateTime, decimal>>(StringComparer.OrdinalIgnoreCase);
+            var scheduleAssignments = new List<CapacityScheduleAssignment>();
+
+            var minTargetDate = validOrders.Count == 0
+                ? request.FromDate?.Date
+                : validOrders.Min(p => p.ScheduleDate?.Date);
+            var maxTargetDate = validOrders.Count == 0
+                ? request.ToDate?.Date
+                : validOrders.Max(p => p.ScheduleDate?.Date);
+
+            if (maxTargetDate.HasValue)
+            {
+                maxTargetDate = maxTargetDate.Value.AddDays(maxForwardDays);
+            }
+
+            if (!request.RecalcAll && candidateLines.Count > 0 && (minTargetDate.HasValue || maxTargetDate.HasValue))
+            {
+                var existingQuery = context.Set<WZ_OrderCycleBase>().AsNoTracking()
+                    .Where(p => p.CapacityScheduleDate.HasValue);
+
+                if (candidateLines.Count > 0)
+                {
+                    existingQuery = existingQuery.Where(p => candidateLines.Contains(p.AssignedProductionLine));
+                }
+
+                if (minTargetDate.HasValue)
+                {
+                    existingQuery = existingQuery.Where(p => p.CapacityScheduleDate.Value >= minTargetDate.Value);
+                }
+
+                if (maxTargetDate.HasValue)
+                {
+                    existingQuery = existingQuery.Where(p => p.CapacityScheduleDate.Value <= maxTargetDate.Value);
+                }
+
+                var existingOrders = await existingQuery.Select(p => new
+                {
+                    p.AssignedProductionLine,
+                    p.CapacityScheduleDate,
+                    p.OrderQty
+                }).ToListAsync(cancellationToken);
+
+                foreach (var existing in existingOrders)
+                {
+                    if (string.IsNullOrWhiteSpace(existing.AssignedProductionLine) || !existing.CapacityScheduleDate.HasValue)
+                    {
+                        continue;
+                    }
+
+                    var line = existing.AssignedProductionLine;
+                    var date = existing.CapacityScheduleDate.Value.Date;
+                    var qty = existing.OrderQty ?? 0m;
+                    if (!usedMap.TryGetValue(line, out var lineMap))
+                    {
+                        lineMap = new Dictionary<DateTime, decimal>();
+                        usedMap[line] = lineMap;
+                    }
+
+                    lineMap[date] = lineMap.TryGetValue(date, out var used) ? used + qty : qty;
+                }
+            }
+
+            var thresholdMap = candidateLines.Count == 0
+                ? new Dictionary<string, List<ThresholdEntry>>(StringComparer.OrdinalIgnoreCase)
+                : await LoadThresholdMapAsync(context, candidateLines, maxTargetDate, cancellationToken);
+
+            var missingThresholdLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var lineGroups = validOrders
+                .GroupBy(p => p.AssignedProductionLine, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.OrderBy(p => p.ScheduleDate.Value.Date)
+                    .ThenBy(p => p.PlanTrackingNo ?? string.Empty)
+                    .ThenBy(p => p.Id)
+                    .ToList(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var lineGroup in lineGroups)
+            {
+                var line = lineGroup.Key;
+                if (!usedMap.TryGetValue(line, out var lineMap))
+                {
+                    lineMap = new Dictionary<DateTime, decimal>();
+                    usedMap[line] = lineMap;
+                }
+
+                foreach (var order in lineGroup.Value)
+                {
+                    var orderQty = order.OrderQty ?? 0m;
+                    var targetDate = order.ScheduleDate.Value.Date;
+                    var scheduled = false;
+                    DateTime? scheduledDate = null;
+                    for (var offset = 0; offset <= maxForwardDays; offset++)
+                    {
+                        var currentDate = targetDate.AddDays(offset);
+                        var threshold = ResolveThreshold(line, currentDate, thresholdMap, defaultThreshold, missingThresholdLines);
+                        var used = lineMap.TryGetValue(currentDate, out var currentUsed) ? currentUsed : 0m;
+                        if (used + orderQty <= threshold)
+                        {
+                            lineMap[currentDate] = used + orderQty;
+                            scheduled = true;
+                            scheduledDate = currentDate;
+                            break;
+                        }
+                    }
+
+                    if (!scheduled)
+                    {
+                        var reason = $"排产顺延超过 {maxForwardDays} 天仍无法排入";
+                        failedOrders.Add(new FailedOrderDto
+                        {
+                            Id = order.Id,
+                            ProductionLine = order.AssignedProductionLine,
+                            OrderQty = order.OrderQty,
+                            ScheduleDate = order.ScheduleDate?.Date,
+                            Reason = reason
+                        });
+                        continue;
+                    }
+
+                    scheduleAssignments.Add(new CapacityScheduleAssignment
+                    {
+                        Id = order.Id,
+                        ProductionLine = line,
+                        OrderQty = orderQty,
+                        ScheduleDate = order.ScheduleDate.Value.Date,
+                        CapacityScheduleDate = scheduledDate.Value
+                    });
+                }
+            }
+
+            var dailyLoads = BuildDailyLoads(usedMap, thresholdMap, defaultThreshold, missingThresholdLines);
+
+            if (!request.DryRun)
+            {
+                await ApplyCapacityScheduleAsync(
+                    context,
+                    scheduleAssignments,
+                    dailyLoads,
+                    candidateLines,
+                    cancellationToken);
+            }
+
+            stopwatch.Stop();
+
+            return new CapacityScheduleResultDto
+            {
+                BatchId = batchId,
+                TotalOrders = orders.Count,
+                ScheduledOrders = scheduleAssignments.Count,
+                FailedOrders = failedOrders.Count,
+                FailedOrdersDetail = failedOrders,
+                DailyLoads = dailyLoads,
+                Elapsed = stopwatch.Elapsed
+            };
+        }
+
+        private static decimal GetDefaultThreshold()
+        {
+            var value = AppSetting.GetSection("CapacitySchedule")["DefaultThreshold"];
+            return decimal.TryParse(value, out var result) ? result : 0m;
+        }
+
+        private static int GetMaxForwardDays()
+        {
+            var value = AppSetting.GetSection("CapacitySchedule")["MaxForwardDays"];
+            return int.TryParse(value, out var result) && result > 0 ? result : 365;
+        }
+
+        private static decimal ResolveThreshold(
+            string productionLine,
+            DateTime date,
+            Dictionary<string, List<ThresholdEntry>> thresholdMap,
+            decimal defaultThreshold,
+            HashSet<string> missingThresholdLines)
+        {
+            if (!thresholdMap.TryGetValue(productionLine, out var entries) || entries.Count == 0)
+            {
+                missingThresholdLines.Add(productionLine);
+                return defaultThreshold;
+            }
+
+            var threshold = FindLatestThreshold(entries, date);
+            if (!threshold.HasValue)
+            {
+                missingThresholdLines.Add(productionLine);
+                return defaultThreshold;
+            }
+
+            return threshold.Value;
+        }
+
+        private static decimal? FindLatestThreshold(List<ThresholdEntry> entries, DateTime date)
+        {
+            var index = entries.BinarySearch(new ThresholdEntry { Date = date }, new ThresholdEntryComparer());
+            if (index >= 0)
+            {
+                return entries[index].Threshold;
+            }
+
+            var nextIndex = ~index;
+            if (nextIndex <= 0)
+            {
+                return null;
+            }
+
+            return entries[nextIndex - 1].Threshold;
+        }
+
+        private List<DailyLoadDto> BuildDailyLoads(
+            Dictionary<string, Dictionary<DateTime, decimal>> usedMap,
+            Dictionary<string, List<ThresholdEntry>> thresholdMap,
+            decimal defaultThreshold,
+            HashSet<string> missingThresholdLines)
+        {
+            var result = new List<DailyLoadDto>();
+            foreach (var lineEntry in usedMap)
+            {
+                var line = lineEntry.Key;
+                foreach (var dateEntry in lineEntry.Value.OrderBy(p => p.Key))
+                {
+                    var threshold = ResolveThreshold(line, dateEntry.Key, thresholdMap, defaultThreshold, missingThresholdLines);
+                    result.Add(new DailyLoadDto
+                    {
+                        ProductionLine = line,
+                        ProductionDate = dateEntry.Key.Date,
+                        Quantity = dateEntry.Value,
+                        Threshold = threshold,
+                        IsOverThreshold = dateEntry.Value > threshold
+                    });
+                }
+            }
+
+            return result;
+        }
+
+        private static async Task<Dictionary<string, List<ThresholdEntry>>> LoadThresholdMapAsync(
+            DbContext context,
+            List<string> lines,
+            DateTime? maxTargetDate,
+            CancellationToken cancellationToken)
+        {
+            var query = context.Set<WZ_ProductionOutput>().AsNoTracking()
+                .Where(p => lines.Contains(p.ProductionLine) && p.CurrentThreshold.HasValue);
+
+            if (maxTargetDate.HasValue)
+            {
+                var endDate = maxTargetDate.Value.Date;
+                query = query.Where(p => p.ProductionDate <= endDate);
+            }
+
+            var thresholds = await query.Select(p => new
+            {
+                p.ProductionLine,
+                p.ProductionDate,
+                p.CurrentThreshold
+            }).ToListAsync(cancellationToken);
+
+            return thresholds
+                .GroupBy(p => p.ProductionLine, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.GroupBy(p => p.ProductionDate.Date)
+                        .Select(dg => new ThresholdEntry
+                        {
+                            Date = dg.Key,
+                            Threshold = dg.Max(x => x.CurrentThreshold ?? 0m)
+                        })
+                        .OrderBy(p => p.Date)
+                        .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static async Task ApplyCapacityScheduleAsync(
+            DbContext context,
+            List<CapacityScheduleAssignment> assignments,
+            List<DailyLoadDto> dailyLoads,
+            List<string> lines,
+            CancellationToken cancellationToken)
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                if (assignments.Count > 0)
+                {
+                    foreach (var assignment in assignments)
+                    {
+                        var entity = new WZ_OrderCycleBase
+                        {
+                            Id = assignment.Id,
+                            CapacityScheduleDate = assignment.CapacityScheduleDate.Date
+                        };
+                        context.Attach(entity);
+                        context.Entry(entity).Property(p => p.CapacityScheduleDate).IsModified = true;
+                    }
+
+                    await context.SaveChangesAsync(cancellationToken);
+                }
+
+                if (dailyLoads.Count > 0)
+                {
+                    var minDate = dailyLoads.Min(p => p.ProductionDate.Date);
+                    var maxDate = dailyLoads.Max(p => p.ProductionDate.Date);
+                    var outputQuery = context.Set<WZ_ProductionOutput>()
+                        .Where(p => lines.Contains(p.ProductionLine)
+                            && p.ProductionDate >= minDate
+                            && p.ProductionDate <= maxDate);
+                    var existingOutputs = await outputQuery.ToListAsync(cancellationToken);
+                    var outputMap = new Dictionary<(string Line, DateTime Date), WZ_ProductionOutput>();
+                    foreach (var output in existingOutputs)
+                    {
+                        var key = (output.ProductionLine, output.ProductionDate.Date);
+                        if (!outputMap.ContainsKey(key))
+                        {
+                            outputMap[key] = output;
+                        }
+                    }
+
+                    foreach (var load in dailyLoads)
+                    {
+                        var key = (load.ProductionLine, load.ProductionDate.Date);
+                        if (outputMap.TryGetValue(key, out var entity))
+                        {
+                            entity.Quantity = load.Quantity;
+                            entity.CurrentThreshold = load.Threshold;
+                            entity.IsOverThreshold = load.IsOverThreshold;
+                            if (string.IsNullOrWhiteSpace(entity.ValveCategory))
+                            {
+                                entity.ValveCategory = "产能排产";
+                            }
+                        }
+                        else
+                        {
+                            context.Set<WZ_ProductionOutput>().Add(new WZ_ProductionOutput
+                            {
+                                ProductionLine = load.ProductionLine,
+                                ProductionDate = load.ProductionDate.Date,
+                                Quantity = load.Quantity,
+                                CurrentThreshold = load.Threshold,
+                                IsOverThreshold = load.IsOverThreshold,
+                                ValveCategory = "产能排产"
+                            });
+                        }
+                    }
+
+                    await context.SaveChangesAsync(cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        private sealed class CapacityScheduleOrderItem
+        {
+            public int Id { get; set; }
+            public string AssignedProductionLine { get; set; }
+            public DateTime? ScheduleDate { get; set; }
+            public decimal? OrderQty { get; set; }
+            public string PlanTrackingNo { get; set; }
+            public DateTime? CapacityScheduleDate { get; set; }
+        }
+
+        private sealed class CapacityScheduleAssignment
+        {
+            public int Id { get; set; }
+            public string ProductionLine { get; set; }
+            public decimal OrderQty { get; set; }
+            public DateTime ScheduleDate { get; set; }
+            public DateTime CapacityScheduleDate { get; set; }
+        }
+
+        private sealed class ThresholdEntry
+        {
+            public DateTime Date { get; set; }
+            public decimal Threshold { get; set; }
+        }
+
+        private sealed class ThresholdEntryComparer : IComparer<ThresholdEntry>
+        {
+            public int Compare(ThresholdEntry x, ThresholdEntry y)
+            {
+                if (x == null && y == null)
+                {
+                    return 0;
+                }
+
+                if (x == null)
+                {
+                    return -1;
+                }
+
+                if (y == null)
+                {
+                    return 1;
+                }
+
+                return x.Date.CompareTo(y.Date);
+            }
+        }
 
         private static int? TryParseId(string id)
         {

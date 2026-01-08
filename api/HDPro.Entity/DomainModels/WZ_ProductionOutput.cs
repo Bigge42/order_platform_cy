@@ -46,4 +46,9 @@ public class WZ_ProductionOutput : ServiceEntity
     [Column(TypeName = "decimal")]
     [Editable(true)]
     public decimal? CurrentThreshold { get; set; }
+
+    [Display(Name = "是否超过阈值")]
+    [Column(TypeName = "bit")]
+    [Editable(true)]
+    public bool? IsOverThreshold { get; set; }
 }
