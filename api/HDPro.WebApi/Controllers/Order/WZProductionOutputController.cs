@@ -104,5 +104,24 @@ namespace HDPro.CY.Order.Controllers.WZ
                 ct);
             return Ok(list);
         }
+
+        /// <summary>
+        /// 排产优化展示：按产能排产日期汇总并合并实际产量
+        /// POST /api/WZ/ProductionOutput/preproduction/optimize/merge
+        /// body: { "start":"2025-08-11", "end":"2025-08-12", "valveCategory":"", "productionLine":"" }
+        /// </summary>
+        [HttpPost("preproduction/optimize/merge")]
+        public async Task<ActionResult<List<WZ_ProductionOutput>>> MergeOptimizedPreProduction(
+            [FromBody] PreProductionMergeDto dto,
+            CancellationToken ct = default)
+        {
+            var list = await _service.GetWithOptimizedPreProductionAsync(
+                dto.ValveCategory,
+                dto.ProductionLine,
+                dto.Start,
+                dto.End,
+                ct);
+            return Ok(list);
+        }
     }
 }
