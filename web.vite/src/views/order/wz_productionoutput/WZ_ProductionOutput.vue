@@ -358,8 +358,9 @@ function renderAll(){
     const gap = useGithub ? (state.big ? baseGap : GITHUB.gap) : baseGap
     const pad = useGithub ? (state.big ? basePad : GITHUB.pad) : basePad
     const labelGap = useGithub ? (state.big ? baseLabelGap : GITHUB.labelGap) : baseLabelGap
+    const githubOffset = useGithub ? (days[0].getDay() + 6) % 7 : 0
     const padX = pad + labelGap
-    const weekCols = useGithub ? Math.ceil(daysCount / GITHUB.rows) : cols
+    const weekCols = useGithub ? Math.ceil((daysCount + githubOffset) / GITHUB.rows) : cols
     const githubRows = GITHUB.rows
     const width = padX + pad + weekCols*(cellSize+gap) - gap
     const height= pad*2 + (useGithub ? githubRows : rows) * (cellSize+gap) - gap
@@ -368,7 +369,7 @@ function renderAll(){
     // 月份文本
     monthsStartIndex.forEach(k=>{
       const d=days[k]
-      const xIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
+      const xIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
       const x=padX + xIndex*(cellSize+gap)
       const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',x); t.setAttribute('y',pad-10)
       t.setAttribute('font-size','10'); t.setAttribute('fill','#475569'); t.textContent=`${d.getMonth()+1}月`
@@ -394,8 +395,8 @@ function renderAll(){
       if(lineMin===Infinity) lineMin=0
 
       for(let k=0;k<cols;k++){
-        const weekIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
-        const dayIndex = useGithub ? k % GITHUB.rows : r
+        const weekIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
+        const dayIndex = useGithub ? (k + githubOffset) % GITHUB.rows : r
         const x=padX + weekIndex*(cellSize+gap), y=pad + dayIndex*(cellSize+gap)
         const val = arr[k] ?? 0
         const thr = ensureThr(v, l)
