@@ -26,5 +26,12 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 批量更新阈值：按阀体与产线写入 CurrentThreshold
+        /// </summary>
+        Task<int> UpdateThresholdsAsync(
+            IReadOnlyCollection<(string ValveCategory, string ProductionLine, decimal Threshold)> thresholds,
+            CancellationToken ct = default);
     }
 }
