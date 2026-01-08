@@ -127,6 +127,7 @@ import { ElMessage } from 'element-plus'
 const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
+const LABEL_GAP = { normal: 10, compact: 6 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -292,6 +293,8 @@ function renderAll(){
   const cellSize = state.big ? SIZE.big : SIZE.small
   const gap = state.compact ? GAP.compact : GAP.normal
   const pad = state.compact ? PAD.compact : PAD.normal
+  const labelGap = state.compact ? LABEL_GAP.compact : LABEL_GAP.normal
+  const padX = pad + labelGap
   const svgNS='http://www.w3.org/2000/svg'
   const container = chartsEl.value
   container.style.gap = state.compact ? '12px' : '16px'
@@ -340,14 +343,14 @@ function renderAll(){
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
-    const width = pad*2 + cols*(cellSize+gap) - gap
+    const width = padX + pad + cols*(cellSize+gap) - gap
     const height= pad*2 + rows*(cellSize+gap) - gap
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
 
     // 月份文本
     monthsStartIndex.forEach(k=>{
       const d=days[k]
-      const x=pad + k*(cellSize+gap)
+      const x=padX + k*(cellSize+gap)
       const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',x); t.setAttribute('y',pad-10)
       t.setAttribute('font-size','10'); t.setAttribute('fill','#475569'); t.textContent=`${d.getMonth()+1}月`
       svg.appendChild(t)
@@ -367,7 +370,7 @@ function renderAll(){
       if(lineMin===Infinity) lineMin=0
 
       for(let k=0;k<cols;k++){
-        const x=pad + k*(cellSize+gap), y=pad + r*(cellSize+gap)
+        const x=padX + k*(cellSize+gap), y=pad + r*(cellSize+gap)
         const val = arr[k] ?? 0
         const thr = ensureThr(v, l)
         const aboveMax = Math.max(0, lineMax-thr), belowMax = Math.max(thr - lineMin, 0)
