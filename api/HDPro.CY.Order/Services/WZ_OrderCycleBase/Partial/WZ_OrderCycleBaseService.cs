@@ -187,6 +187,59 @@ namespace HDPro.CY.Order.Services
             return updatedCount + toInsert.Count;
         }
 
+        public async Task<List<PreScheduleOutputDto>> GetPreScheduleOutputAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default)
+        {
+            if (endDate < startDate)
+            {
+                throw new ArgumentException("endDate 不能早于 startDate");
+            }
+
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var query = orderCycleContext.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(x => x.ScheduleDate.HasValue
+                    && x.ScheduleDate.Value >= startDate
+                    && x.ScheduleDate.Value <= endDate
+                    && !string.IsNullOrWhiteSpace(x.ValveCategory)
+                    && !string.IsNullOrWhiteSpace(x.ProductionLine));
+
+            if (!string.IsNullOrWhiteSpace(valveCategory))
+            {
+                query = query.Where(x => x.ValveCategory == valveCategory);
+            }
+
+            if (!string.IsNullOrWhiteSpace(productionLine))
+            {
+                query = query.Where(x => x.ProductionLine == productionLine);
+            }
+
+            return await query
+                .GroupBy(x => new
+                {
+                    Date = x.ScheduleDate.Value,
+                    Cat = x.ValveCategory,
+                    Line = x.ProductionLine
+                })
+                .Select(g => new PreScheduleOutputDto
+                {
+                    ProductionDate = g.Key.Date,
+                    ValveCategory = g.Key.Cat,
+                    ProductionLine = g.Key.Line,
+                    Quantity = g.Sum(x => x.OrderQty ?? 0m)
+                })
+                .OrderBy(x => x.ProductionDate)
+                .ThenBy(x => x.ValveCategory)
+                .ThenBy(x => x.ProductionLine)
+                .ToListAsync(cancellationToken);
+        }
+
         /// <summary>
         /// 调用 Python 阀门规则服务批量计算周期及排产信息
         /// </summary>
