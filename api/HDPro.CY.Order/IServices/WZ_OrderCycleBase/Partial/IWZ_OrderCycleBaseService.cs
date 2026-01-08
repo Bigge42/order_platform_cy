@@ -18,6 +18,10 @@ namespace HDPro.CY.Order.IServices
         Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
 
         Task<int> FillValveCategoryByRuleAsync(int batchSize = 1000);
+
+        Task<AssignedProductionLineBatchSummary> BatchAssignProductionLineByRuleAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
+
+        string GetAssignedProductionLineSql();
     }
 
     public sealed class ValveRuleBatchSummary
@@ -51,5 +55,38 @@ namespace HDPro.CY.Order.IServices
         /// 规则服务返回的日志文件路径集合
         /// </summary>
         public List<string> LogFiles { get; set; } = new List<string>();
+    }
+
+    public sealed class AssignedProductionLineBatchSummary
+    {
+        /// <summary>
+        /// 本次处理的总行数
+        /// </summary>
+        public int Total { get; set; }
+
+        /// <summary>
+        /// 实际更新的行数
+        /// </summary>
+        public int Updated { get; set; }
+
+        /// <summary>
+        /// 未命中规则或值未变化的行数
+        /// </summary>
+        public int Skipped { get; set; }
+
+        /// <summary>
+        /// 处理失败的行数
+        /// </summary>
+        public int Failed { get; set; }
+
+        /// <summary>
+        /// 失败的主键集合
+        /// </summary>
+        public List<int> FailedIds { get; set; } = new List<int>();
+
+        /// <summary>
+        /// 对照校验用 SQL
+        /// </summary>
+        public string SqlPreview { get; set; }
     }
  }
