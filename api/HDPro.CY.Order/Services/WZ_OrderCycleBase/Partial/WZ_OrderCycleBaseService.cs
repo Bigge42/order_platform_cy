@@ -92,17 +92,12 @@ namespace HDPro.CY.Order.Services
                 ?? throw new InvalidOperationException("物料仓储未正确初始化");
             var orderCycleContext = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
-           
+
             /*.Where(p => p.PrdScheduleDate == null)*/
             var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
                 .AsNoTracking()
                 .Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")
                 .ToListAsync(cancellationToken);
-
-            if (orderTrackingList.Count == 0)
-            {
-                return 0;
-            }
 
             var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
                 .Select(p => p.MaterialNumber)
@@ -128,63 +123,89 @@ namespace HDPro.CY.Order.Services
                 .Distinct()
                 .ToList();
 
-            var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
-                .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
-                .ToListAsync(cancellationToken);
-
-            var existingDict = new Dictionary<string, WZ_OrderCycleBase>(StringComparer.OrdinalIgnoreCase);
-            foreach (var record in existingRecords)
+            using var transaction = await orderCycleContext.Database.BeginTransactionAsync(cancellationToken);
+            try
             {
-                var key = $"{record.SalesOrderNo}__{record.PlanTrackingNo}";
-                if (existingDict.ContainsKey(key))
+                try
                 {
-                    continue;
+                    await orderCycleContext.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_OrderCycleBase];", cancellationToken);
+                }
+                catch
+                {
+                    await orderCycleContext.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_OrderCycleBase];", cancellationToken);
                 }
 
-                existingDict[key] = record;
-            }
-
-            var toInsert = new List<WZ_OrderCycleBase>();
-            var updatedCount = 0;
-
-            foreach (var orderTracking in orderTrackingList)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
+                if (orderTrackingList.Count == 0)
                 {
-                    continue;
+                    await transaction.CommitAsync(cancellationToken);
+                    return 0;
                 }
 
-                materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
+                var existingRecords = await orderCycleContext.Set<WZ_OrderCycleBase>()
+                    .Where(p => salesOrderNos.Contains(p.SalesOrderNo) && planTrackingNos.Contains(p.PlanTrackingNo))
+                    .ToListAsync(cancellationToken);
 
-                var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
-
-                if (existingDict.TryGetValue(key, out var existing))
+                var existingDict = new Dictionary<string, WZ_OrderCycleBase>(StringComparer.OrdinalIgnoreCase);
+                foreach (var record in existingRecords)
                 {
-                    MapFields(orderTracking, materialInfo, existing);
-                    updatedCount++;
-                    continue;
+                    var key = $"{record.SalesOrderNo}__{record.PlanTrackingNo}";
+                    if (existingDict.ContainsKey(key))
+                    {
+                        continue;
+                    }
+
+                    existingDict[key] = record;
                 }
 
-                var newEntity = new WZ_OrderCycleBase();
-                MapFields(orderTracking, materialInfo, newEntity);
-                toInsert.Add(newEntity);
-            }
+                var toInsert = new List<WZ_OrderCycleBase>();
+                var updatedCount = 0;
 
-            if (toInsert.Count > 0)
+                foreach (var orderTracking in orderTrackingList)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
+                    {
+                        continue;
+                    }
+
+                    materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
+
+                    var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
+
+                    if (existingDict.TryGetValue(key, out var existing))
+                    {
+                        MapFields(orderTracking, materialInfo, existing);
+                        updatedCount++;
+                        continue;
+                    }
+
+                    var newEntity = new WZ_OrderCycleBase();
+                    MapFields(orderTracking, materialInfo, newEntity);
+                    toInsert.Add(newEntity);
+                }
+
+                if (toInsert.Count > 0)
+                {
+                    _repository.AddRange(toInsert);
+                }
+
+                if (updatedCount == 0 && toInsert.Count == 0)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return 0;
+                }
+
+                await orderCycleContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                return updatedCount + toInsert.Count;
+            }
+            catch
             {
-                _repository.AddRange(toInsert);
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
-
-            if (updatedCount == 0 && toInsert.Count == 0)
-            {
-                return 0;
-            }
-
-            await orderCycleContext.SaveChangesAsync(cancellationToken);
-
-            return updatedCount + toInsert.Count;
         }
 
         /// <summary>
