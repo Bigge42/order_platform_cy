@@ -43,5 +43,15 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 查询：合并实际产量与排产优化汇总数据
+        /// </summary>
+        Task<List<WZ_ProductionOutput>> GetWithOptimizedPreProductionAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
     }
 }
