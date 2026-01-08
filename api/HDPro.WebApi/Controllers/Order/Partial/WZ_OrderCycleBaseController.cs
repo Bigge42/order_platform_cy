@@ -71,5 +71,25 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"回填失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 规则直判回填指派生产线
+        /// </summary>
+        /// <param name="batchSize">单批处理数量</param>
+        /// <returns>回填批量结果摘要</returns>
+        [HttpPost("batch-assign-production-line-by-rule")]
+        [AllowAnonymous]
+        public async Task<IActionResult> BatchAssignProductionLineByRule([FromQuery] int batchSize = 1000)
+        {
+            try
+            {
+                var result = await Service.BatchAssignProductionLineByRuleAsync(batchSize);
+                return JsonNormal(new WebResponseContent().OK("规则直判回填完成", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"规则直判回填失败：{ex.Message}"));
+            }
+        }
     }
 }
