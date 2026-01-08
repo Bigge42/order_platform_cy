@@ -51,5 +51,25 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"规则服务调用失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 规则直判回填阀门类别
+        /// </summary>
+        /// <param name="batchSize">单批处理数量</param>
+        /// <returns>回填的记录数量</returns>
+        [HttpPost("fill-valve-category-by-rule")]
+        [AllowAnonymous]
+        public async Task<IActionResult> FillValveCategoryByRule([FromQuery] int batchSize = 1000)
+        {
+            try
+            {
+                var result = await Service.FillValveCategoryByRuleAsync(batchSize);
+                return JsonNormal(new WebResponseContent().OK($"回填完成，共更新 {result} 条记录", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"回填失败：{ex.Message}"));
+            }
+        }
     }
 }
