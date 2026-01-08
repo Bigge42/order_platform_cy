@@ -716,8 +716,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             var defaultThreshold = GetDefaultThreshold();
             var maxForwardDays = GetMaxForwardDays();
 
-            Logger.Info($"[{batchId}] 产能阈值排产开始，参数: fromDate={request.FromDate:yyyy-MM-dd}, toDate={request.ToDate:yyyy-MM-dd}, recalcAll={request.RecalcAll}, dryRun={request.DryRun}.");
-
             var context = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
@@ -796,8 +794,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 .Where(p => !string.IsNullOrWhiteSpace(p))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-
-            Logger.Info($"[{batchId}] 待处理订单数量: {orders.Count}, 产线数量: {candidateLines.Count}.");
 
             var usedMap = new Dictionary<string, Dictionary<DateTime, decimal>>(StringComparer.OrdinalIgnoreCase);
             var scheduleAssignments = new List<CapacityScheduleAssignment>();
@@ -913,7 +909,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                             ScheduleDate = order.ScheduleDate?.Date,
                             Reason = reason
                         });
-                        Logger.Warn($"[{batchId}] 订单 {order.Id} 排产失败: {reason}.");
                         continue;
                     }
 
@@ -941,7 +936,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             }
 
             stopwatch.Stop();
-            Logger.Info($"[{batchId}] 产能阈值排产完成，总订单:{orders.Count}, 产线数:{candidateLines.Count}, 排产成功:{scheduleAssignments.Count}, 失败:{failedOrders.Count}, 耗时:{stopwatch.Elapsed}.");
 
             return new CapacityScheduleResultDto
             {
@@ -1029,11 +1023,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                         IsOverThreshold = dateEntry.Value > threshold
                     });
                 }
-            }
-
-            if (missingThresholdLines.Count > 0)
-            {
-                Logger.Warn($"产能阈值缺失，已使用默认阈值。生产线: {string.Join(",", missingThresholdLines)}");
             }
 
             return result;
