@@ -469,5 +469,169 @@ namespace HDPro.CY.Order.Services.WZ
                 .ThenBy(x => x.ProductionLine)
                 .ToList();
         }
+
+        /// <summary>
+        /// 计算并回写产能排产日期：基于产线日产量与阈值，更新 WZ_OrderCycleBase.CapacityScheduleDate
+        /// </summary>
+        public async Task<int> UpdateCapacityScheduleAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string productionLine,
+            CancellationToken ct = default)
+        {
+            if (endDate < startDate)
+                throw new ArgumentException("endDate 不能早于 startDate");
+
+            var orderQuery = _db.Set<WZ_OrderCycleBase>()
+                .Where(x => x.ScheduleDate.HasValue
+                            && x.ScheduleDate.Value.Date >= startDate.Date
+                            && x.ScheduleDate.Value.Date <= endDate.Date);
+
+            if (!string.IsNullOrWhiteSpace(productionLine))
+            {
+                orderQuery = orderQuery.Where(x => x.AssignedProductionLine == productionLine);
+            }
+
+            var orders = await orderQuery.ToListAsync(ct);
+            if (orders.Count == 0)
+            {
+                return 0;
+            }
+
+            var linesRaw = orders
+                .Select(x => x.AssignedProductionLine)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (linesRaw.Count == 0)
+            {
+                return 0;
+            }
+
+            var lines = linesRaw
+                .Select(NormalizeStr)
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var outputs = await _db.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .Where(x => linesRaw.Contains(x.ProductionLine))
+                .Where(x => x.ProductionDate.Date >= startDate.Date && x.ProductionDate.Date <= endDate.Date)
+                .Select(x => new
+                {
+                    Line = NormalizeStr(x.ProductionLine),
+                    Date = x.ProductionDate.Date,
+                    x.Quantity,
+                    x.CurrentThreshold
+                })
+                .ToListAsync(ct);
+
+            var usageByLineDate = new Dictionary<(string Line, DateTime Date), decimal>();
+            var thresholdByLineDate = new Dictionary<(string Line, DateTime Date), decimal>();
+            var lineDefaultThreshold = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in outputs.GroupBy(x => new { x.Line, x.Date }))
+            {
+                var key = (group.Key.Line, group.Key.Date);
+                usageByLineDate[key] = group.Sum(x => x.Quantity);
+                var threshold = group
+                    .Select(x => x.CurrentThreshold ?? 0m)
+                    .Where(x => x > 0)
+                    .DefaultIfEmpty(0m)
+                    .Max();
+                if (threshold > 0)
+                {
+                    thresholdByLineDate[key] = threshold;
+                    if (!lineDefaultThreshold.TryGetValue(group.Key.Line, out var existing) || threshold > existing)
+                    {
+                        lineDefaultThreshold[group.Key.Line] = threshold;
+                    }
+                }
+            }
+
+            var updated = 0;
+
+            foreach (var line in lines)
+            {
+                var lineOrders = orders
+                    .Where(x => NormalizeStr(x.AssignedProductionLine) == line)
+                    .OrderBy(x => x.ScheduleDate)
+                    .ThenBy(x => x.Id)
+                    .ToList();
+
+                foreach (var order in lineOrders)
+                {
+                    if (!order.ScheduleDate.HasValue)
+                    {
+                        continue;
+                    }
+
+                    var scheduleDate = order.ScheduleDate.Value.Date;
+                    var qtyRemaining = order.OrderQty ?? 0m;
+
+                    if (qtyRemaining <= 0)
+                    {
+                        order.CapacityScheduleDate = scheduleDate;
+                        updated++;
+                        continue;
+                    }
+
+                    var currentDate = scheduleDate;
+                    var lastDate = scheduleDate;
+                    var guard = 0;
+
+                    while (qtyRemaining > 0 && guard < 3650)
+                    {
+                        var key = (line, currentDate);
+                        var used = usageByLineDate.TryGetValue(key, out var curUsed) ? curUsed : 0m;
+
+                        var threshold = 0m;
+                        if (!thresholdByLineDate.TryGetValue(key, out threshold) || threshold <= 0)
+                        {
+                            lineDefaultThreshold.TryGetValue(line, out threshold);
+                        }
+
+                        if (threshold <= 0)
+                        {
+                            usageByLineDate[key] = used + qtyRemaining;
+                            qtyRemaining = 0;
+                            lastDate = currentDate;
+                            break;
+                        }
+
+                        var available = threshold - used;
+                        if (available <= 0)
+                        {
+                            currentDate = currentDate.AddDays(1);
+                            guard++;
+                            continue;
+                        }
+
+                        var allocated = qtyRemaining <= available ? qtyRemaining : available;
+                        usageByLineDate[key] = used + allocated;
+                        qtyRemaining -= allocated;
+                        lastDate = currentDate;
+
+                        if (qtyRemaining > 0)
+                        {
+                            currentDate = currentDate.AddDays(1);
+                            guard++;
+                        }
+                    }
+
+                    order.CapacityScheduleDate = lastDate;
+                    updated++;
+                }
+            }
+
+            if (updated > 0)
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+
+            return updated;
+        }
     }
 }

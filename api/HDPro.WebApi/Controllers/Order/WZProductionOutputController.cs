@@ -74,6 +74,13 @@ namespace HDPro.CY.Order.Controllers.WZ
             public string ProductionLine { get; set; }
         }
 
+        public sealed class CapacityScheduleDto
+        {
+            public DateTime Start { get; set; }
+            public DateTime End { get; set; }
+            public string ProductionLine { get; set; }
+        }
+
         /// <summary>
         /// 手动刷新：清空并重建缓存（仅管理员调用）
         /// POST /api/WZ/ProductionOutput/refresh
@@ -103,6 +110,24 @@ namespace HDPro.CY.Order.Controllers.WZ
                 dto.End,
                 ct);
             return Ok(list);
+        }
+
+        /// <summary>
+        /// 计算并回写产能排产日期
+        /// POST /api/WZ/ProductionOutput/capacity-schedule
+        /// body: { "start":"2025-08-11", "end":"2025-08-12", "productionLine":"产线1" }
+        /// </summary>
+        [HttpPost("capacity-schedule")]
+        public async Task<ActionResult<object>> UpdateCapacitySchedule(
+            [FromBody] CapacityScheduleDto dto,
+            CancellationToken ct = default)
+        {
+            var updated = await _service.UpdateCapacityScheduleAsync(
+                dto.Start,
+                dto.End,
+                dto.ProductionLine,
+                ct);
+            return Ok(new { updated });
         }
     }
 }
