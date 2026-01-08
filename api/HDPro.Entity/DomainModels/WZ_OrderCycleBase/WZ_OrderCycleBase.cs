@@ -94,6 +94,32 @@ namespace HDPro.Entity.DomainModels
        public string MaterialCode { get; set; }
 
        /// <summary>
+       ///订单数量
+       /// </summary>
+       [Display(Name ="订单数量")]
+       [DisplayFormat(DataFormatString="18,6")]
+       [Column(TypeName="decimal(18,6)")]
+       [Editable(true)]
+       public decimal? OrderQty { get; set; }
+
+       /// <summary>
+       ///订单明细ID
+       /// </summary>
+       [Display(Name ="订单明细ID")]
+       [Column(TypeName="bigint")]
+       [Editable(true)]
+       public long? FENTRYID { get; set; }
+
+       /// <summary>
+       ///阀体材质
+       /// </summary>
+       [Display(Name ="阀体材质")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string BodyMaterial { get; set; }
+
+       /// <summary>
        ///内件材质
        /// </summary>
        [Display(Name ="内件材质")]
