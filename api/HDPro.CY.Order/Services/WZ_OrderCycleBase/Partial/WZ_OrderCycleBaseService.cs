@@ -514,11 +514,10 @@ namespace HDPro.CY.Order.Services
                         });
                         updateIds.Add(item.Id);
                     }
-                    catch (Exception ex)
+                    catch
                     {
                         summary.Failed++;
                         summary.FailedIds.Add(item.Id);
-                        Logger.Error($"规则直判计算异常，Id={item.Id}，错误：{ex.Message}");
                     }
                 }
 
@@ -537,12 +536,11 @@ namespace HDPro.CY.Order.Services
                         await transaction.CommitAsync(cancellationToken);
                         summary.Updated += entitiesToUpdate.Count;
                     }
-                    catch (Exception ex)
+                    catch
                     {
                         await transaction.RollbackAsync(cancellationToken);
                         summary.Failed += entitiesToUpdate.Count;
                         summary.FailedIds.AddRange(updateIds);
-                        Logger.Error($"规则直判批量更新失败，Ids={string.Join(",", updateIds)}，错误：{ex.Message}");
                     }
                     finally
                     {
@@ -554,13 +552,6 @@ namespace HDPro.CY.Order.Services
                 }
 
                 lastId = batch[batch.Count - 1].Id;
-            }
-
-            Logger.Info($"规则直判回填完成，总数：{summary.Total}，更新：{summary.Updated}，跳过：{summary.Skipped}，异常：{summary.Failed}");
-
-            if (summary.FailedIds.Count > 0)
-            {
-                Logger.Error($"规则直判异常主键：{string.Join(",", summary.FailedIds)}");
             }
 
             return summary;
