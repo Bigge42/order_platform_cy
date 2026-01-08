@@ -374,6 +374,81 @@ namespace HDPro.CY.Order.Services
             return requests;
         }
 
+        public async Task<int> FillValveCategoryByRuleAsync(int batchSize = 1000)
+        {
+            if (batchSize <= 0)
+            {
+                batchSize = 1000;
+            }
+
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var updatedTotal = 0;
+            var lastId = 0;
+
+            while (true)
+            {
+                var batch = await context.Set<WZ_OrderCycleBase>()
+                    .AsNoTracking()
+                    .Where(p => p.Id > lastId
+                        && (p.ValveCategory == null || p.ValveCategory == string.Empty)
+                        && p.ProductName != null
+                        && p.ProductName != string.Empty)
+                    .OrderBy(p => p.Id)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.ProductName,
+                        p.ValveCategory
+                    })
+                    .Take(batchSize)
+                    .ToListAsync();
+
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                var entitiesToUpdate = new List<WZ_OrderCycleBase>();
+                foreach (var item in batch)
+                {
+                    var result = ValveCategoryRuleJudge.TryJudge(item.ProductName);
+                    if (!result.HasValue)
+                    {
+                        continue;
+                    }
+
+                    entitiesToUpdate.Add(new WZ_OrderCycleBase
+                    {
+                        Id = item.Id,
+                        ValveCategory = result.Value.Category
+                    });
+                }
+
+                if (entitiesToUpdate.Count > 0)
+                {
+                    foreach (var entity in entitiesToUpdate)
+                    {
+                        context.Attach(entity);
+                        context.Entry(entity).Property(p => p.ValveCategory).IsModified = true;
+                    }
+
+                    updatedTotal += entitiesToUpdate.Count;
+                    await context.SaveChangesAsync();
+
+                    foreach (var entity in entitiesToUpdate)
+                    {
+                        context.Entry(entity).State = EntityState.Detached;
+                    }
+                }
+
+                lastId = batch[batch.Count - 1].Id;
+            }
+
+            return updatedTotal;
+        }
+
         private static int? TryParseId(string id)
         {
             return int.TryParse(id, out var value) ? value : null;
