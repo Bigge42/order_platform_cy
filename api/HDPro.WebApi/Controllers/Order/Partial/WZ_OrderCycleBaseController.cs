@@ -91,5 +91,24 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"规则直判回填失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 同步预排产输出数据
+        /// </summary>
+        /// <returns>同步的记录数量</returns>
+        [HttpPost("sync-pre-production-output")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SyncPreProductionOutput()
+        {
+            try
+            {
+                var result = await Service.SyncPreProductionOutputAsync();
+                return JsonNormal(new WebResponseContent().OK($"同步完成，共同步 {result} 条数据", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
+            }
+        }
     }
 }

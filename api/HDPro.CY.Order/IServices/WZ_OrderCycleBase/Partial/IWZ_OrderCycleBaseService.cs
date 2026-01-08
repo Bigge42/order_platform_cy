@@ -21,6 +21,8 @@ namespace HDPro.CY.Order.IServices
 
         Task<AssignedProductionLineBatchSummary> BatchAssignProductionLineByRuleAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
 
+        Task<int> SyncPreProductionOutputAsync(CancellationToken cancellationToken = default);
+
         string GetAssignedProductionLineSql();
     }
 
