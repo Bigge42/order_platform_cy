@@ -26,6 +26,7 @@ using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
 using HDPro.CY.Order.Models.WZProductionOutputDtos;
+using System.Diagnostics;
 
 namespace HDPro.CY.Order.Services
 {
@@ -82,35 +83,50 @@ namespace HDPro.CY.Order.Services
         private static string NormalizeStr(string value)
             => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
 
-        public async Task<List<CapacityScheduleResultDto>> CalculateCapacityScheduleAsync(
+        public async Task<CapacityScheduleBatchResultDto> CalculateCapacityScheduleAsync(
             CapacityScheduleRequestDto request,
             CancellationToken cancellationToken = default)
         {
             request ??= new CapacityScheduleRequestDto();
 
+            var stopwatch = Stopwatch.StartNew();
             var context = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-            var startDate = request.StartDate?.Date;
-            var endDate = request.EndDate?.Date;
+            var startDate = request.FromDate?.Date ?? request.StartDate?.Date;
+            var endDate = request.ToDate?.Date ?? request.EndDate?.Date;
             var lineFilter = NormalizeStr(request.ProductionLine);
+            var productionLines = request.ProductionLines?
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(NormalizeStr)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(lineFilter))
+            {
+                productionLines.Add(lineFilter);
+            }
+
+            productionLines = productionLines
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             var ordersQuery = context.Set<WZ_OrderCycleBase>()
                 .Where(o => o.OrderQty != null && o.OrderQty > 0);
 
-            if (!string.IsNullOrWhiteSpace(lineFilter))
+            if (productionLines.Count > 0)
             {
-                ordersQuery = ordersQuery.Where(o => o.AssignedProductionLine == lineFilter);
+                ordersQuery = ordersQuery.Where(o => productionLines.Contains(o.AssignedProductionLine));
             }
 
-            if (startDate.HasValue)
+            if (!request.RecalcAll && startDate.HasValue)
             {
-                ordersQuery = ordersQuery.Where(o => o.ScheduleDate >= startDate.Value);
+                ordersQuery = ordersQuery.Where(o => o.ScheduleDate == null || o.ScheduleDate >= startDate.Value);
             }
 
-            if (endDate.HasValue)
+            if (!request.RecalcAll && endDate.HasValue)
             {
-                ordersQuery = ordersQuery.Where(o => o.ScheduleDate <= endDate.Value);
+                ordersQuery = ordersQuery.Where(o => o.ScheduleDate == null || o.ScheduleDate <= endDate.Value);
             }
 
             var orders = await ordersQuery
@@ -119,7 +135,7 @@ namespace HDPro.CY.Order.Services
                 .ToListAsync(cancellationToken);
 
             if (orders.Count == 0)
-                return new List<CapacityScheduleResultDto>();
+                return new CapacityScheduleBatchResultDto { BatchId = Guid.NewGuid(), Elapsed = stopwatch.Elapsed };
 
             var minDate = startDate ?? orders.Min(o => o.ScheduleDate ?? DateTime.Today).Date;
             var maxDate = endDate ?? orders.Max(o => o.ScheduleDate ?? DateTime.Today).Date;
@@ -127,9 +143,9 @@ namespace HDPro.CY.Order.Services
                 .AsNoTracking()
                 .Where(o => o.ProductionDate >= minDate && o.ProductionDate <= maxDate);
 
-            if (!string.IsNullOrWhiteSpace(lineFilter))
+            if (productionLines.Count > 0)
             {
-                outputQuery = outputQuery.Where(o => o.ProductionLine == lineFilter);
+                outputQuery = outputQuery.Where(o => productionLines.Contains(o.ProductionLine));
             }
 
             var outputs = await outputQuery.ToListAsync(cancellationToken);
@@ -141,40 +157,76 @@ namespace HDPro.CY.Order.Services
                 o => (Date: o.ProductionDate.Date, Cat: NormalizeStr(o.ValveCategory), Line: NormalizeStr(o.ProductionLine)),
                 o => o.Quantity);
 
-            var results = new List<CapacityScheduleResultDto>(orders.Count);
+            var failedOrders = new List<FailedOrderDto>();
+            var touchedKeys = new HashSet<(DateTime Date, string Cat, string Line)>();
+            var scheduledOrders = 0;
 
             foreach (var order in orders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var orderQty = order.OrderQty ?? 0m;
-                var scheduleDate = order.ScheduleDate?.Date ?? minDate;
+                var scheduleDate = order.ScheduleDate?.Date;
                 var assignedLine = NormalizeStr(order.AssignedProductionLine);
                 var valveCategory = NormalizeStr(order.ValveCategory);
 
-                var result = new CapacityScheduleResultDto
+                if (string.IsNullOrWhiteSpace(assignedLine))
                 {
-                    OrderId = order.Id,
-                    AssignedProductionLine = assignedLine,
-                    ScheduleDate = order.ScheduleDate?.Date,
-                    OrderQty = order.OrderQty
-                };
+                    failedOrders.Add(new FailedOrderDto
+                    {
+                        Id = order.Id,
+                        ProductionLine = assignedLine,
+                        OrderQty = order.OrderQty,
+                        ScheduleDate = order.ScheduleDate,
+                        Reason = "指派产线为空"
+                    });
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(valveCategory))
+                {
+                    failedOrders.Add(new FailedOrderDto
+                    {
+                        Id = order.Id,
+                        ProductionLine = assignedLine,
+                        OrderQty = order.OrderQty,
+                        ScheduleDate = order.ScheduleDate,
+                        Reason = "阀门类别为空"
+                    });
+                    continue;
+                }
+
+                if (!scheduleDate.HasValue)
+                {
+                    failedOrders.Add(new FailedOrderDto
+                    {
+                        Id = order.Id,
+                        ProductionLine = assignedLine,
+                        OrderQty = order.OrderQty,
+                        ScheduleDate = order.ScheduleDate,
+                        Reason = "排产日期为空"
+                    });
+                    continue;
+                }
 
                 if (orderQty <= 0)
                 {
-                    result.CapacityScheduleDate = scheduleDate;
-                    results.Add(result);
-                    order.CapacityScheduleDate = scheduleDate;
+                    if (!request.DryRun)
+                    {
+                        order.CapacityScheduleDate = scheduleDate.Value.Date;
+                    }
+                    scheduledOrders++;
                     continue;
                 }
 
                 var remaining = orderQty;
-                var currentDate = scheduleDate;
+                var currentDate = scheduleDate.Value.Date;
 
                 while (remaining > 0)
                 {
                     var key = (Date: currentDate, Cat: valveCategory, Line: assignedLine);
                     currentQuantities.TryGetValue(key, out var currentQty);
+                    touchedKeys.Add(key);
 
                     var threshold = 0m;
                     if (outputLookup.TryGetValue(key, out var output) && output.CurrentThreshold.HasValue)
@@ -202,29 +254,55 @@ namespace HDPro.CY.Order.Services
                     currentQty += appliedQty;
                     currentQuantities[key] = currentQty;
 
-                    result.Steps.Add(new CapacityScheduleStepDto
-                    {
-                        Date = currentDate,
-                        RemainingCapacity = available - appliedQty,
-                        AppliedQty = appliedQty,
-                        CurrentQuantity = currentQty,
-                        Threshold = threshold
-                    });
-
                     if (remaining > 0)
                     {
                         currentDate = currentDate.AddDays(1);
                     }
                 }
 
-                result.CapacityScheduleDate = currentDate;
-                result.RemainingQty = remaining;
-                order.CapacityScheduleDate = currentDate;
-                results.Add(result);
+                if (!request.DryRun)
+                {
+                    order.CapacityScheduleDate = currentDate;
+                }
+                scheduledOrders++;
             }
 
-            await context.SaveChangesAsync(cancellationToken);
-            return results;
+            if (!request.DryRun)
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
+            var dailyLoads = new List<DailyLoadDto>();
+            var allKeys = outputLookup.Keys.Concat(currentQuantities.Keys).Distinct().ToList();
+            foreach (var key in allKeys)
+            {
+                currentQuantities.TryGetValue(key, out var quantity);
+                outputLookup.TryGetValue(key, out var output);
+                var threshold = output?.CurrentThreshold ?? 0m;
+                dailyLoads.Add(new DailyLoadDto
+                {
+                    ProductionLine = key.Line,
+                    ProductionDate = key.Date,
+                    Quantity = quantity,
+                    Threshold = threshold,
+                    IsOverThreshold = threshold > 0 && quantity > threshold
+                });
+            }
+
+            stopwatch.Stop();
+            return new CapacityScheduleBatchResultDto
+            {
+                BatchId = Guid.NewGuid(),
+                TotalOrders = orders.Count,
+                ScheduledOrders = scheduledOrders,
+                FailedOrders = failedOrders.Count,
+                FailedOrdersDetail = failedOrders,
+                DailyLoads = dailyLoads
+                    .OrderBy(x => x.ProductionDate)
+                    .ThenBy(x => x.ProductionLine)
+                    .ToList(),
+                Elapsed = stopwatch.Elapsed
+            };
         }
 
         /// <summary>

@@ -26,7 +26,7 @@ namespace HDPro.CY.Order.IServices
 
         string GetAssignedProductionLineSql();
 
-        Task<List<CapacityScheduleResultDto>> CalculateCapacityScheduleAsync(
+        Task<CapacityScheduleBatchResultDto> CalculateCapacityScheduleAsync(
             CapacityScheduleRequestDto request,
             CancellationToken cancellationToken = default);
     }
