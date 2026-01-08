@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using HDPro.CY.Order.Models.WZProductionOutputDtos;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -108,6 +109,25 @@ namespace HDPro.CY.Order.Controllers
             catch (Exception ex)
             {
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 计算产能排产日期并写回 WZ_OrderCycleBase.CapacityScheduleDate
+        /// </summary>
+        /// <param name="dto">请求参数</param>
+        [HttpPost("capacity-schedule")]
+        [AllowAnonymous]
+        public async Task<IActionResult> CalculateCapacitySchedule([FromBody] CapacityScheduleRequestDto dto = null)
+        {
+            try
+            {
+                var result = await Service.CalculateCapacityScheduleAsync(dto);
+                return JsonNormal(new WebResponseContent().OK("计算完成", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"计算失败：{ex.Message}"));
             }
         }
     }
