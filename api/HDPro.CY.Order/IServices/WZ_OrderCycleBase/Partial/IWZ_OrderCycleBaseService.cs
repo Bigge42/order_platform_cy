@@ -16,6 +16,8 @@ namespace HDPro.CY.Order.IServices
         Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default);
 
         Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
+
+        Task<int> FillValveCategoryByRuleAsync(int batchSize = 1000);
     }
 
     public sealed class ValveRuleBatchSummary
