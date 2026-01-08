@@ -25,7 +25,7 @@ namespace HDPro.CY.Order.Controllers
             try
             {
                 var result = await Service.SyncFromOrderTrackingAsync();
-                return JsonNormal(result);
+                return JsonNormal(new WebResponseContent().OK($"同步完成，共同步 {result} 条数据", result, false));
             }
             catch (Exception ex)
             {
