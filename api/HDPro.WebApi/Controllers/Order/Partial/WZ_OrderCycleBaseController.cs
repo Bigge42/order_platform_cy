@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using HDPro.CY.Order.Models.OrderCycleBaseDtos;
+using System.Threading;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -108,6 +110,26 @@ namespace HDPro.CY.Order.Controllers
             catch (Exception ex)
             {
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 按产能阈值优化排产日期计算
+        /// </summary>
+        [HttpPost("calc-capacity-schedule")]
+        [AllowAnonymous]
+        public async Task<IActionResult> CalcCapacitySchedule(
+            [FromBody] CapacityScheduleRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await Service.CalcCapacityScheduleAsync(request ?? new CapacityScheduleRequestDto(), cancellationToken);
+                return JsonNormal(new WebResponseContent().OK("排产计算完成", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"排产计算失败：{ex.Message}"));
             }
         }
     }
