@@ -51,5 +51,31 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"规则服务调用失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 预排产统计：按排产日期汇总订单数量（阀体×产线）
+        /// </summary>
+        [HttpGet("pre-schedule-output")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetPreScheduleOutput(
+            [FromQuery] string valveCategory,
+            [FromQuery] string productionLine,
+            [FromQuery(Name = "start")] DateTime startDate,
+            [FromQuery(Name = "end")] DateTime endDate)
+        {
+            try
+            {
+                var list = await Service.GetPreScheduleOutputAsync(
+                    valveCategory,
+                    productionLine,
+                    startDate,
+                    endDate);
+                return JsonNormal(list);
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"预排产统计失败：{ex.Message}"));
+            }
+        }
     }
 }

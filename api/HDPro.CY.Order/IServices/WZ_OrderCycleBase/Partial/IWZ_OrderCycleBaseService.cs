@@ -16,6 +16,24 @@ namespace HDPro.CY.Order.IServices
         Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default);
 
         Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
+
+        Task<List<PreScheduleOutputDto>> GetPreScheduleOutputAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default);
+    }
+
+    public sealed class PreScheduleOutputDto
+    {
+        public DateTime ProductionDate { get; set; }
+
+        public string ValveCategory { get; set; }
+
+        public string ProductionLine { get; set; }
+
+        public int Quantity { get; set; }
     }
 
     public sealed class ValveRuleBatchSummary
