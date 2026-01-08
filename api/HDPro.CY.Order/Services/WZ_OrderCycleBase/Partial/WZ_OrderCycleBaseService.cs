@@ -232,11 +232,10 @@ namespace HDPro.CY.Order.Services
 
                 var outputs = await context.Set<WZ_OrderCycleBase>()
                     .AsNoTracking()
-                    .Where(p => p.ScheduleDate.HasValue && p.CapacityScheduleDate.HasValue)
                     .Select(p => new WZ_PreProductionOutput
                     {
-                        ProductionDate = p.ScheduleDate.Value.Date,
-                        CapacityScheduleDate = p.CapacityScheduleDate.Value.Date,
+                        ProductionDate = p.ScheduleDate,
+                        CapacityScheduleDate = p.CapacityScheduleDate,
                         ValveCategory = p.ValveCategory,
                         ProductionLine = p.AssignedProductionLine,
                         Quantity = p.OrderQty ?? 0M
