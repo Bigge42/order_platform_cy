@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
+using HDPro.Entity.DomainModels.OrderCollaboration;
 
 namespace HDPro.CY.Order.Services
 {
@@ -185,6 +186,152 @@ namespace HDPro.CY.Order.Services
             await orderCycleContext.SaveChangesAsync(cancellationToken);
 
             return updatedCount + toInsert.Count;
+        }
+
+        public async Task<List<PreScheduleOutputDto>> GetPreScheduleOutputAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default)
+        {
+            if (endDate < startDate)
+            {
+                throw new ArgumentException("endDate 不能早于 startDate");
+            }
+
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var query = orderCycleContext.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(x => x.ScheduleDate.HasValue
+                    && x.ScheduleDate.Value >= startDate
+                    && x.ScheduleDate.Value <= endDate
+                    && !string.IsNullOrWhiteSpace(x.ValveCategory)
+                    && !string.IsNullOrWhiteSpace(x.ProductionLine));
+
+            if (!string.IsNullOrWhiteSpace(valveCategory))
+            {
+                query = query.Where(x => x.ValveCategory == valveCategory);
+            }
+
+            if (!string.IsNullOrWhiteSpace(productionLine))
+            {
+                query = query.Where(x => x.ProductionLine == productionLine);
+            }
+
+            return await query
+                .GroupBy(x => new
+                {
+                    Date = x.ScheduleDate.Value,
+                    Cat = x.ValveCategory,
+                    Line = x.ProductionLine
+                })
+                .Select(g => new PreScheduleOutputDto
+                {
+                    ProductionDate = g.Key.Date,
+                    ValveCategory = g.Key.Cat,
+                    ProductionLine = g.Key.Line,
+                    Quantity = g.Sum(x => x.OrderQty ?? 0m)
+                })
+                .OrderBy(x => x.ProductionDate)
+                .ThenBy(x => x.ValveCategory)
+                .ThenBy(x => x.ProductionLine)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<int> RefreshPreScheduleOutputAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default)
+        {
+            if (endDate < startDate)
+            {
+                throw new ArgumentException("endDate 不能早于 startDate");
+            }
+
+            var orderCycleContext = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var aggregates = await orderCycleContext.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(x => x.ScheduleDate.HasValue
+                    && x.ScheduleDate.Value >= startDate
+                    && x.ScheduleDate.Value <= endDate
+                    && !string.IsNullOrWhiteSpace(x.ValveCategory)
+                    && !string.IsNullOrWhiteSpace(x.ProductionLine))
+                .GroupBy(x => new
+                {
+                    Date = x.ScheduleDate.Value,
+                    Cat = x.ValveCategory,
+                    Line = x.ProductionLine
+                })
+                .Select(g => new
+                {
+                    g.Key.Date,
+                    g.Key.Cat,
+                    g.Key.Line,
+                    Quantity = g.Sum(x => x.OrderQty ?? 0m)
+                })
+                .ToListAsync(cancellationToken);
+
+            using var tx = await orderCycleContext.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                try
+                {
+                    await orderCycleContext.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_ProductionOutput];", cancellationToken);
+                }
+                catch
+                {
+                    await orderCycleContext.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_ProductionOutput];", cancellationToken);
+                }
+
+                if (aggregates.Count > 0)
+                {
+                    const int batchSize = 2000;
+                    var batch = new List<WZ_ProductionOutput>(batchSize);
+                    int written = 0;
+
+                    foreach (var row in aggregates)
+                    {
+                        batch.Add(new WZ_ProductionOutput
+                        {
+                            ProductionDate = row.Date,
+                            ValveCategory = row.Cat,
+                            ProductionLine = row.Line,
+                            Quantity = row.Quantity
+                        });
+
+                        if (batch.Count >= batchSize)
+                        {
+                            await orderCycleContext.Set<WZ_ProductionOutput>().AddRangeAsync(batch, cancellationToken);
+                            await orderCycleContext.SaveChangesAsync(cancellationToken);
+                            written += batch.Count;
+                            batch.Clear();
+                        }
+                    }
+
+                    if (batch.Count > 0)
+                    {
+                        await orderCycleContext.Set<WZ_ProductionOutput>().AddRangeAsync(batch, cancellationToken);
+                        await orderCycleContext.SaveChangesAsync(cancellationToken);
+                        written += batch.Count;
+                    }
+
+                    await tx.CommitAsync(cancellationToken);
+                    return written;
+                }
+
+                await tx.CommitAsync(cancellationToken);
+                return 0;
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
         }
 
         /// <summary>
