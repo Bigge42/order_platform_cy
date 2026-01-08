@@ -43,5 +43,6 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
     }
 }

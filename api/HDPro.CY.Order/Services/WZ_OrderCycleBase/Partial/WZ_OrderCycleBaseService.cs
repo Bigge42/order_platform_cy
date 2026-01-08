@@ -25,9 +25,7 @@ using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
-using HDPro.CY.Order.Models.OrderCycleBaseDtos;
-using HDPro.Core.Configuration;
-using System.Diagnostics;
+using HDPro.CY.Order.Models.WZProductionOutputDtos;
 
 namespace HDPro.CY.Order.Services
 {
@@ -79,6 +77,154 @@ namespace HDPro.CY.Order.Services
             // 在此处添加WZ_OrderCycleBase特有的数据验证逻辑
 
             return response;
+        }
+
+        private static string NormalizeStr(string value)
+            => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+
+        public async Task<List<CapacityScheduleResultDto>> CalculateCapacityScheduleAsync(
+            CapacityScheduleRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            request ??= new CapacityScheduleRequestDto();
+
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var startDate = request.StartDate?.Date;
+            var endDate = request.EndDate?.Date;
+            var lineFilter = NormalizeStr(request.ProductionLine);
+
+            var ordersQuery = context.Set<WZ_OrderCycleBase>()
+                .Where(o => o.OrderQty != null && o.OrderQty > 0);
+
+            if (!string.IsNullOrWhiteSpace(lineFilter))
+            {
+                ordersQuery = ordersQuery.Where(o => o.AssignedProductionLine == lineFilter);
+            }
+
+            if (startDate.HasValue)
+            {
+                ordersQuery = ordersQuery.Where(o => o.ScheduleDate >= startDate.Value);
+            }
+
+            if (endDate.HasValue)
+            {
+                ordersQuery = ordersQuery.Where(o => o.ScheduleDate <= endDate.Value);
+            }
+
+            var orders = await ordersQuery
+                .OrderBy(o => o.ScheduleDate)
+                .ThenBy(o => o.Id)
+                .ToListAsync(cancellationToken);
+
+            if (orders.Count == 0)
+                return new List<CapacityScheduleResultDto>();
+
+            var minDate = startDate ?? orders.Min(o => o.ScheduleDate ?? DateTime.Today).Date;
+            var maxDate = endDate ?? orders.Max(o => o.ScheduleDate ?? DateTime.Today).Date;
+            var outputQuery = context.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .Where(o => o.ProductionDate >= minDate && o.ProductionDate <= maxDate);
+
+            if (!string.IsNullOrWhiteSpace(lineFilter))
+            {
+                outputQuery = outputQuery.Where(o => o.ProductionLine == lineFilter);
+            }
+
+            var outputs = await outputQuery.ToListAsync(cancellationToken);
+            var outputLookup = outputs.ToDictionary(
+                o => (Date: o.ProductionDate.Date, Cat: NormalizeStr(o.ValveCategory), Line: NormalizeStr(o.ProductionLine)),
+                o => o);
+
+            var currentQuantities = outputs.ToDictionary(
+                o => (Date: o.ProductionDate.Date, Cat: NormalizeStr(o.ValveCategory), Line: NormalizeStr(o.ProductionLine)),
+                o => o.Quantity);
+
+            var results = new List<CapacityScheduleResultDto>(orders.Count);
+
+            foreach (var order in orders)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var orderQty = order.OrderQty ?? 0m;
+                var scheduleDate = order.ScheduleDate?.Date ?? minDate;
+                var assignedLine = NormalizeStr(order.AssignedProductionLine);
+                var valveCategory = NormalizeStr(order.ValveCategory);
+
+                var result = new CapacityScheduleResultDto
+                {
+                    OrderId = order.Id,
+                    AssignedProductionLine = assignedLine,
+                    ScheduleDate = order.ScheduleDate?.Date,
+                    OrderQty = order.OrderQty
+                };
+
+                if (orderQty <= 0)
+                {
+                    result.CapacityScheduleDate = scheduleDate;
+                    results.Add(result);
+                    order.CapacityScheduleDate = scheduleDate;
+                    continue;
+                }
+
+                var remaining = orderQty;
+                var currentDate = scheduleDate;
+
+                while (remaining > 0)
+                {
+                    var key = (Date: currentDate, Cat: valveCategory, Line: assignedLine);
+                    currentQuantities.TryGetValue(key, out var currentQty);
+
+                    var threshold = 0m;
+                    if (outputLookup.TryGetValue(key, out var output) && output.CurrentThreshold.HasValue)
+                    {
+                        threshold = output.CurrentThreshold.Value;
+                    }
+
+                    var effectiveThreshold = threshold > 0 ? threshold : decimal.MaxValue;
+                    var available = effectiveThreshold - currentQty;
+
+                    if (available <= 0)
+                    {
+                        currentDate = currentDate.AddDays(1);
+                        continue;
+                    }
+
+                    var appliedQty = request.AllowSplit ? Math.Min(remaining, available) : remaining;
+                    if (!request.AllowSplit && appliedQty > available)
+                    {
+                        currentDate = currentDate.AddDays(1);
+                        continue;
+                    }
+
+                    remaining -= appliedQty;
+                    currentQty += appliedQty;
+                    currentQuantities[key] = currentQty;
+
+                    result.Steps.Add(new CapacityScheduleStepDto
+                    {
+                        Date = currentDate,
+                        RemainingCapacity = available - appliedQty,
+                        AppliedQty = appliedQty,
+                        CurrentQuantity = currentQty,
+                        Threshold = threshold
+                    });
+
+                    if (remaining > 0)
+                    {
+                        currentDate = currentDate.AddDays(1);
+                    }
+                }
+
+                result.CapacityScheduleDate = currentDate;
+                result.RemainingQty = remaining;
+                order.CapacityScheduleDate = currentDate;
+                results.Add(result);
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+            return results;
         }
 
         /// <summary>

@@ -9,7 +9,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using HDPro.CY.Order.Models.OrderCycleBaseDtos;
+using HDPro.CY.Order.Models.WZProductionOutputDtos;
 namespace HDPro.CY.Order.IServices
 {
     public partial interface IWZ_OrderCycleBaseService
@@ -26,7 +26,7 @@ namespace HDPro.CY.Order.IServices
 
         string GetAssignedProductionLineSql();
 
-        Task<CapacityScheduleResultDto> CalcCapacityScheduleAsync(
+        Task<List<CapacityScheduleResultDto>> CalculateCapacityScheduleAsync(
             CapacityScheduleRequestDto request,
             CancellationToken cancellationToken = default);
     }
