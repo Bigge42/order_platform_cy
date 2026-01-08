@@ -28,6 +28,7 @@ export default function(){
                        {field:'RequestedDeliveryDate',title:'要货日期',type:'datetime',width:110,align:'left'},
                        {field:'StandardDeliveryDate',title:'标准交货日期',type:'datetime',width:110,align:'left'},
                        {field:'ScheduleDate',title:'排产日期',type:'datetime',width:110,align:'left'},
+                       {field:'CapacityScheduleDate',title:'排产优化日期',type:'datetime',width:110,align:'left'},
                        {field:'MaterialCode',title:'物料编码',type:'string',width:120,align:'left'},
                        {field:'OrderQty',title:'订单数量',type:'decimal',width:120,align:'left'},
                        {field:'ProductName',title:'产品名称',type:'string',width:180,align:'left'},
