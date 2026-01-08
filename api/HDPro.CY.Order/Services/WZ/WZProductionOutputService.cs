@@ -260,5 +260,39 @@ namespace HDPro.CY.Order.Services.WZ
 
             return query.ToListAsync(ct);
         }
+
+        /// <summary>
+        /// 批量写入阈值：按阀体+产线更新 CurrentThreshold
+        /// </summary>
+        public async Task<int> UpdateThresholdsAsync(
+            IReadOnlyCollection<(string ValveCategory, string ProductionLine, decimal Threshold)> thresholds,
+            CancellationToken ct = default)
+        {
+            if (thresholds == null || thresholds.Count == 0) return 0;
+
+            var affected = 0;
+            using var tx = await _db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                foreach (var item in thresholds)
+                {
+                    var valve = NormalizeStr(item.ValveCategory);
+                    var line = NormalizeStr(item.ProductionLine);
+                    if (valve.Length == 0 || line.Length == 0) continue;
+
+                    affected += await _db.Database.ExecuteSqlRawAsync(
+                        "UPDATE [WZ_ProductionOutput] SET [CurrentThreshold] = {0} WHERE [ValveCategory] = {1} AND [ProductionLine] = {2};",
+                        item.Threshold, valve, line);
+                }
+
+                await tx.CommitAsync(ct);
+                return affected;
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
     }
 }

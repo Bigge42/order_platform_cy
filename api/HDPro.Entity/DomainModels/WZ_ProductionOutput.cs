@@ -40,4 +40,10 @@ public class WZ_ProductionOutput : ServiceEntity
     [Required]
     [Editable(true)]
     public decimal Quantity { get; set; }
+
+    [Display(Name = "当前阈值")]
+    [DisplayFormat(DataFormatString = "18,6")]
+    [Column(TypeName = "decimal")]
+    [Editable(true)]
+    public decimal? CurrentThreshold { get; set; }
 }
