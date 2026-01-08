@@ -468,10 +468,34 @@ function openThresholdModal(){
   thrDraft.value = draft
   thrDialog.value = true
 }
-function saveThresholds(){
-  state.thresholds = JSON.parse(JSON.stringify(thrDraft.value || {}))
+async function saveThresholds(){
+  const draft = JSON.parse(JSON.stringify(thrDraft.value || {}))
+  const payload = []
+  Object.entries(draft).forEach(([valve, lines]) => {
+    Object.entries(lines || {}).forEach(([line, value]) => {
+      const num = Number(value ?? 0)
+      payload.push({ valveCategory: valve, productionLine: line, threshold: num })
+    })
+  })
+
+  try{
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/thresholds', payload)
+    const status = res?.status ?? res?.Status ?? res?.success ?? res?.Success
+    if (status === false) {
+      ElMessage.error(res?.message || res?.Message || '阈值保存失败')
+      return
+    }
+  }catch(e){
+    console.error(e)
+    ElMessage.error('阈值保存失败')
+    return
+  }
+
+  state.thresholds = draft
+  applyCurrentThresholdToRows()
   thrDialog.value = false
   renderAll()
+  ElMessage.success('阈值保存成功')
 }
 
 /* 加载数据（动态阀体/产线，开始/结束日期即可） */
@@ -506,12 +530,18 @@ async function loadData(){
 
     // 动态收集 阀体→产线
     const catMap = new Map() // Map<string, Set<string>>
+    const thresholdMap = {}
     for (const r of rows){
       const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
       const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
+      const thr = Number(r.currentThreshold ?? r.CurrentThreshold)
       if (!v || !l) continue
       if (!catMap.has(v)) catMap.set(v, new Set())
       catMap.get(v).add(l)
+      if (!Number.isNaN(thr)) {
+        if (!thresholdMap[v]) thresholdMap[v] = {}
+        if (typeof thresholdMap[v][l] !== 'number') thresholdMap[v][l] = thr
+      }
     }
     // 排序
     const categories = Array.from(catMap.keys())
@@ -533,7 +563,11 @@ async function loadData(){
       if(!state.thresholds[cat.name]) state.thresholds[cat.name] = {}
       for (const l of cat.lines){
         state.data[cat.name][l] = Array(daysCount).fill(0)
-        if (typeof state.thresholds[cat.name][l] !== 'number') state.thresholds[cat.name][l] = 20
+        if (typeof thresholdMap?.[cat.name]?.[l] === 'number') {
+          state.thresholds[cat.name][l] = thresholdMap[cat.name][l]
+        } else if (typeof state.thresholds[cat.name][l] !== 'number') {
+          state.thresholds[cat.name][l] = 20
+        }
       }
     }
 
@@ -619,6 +653,18 @@ function exportData(){
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
   ElMessage.success('导出完成')
+}
+
+function applyCurrentThresholdToRows(){
+  if (!rawRows.value?.length) return
+  rawRows.value.forEach(row => {
+    const valve = String(row.valveCategory ?? row.ValveCategory ?? '').trim()
+    const line = String(row.productionLine ?? row.ProductionLine ?? '').trim()
+    const thr = state.thresholds?.[valve]?.[line]
+    const value = typeof thr === 'number' ? thr : 20
+    row.CurrentThreshold = value
+    row.currentThreshold = value
+  })
 }
 
 /* 首次渲染空图 */
