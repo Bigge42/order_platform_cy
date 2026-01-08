@@ -128,7 +128,7 @@ const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
-const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 10 }
+const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 10, rows: 7 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -187,7 +187,7 @@ const state = reactive({
   categories: [],      // [{ name, lines: [] }]
   data: {},            // { [valve]: { [line]: number[] } }
   thresholds: {},      // { [valve]: { [line]: number } }
-  githubView: {},      // { [valve]: boolean }
+  githubLine: {},      // { [valve]: string | null }
   big: false,
   compact: false,
 })
@@ -266,12 +266,12 @@ function setThr(valve, line, val){
   if (!thrDraft.value[valve]) thrDraft.value[valve] = {}
   thrDraft.value[valve][line] = Number(val ?? 0)
 }
-function isGithub(valve){
-  return Boolean(state.githubView?.[valve])
+function getGithubLine(valve){
+  return state.githubLine?.[valve] || null
 }
-function toggleGithub(valve){
-  if (!state.githubView) state.githubView = {}
-  state.githubView[valve] = !state.githubView[valve]
+function toggleGithubLine(valve, line){
+  if (!state.githubLine) state.githubLine = {}
+  state.githubLine[valve] = state.githubLine[valve] === line ? null : line
   renderAll()
 }
 
@@ -352,42 +352,51 @@ function renderAll(){
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
-    const useGithub = isGithub(v)
+    const githubLine = getGithubLine(v)
+    const useGithub = Boolean(githubLine)
     const cellSize = useGithub ? GITHUB.size : baseCellSize
     const gap = useGithub ? GITHUB.gap : baseGap
     const pad = useGithub ? GITHUB.pad : basePad
     const labelGap = useGithub ? GITHUB.labelGap : baseLabelGap
     const padX = pad + labelGap
-    const width = padX + pad + cols*(cellSize+gap) - gap
-    const height= pad*2 + rows*(cellSize+gap) - gap
+    const weekCols = useGithub ? Math.ceil(daysCount / GITHUB.rows) : cols
+    const githubRows = GITHUB.rows
+    const width = padX + pad + weekCols*(cellSize+gap) - gap
+    const height= pad*2 + (useGithub ? githubRows : rows) * (cellSize+gap) - gap
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
 
     // 月份文本
     monthsStartIndex.forEach(k=>{
       const d=days[k]
-      const x=padX + k*(cellSize+gap)
+      const xIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
+      const x=padX + xIndex*(cellSize+gap)
       const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',x); t.setAttribute('y',pad-10)
       t.setAttribute('font-size','10'); t.setAttribute('fill','#475569'); t.textContent=`${d.getMonth()+1}月`
       svg.appendChild(t)
     })
     // 产线文本
     cat.lines.forEach((l,r)=>{
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + r*(cellSize+gap) + Math.min(9, cellSize-3))
+      if (useGithub && l !== githubLine) return
+      const rowIndex = useGithub ? 0 : r
+      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
       t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
       t.style.cursor = 'pointer'
-      t.addEventListener('click', ()=> toggleGithub(v))
+      t.addEventListener('click', ()=> toggleGithubLine(v, l))
       svg.appendChild(t)
     })
 
     // 单元格
     cat.lines.forEach((l,r)=>{
+      if (useGithub && l !== githubLine) return
       const arr = state.data?.[v]?.[l] || []
       let lineMax=0, lineMin=Infinity
       for(let i=0;i<cols;i++){ const val=arr[i]||0; if(val>lineMax) lineMax=val; if(val<lineMin) lineMin=val }
       if(lineMin===Infinity) lineMin=0
 
       for(let k=0;k<cols;k++){
-        const x=padX + k*(cellSize+gap), y=pad + r*(cellSize+gap)
+        const weekIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
+        const dayIndex = useGithub ? k % GITHUB.rows : r
+        const x=padX + weekIndex*(cellSize+gap), y=pad + dayIndex*(cellSize+gap)
         const val = arr[k] ?? 0
         const thr = ensureThr(v, l)
         const aboveMax = Math.max(0, lineMax-thr), belowMax = Math.max(thr - lineMin, 0)
