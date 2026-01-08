@@ -66,6 +66,14 @@ namespace HDPro.CY.Order.Controllers.WZ
             public DateTime End { get; set; }
         }
 
+        public sealed class PreProductionMergeDto
+        {
+            public DateTime Start { get; set; }
+            public DateTime End { get; set; }
+            public string ValveCategory { get; set; }
+            public string ProductionLine { get; set; }
+        }
+
         /// <summary>
         /// 手动刷新：清空并重建缓存（仅管理员调用）
         /// POST /api/WZ/ProductionOutput/refresh
@@ -76,6 +84,25 @@ namespace HDPro.CY.Order.Controllers.WZ
         {
             var count = await _service.RefreshAsync(dto.Start, dto.End, ct);
             return Ok(new { inserted = count, range = $"{dto.Start:yyyy-MM-dd}~{dto.End:yyyy-MM-dd}" });
+        }
+
+        /// <summary>
+        /// 预排产展示：汇总预排产输出并合并实际产量
+        /// POST /api/WZ/ProductionOutput/preproduction/merge
+        /// body: { "start":"2025-08-11", "end":"2025-08-12", "valveCategory":"", "productionLine":"" }
+        /// </summary>
+        [HttpPost("preproduction/merge")]
+        public async Task<ActionResult<List<WZ_ProductionOutput>>> MergePreProduction(
+            [FromBody] PreProductionMergeDto dto,
+            CancellationToken ct = default)
+        {
+            var list = await _service.GetWithPreProductionAsync(
+                dto.ValveCategory,
+                dto.ProductionLine,
+                dto.Start,
+                dto.End,
+                ct);
+            return Ok(list);
         }
     }
 }

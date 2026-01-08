@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 using HDPro.Core.EFDbContext;
 using HDPro.Core.Extensions.AutofacManager; // IDependency
 using HDPro.CY.Order.IServices.WZ;
+using HDPro.Entity.DomainModels;
 using HDPro.Entity.DomainModels.OrderCollaboration;
 
 namespace HDPro.CY.Order.Services.WZ
@@ -29,6 +30,7 @@ namespace HDPro.CY.Order.Services.WZ
     public partial class WZProductionOutputService : IWZProductionOutputService, IDependency
     {
         private static readonly SemaphoreSlim _refreshGate = new(1, 1); // 防并发刷新
+        private static readonly SemaphoreSlim _preProductionGate = new(1, 1); // 防并发汇总预排产
         private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
         private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
@@ -293,6 +295,179 @@ namespace HDPro.CY.Order.Services.WZ
                 await tx.RollbackAsync(ct);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 汇总预排产输出表：按 ProductionDate × 阀体 × 产线聚合，写入 WZ_PreProductionOutput_1
+        /// </summary>
+        private async Task<int> RefreshPreProductionOutputAsync(CancellationToken ct = default)
+        {
+            await _preProductionGate.WaitAsync(ct);
+            try
+            {
+                var rows = await _db.Set<WZ_PreProductionOutput>()
+                    .AsNoTracking()
+                    .Select(p => new
+                    {
+                        p.ProductionDate,
+                        p.ValveCategory,
+                        p.ProductionLine,
+                        p.Quantity
+                    })
+                    .ToListAsync(ct);
+
+                var buckets = rows
+                    .Where(r => r.ProductionDate.HasValue)
+                    .Select(r => new
+                    {
+                        Date = r.ProductionDate!.Value.Date,
+                        Cat = NormalizeStr(r.ValveCategory),
+                        Line = NormalizeStr(r.ProductionLine),
+                        Qty = r.Quantity
+                    })
+                    .Where(x => x.Cat.Length > 0 && x.Line.Length > 0)
+                    .GroupBy(x => new { x.Date, x.Cat, x.Line })
+                    .Select(g => new
+                    {
+                        g.Key.Date,
+                        g.Key.Cat,
+                        g.Key.Line,
+                        Sum = g.Sum(z => z.Qty)
+                    })
+                    .ToList();
+
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
+                try
+                {
+                    try
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_PreProductionOutput_1];", ct);
+                    }
+                    catch
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_PreProductionOutput_1];", ct);
+                    }
+
+                    if (buckets.Count > 0)
+                    {
+                        var batch = new List<WZ_PreProductionOutput_1>(InsertBatchSize);
+                        foreach (var item in buckets)
+                        {
+                            batch.Add(new WZ_PreProductionOutput_1
+                            {
+                                ProductionDate = item.Date,
+                                ValveCategory = item.Cat,
+                                ProductionLine = item.Line,
+                                Quantity = item.Sum
+                            });
+
+                            if (batch.Count >= InsertBatchSize)
+                            {
+                                await _db.Set<WZ_PreProductionOutput_1>().AddRangeAsync(batch, ct);
+                                await _db.SaveChangesAsync(ct);
+                                batch.Clear();
+                            }
+                        }
+
+                        if (batch.Count > 0)
+                        {
+                            await _db.Set<WZ_PreProductionOutput_1>().AddRangeAsync(batch, ct);
+                            await _db.SaveChangesAsync(ct);
+                        }
+                    }
+
+                    await tx.CommitAsync(ct);
+                    return buckets.Count;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+            }
+            finally
+            {
+                _preProductionGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 查询：合并实际产量与预排产汇总数据
+        /// </summary>
+        public async Task<List<WZ_ProductionOutput>> GetWithPreProductionAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default)
+        {
+            if (endDate < startDate)
+                throw new ArgumentException("endDate 不能早于 startDate");
+
+            await RefreshPreProductionOutputAsync(ct);
+
+            var actualQuery = _db.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .Where(x => x.ProductionDate >= startDate && x.ProductionDate <= endDate);
+
+            var preQuery = _db.Set<WZ_PreProductionOutput_1>()
+                .AsNoTracking()
+                .Where(x => x.ProductionDate >= startDate && x.ProductionDate <= endDate);
+
+            if (!string.IsNullOrWhiteSpace(valveCategory))
+            {
+                actualQuery = actualQuery.Where(x => x.ValveCategory == valveCategory);
+                preQuery = preQuery.Where(x => x.ValveCategory == valveCategory);
+            }
+
+            if (!string.IsNullOrWhiteSpace(productionLine))
+            {
+                actualQuery = actualQuery.Where(x => x.ProductionLine == productionLine);
+                preQuery = preQuery.Where(x => x.ProductionLine == productionLine);
+            }
+
+            var actualRows = await actualQuery.ToListAsync(ct);
+            var preRows = await preQuery.ToListAsync(ct);
+
+            var merged = new Dictionary<(DateTime Date, string Cat, string Line), WZ_ProductionOutput>();
+
+            foreach (var row in actualRows)
+            {
+                var key = (row.ProductionDate.Date, NormalizeStr(row.ValveCategory), NormalizeStr(row.ProductionLine));
+                merged[key] = new WZ_ProductionOutput
+                {
+                    ProductionDate = row.ProductionDate.Date,
+                    ValveCategory = key.Cat,
+                    ProductionLine = key.Line,
+                    Quantity = row.Quantity,
+                    CurrentThreshold = row.CurrentThreshold
+                };
+            }
+
+            foreach (var row in preRows)
+            {
+                var key = (row.ProductionDate.Date, NormalizeStr(row.ValveCategory), NormalizeStr(row.ProductionLine));
+                if (merged.TryGetValue(key, out var existing))
+                {
+                    existing.Quantity += row.Quantity;
+                }
+                else
+                {
+                    merged[key] = new WZ_ProductionOutput
+                    {
+                        ProductionDate = row.ProductionDate.Date,
+                        ValveCategory = key.Cat,
+                        ProductionLine = key.Line,
+                        Quantity = row.Quantity
+                    };
+                }
+            }
+
+            return merged.Values
+                .OrderBy(x => x.ProductionDate)
+                .ThenBy(x => x.ValveCategory)
+                .ThenBy(x => x.ProductionLine)
+                .ToList();
         }
     }
 }
