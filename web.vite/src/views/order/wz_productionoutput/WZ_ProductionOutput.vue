@@ -539,7 +539,14 @@ async function refreshCurrentMonth(){
   if (refreshLoading.value) return
   refreshLoading.value = true
   try{
-    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh')
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const payload = {
+      start: fmtYMD(monthStart),
+      end: fmtYMD(nextMonthStart)
+    }
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
     const status = res?.status ?? res?.Status ?? res?.success ?? res?.Success
     if (status === false) {
       ElMessage.error(res?.message || res?.Message || '同步当月数据失败')
