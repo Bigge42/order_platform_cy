@@ -711,6 +711,13 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             CancellationToken cancellationToken = default)
         {
             request ??= new CapacityScheduleRequestDto();
+            if (!request.RecalcAll
+                && request.FromDate == null
+                && request.ToDate == null
+                && (request.ProductionLines == null || request.ProductionLines.Count == 0))
+            {
+                request.RecalcAll = true;
+            }
             var batchId = Guid.NewGuid();
             var stopwatch = Stopwatch.StartNew();
             var defaultThreshold = GetDefaultThreshold();
@@ -719,7 +726,9 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             var context = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-            var orderQuery = context.Set<WZ_OrderCycleBase>().AsNoTracking();
+            var orderQuery = context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(p => p.ScheduleDate.HasValue);
             if (!request.RecalcAll)
             {
                 orderQuery = orderQuery.Where(p => p.CapacityScheduleDate == null);
