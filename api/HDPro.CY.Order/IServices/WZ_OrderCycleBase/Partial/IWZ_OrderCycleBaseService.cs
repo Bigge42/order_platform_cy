@@ -23,6 +23,8 @@ namespace HDPro.CY.Order.IServices
 
         Task<int> SyncPreProductionOutputAsync(CancellationToken cancellationToken = default);
 
+        Task<CapacityScheduleSummary> CalculateCapacityScheduleDateAsync(CancellationToken cancellationToken = default);
+
         string GetAssignedProductionLineSql();
     }
 
@@ -90,5 +92,43 @@ namespace HDPro.CY.Order.IServices
         /// 对照校验用 SQL
         /// </summary>
         public string SqlPreview { get; set; }
+    }
+
+    public sealed class CapacityScheduleSummary
+    {
+        /// <summary>
+        /// 本次参与计算的订单总数
+        /// </summary>
+        public int Total { get; set; }
+
+        /// <summary>
+        /// 成功回填产能排产日期的订单数
+        /// </summary>
+        public int Updated { get; set; }
+
+        /// <summary>
+        /// 跳过的订单数（缺少必要字段等）
+        /// </summary>
+        public int Skipped { get; set; }
+
+        /// <summary>
+        /// 计算失败的订单数
+        /// </summary>
+        public int Failed { get; set; }
+
+        /// <summary>
+        /// 未找到对应产线产量记录的订单数
+        /// </summary>
+        public int MissingProductionOutput { get; set; }
+
+        /// <summary>
+        /// 产量记录缺少阈值的订单数
+        /// </summary>
+        public int MissingThreshold { get; set; }
+
+        /// <summary>
+        /// 拆单排产的订单数
+        /// </summary>
+        public int SplitCount { get; set; }
     }
  }
