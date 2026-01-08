@@ -262,6 +262,205 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
+        /// 基于产线产量与阈值计算产能排产日期
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>计算结果摘要</returns>
+        public async Task<CapacityScheduleSummary> CalculateCapacityScheduleDateAsync(CancellationToken cancellationToken = default)
+        {
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var orders = await context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(p => p.ScheduleDate.HasValue
+                    && p.OrderQty.HasValue
+                    && p.AssignedProductionLine != null
+                    && p.AssignedProductionLine != string.Empty)
+                .OrderBy(p => p.ScheduleDate)
+                .ThenBy(p => p.Id)
+                .Select(p => new OrderCapacityCandidate
+                {
+                    Id = p.Id,
+                    ScheduleDate = p.ScheduleDate,
+                    OrderQty = p.OrderQty,
+                    AssignedProductionLine = p.AssignedProductionLine
+                })
+                .ToListAsync(cancellationToken);
+
+            var summary = new CapacityScheduleSummary
+            {
+                Total = orders.Count
+            };
+
+            if (orders.Count == 0)
+            {
+                return summary;
+            }
+
+            var outputs = await context.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            var capacityMap = new Dictionary<(string Line, DateTime Date), CapacityBucket>();
+            var lineDates = new Dictionary<string, HashSet<DateTime>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var output in outputs)
+            {
+                if (output == null)
+                {
+                    continue;
+                }
+
+                var line = NormalizeLine(output.ProductionLine);
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var date = output.ProductionDate.Date;
+                var key = (line, date);
+
+                if (!capacityMap.TryGetValue(key, out var bucket))
+                {
+                    bucket = new CapacityBucket
+                    {
+                        Quantity = output.Quantity,
+                        Threshold = output.CurrentThreshold
+                    };
+                    capacityMap[key] = bucket;
+                }
+                else
+                {
+                    bucket.Quantity += output.Quantity;
+                    bucket.Threshold = MergeThreshold(bucket.Threshold, output.CurrentThreshold);
+                }
+
+                if (!lineDates.TryGetValue(line, out var dates))
+                {
+                    dates = new HashSet<DateTime>();
+                    lineDates[line] = dates;
+                }
+
+                dates.Add(date);
+            }
+
+            var lineDateList = new Dictionary<string, List<DateTime>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in lineDates)
+            {
+                var dates = item.Value.ToList();
+                dates.Sort();
+                lineDateList[item.Key] = dates;
+            }
+
+            var updates = new List<WZ_OrderCycleBase>();
+
+            foreach (var order in orders)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!order.ScheduleDate.HasValue || order.OrderQty.GetValueOrDefault() <= 0)
+                {
+                    summary.Skipped++;
+                    continue;
+                }
+
+                var line = NormalizeLine(order.AssignedProductionLine);
+                if (string.IsNullOrWhiteSpace(line) || !lineDateList.TryGetValue(line, out var dates))
+                {
+                    summary.MissingProductionOutput++;
+                    summary.Failed++;
+                    continue;
+                }
+
+                var targetDate = order.ScheduleDate.Value.Date;
+                var dateIndex = FindFirstDateIndex(dates, targetDate);
+                if (dateIndex < 0)
+                {
+                    summary.MissingProductionOutput++;
+                    summary.Failed++;
+                    continue;
+                }
+
+                var remaining = order.OrderQty.GetValueOrDefault();
+                DateTime? capacityDate = null;
+                var isSplit = false;
+
+                while (remaining > 0 && dateIndex < dates.Count)
+                {
+                    var currentDate = dates[dateIndex];
+                    if (!capacityMap.TryGetValue((line, currentDate), out var bucket))
+                    {
+                        summary.MissingProductionOutput++;
+                        break;
+                    }
+
+                    if (!bucket.Threshold.HasValue)
+                    {
+                        summary.MissingThreshold++;
+                        break;
+                    }
+
+                    var available = bucket.Threshold.Value - bucket.Quantity;
+                    if (available <= 0)
+                    {
+                        dateIndex++;
+                        continue;
+                    }
+
+                    if (remaining <= available)
+                    {
+                        bucket.Quantity += remaining;
+                        capacityDate = currentDate;
+                        remaining = 0;
+                        break;
+                    }
+
+                    bucket.Quantity = bucket.Threshold.Value;
+                    remaining -= available;
+                    isSplit = true;
+                    dateIndex++;
+                }
+
+                if (!capacityDate.HasValue || remaining > 0)
+                {
+                    summary.Failed++;
+                    continue;
+                }
+
+                updates.Add(new WZ_OrderCycleBase
+                {
+                    Id = order.Id,
+                    CapacityScheduleDate = capacityDate
+                });
+
+                summary.Updated++;
+                if (isSplit)
+                {
+                    summary.SplitCount++;
+                }
+            }
+
+            if (updates.Count > 0)
+            {
+                foreach (var entity in updates)
+                {
+                    context.Attach(entity);
+                    context.Entry(entity).Property(p => p.CapacityScheduleDate).IsModified = true;
+                }
+
+                await context.SaveChangesAsync(cancellationToken);
+
+                foreach (var entity in updates)
+                {
+                    context.Entry(entity).State = EntityState.Detached;
+                }
+            }
+
+            return summary;
+        }
+
+        /// <summary>
         /// 调用 Python 阀门规则服务批量计算周期及排产信息
         /// </summary>
         /// <param name="cancellationToken">取消令牌</param>
@@ -712,6 +911,61 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         private static DateTime? TryParseDate(string date)
         {
             return DateTime.TryParse(date, out var value) ? value : null;
+        }
+
+        private static string NormalizeLine(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
+        private static decimal? MergeThreshold(decimal? current, decimal? incoming)
+        {
+            if (!incoming.HasValue)
+            {
+                return current;
+            }
+
+            if (!current.HasValue)
+            {
+                return incoming;
+            }
+
+            return Math.Max(current.Value, incoming.Value);
+        }
+
+        private static int FindFirstDateIndex(List<DateTime> dates, DateTime targetDate)
+        {
+            if (dates == null || dates.Count == 0)
+            {
+                return -1;
+            }
+
+            var index = dates.BinarySearch(targetDate);
+            if (index >= 0)
+            {
+                return index;
+            }
+
+            index = ~index;
+            return index < dates.Count ? index : -1;
+        }
+
+        private sealed class OrderCapacityCandidate
+        {
+            public int Id { get; set; }
+
+            public DateTime? ScheduleDate { get; set; }
+
+            public decimal? OrderQty { get; set; }
+
+            public string AssignedProductionLine { get; set; }
+        }
+
+        private sealed class CapacityBucket
+        {
+            public decimal Quantity { get; set; }
+
+            public decimal? Threshold { get; set; }
         }
 
         private sealed class ValveRuleRequest
