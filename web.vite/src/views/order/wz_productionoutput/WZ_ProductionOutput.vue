@@ -57,6 +57,8 @@
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
+        <el-button size="small" :type="preProductionMode ? 'primary' : 'default'" @click="loadPreProduction">展示预排产</el-button>
+        <el-button size="small" :type="preProductionMode ? 'default' : 'primary'" @click="loadData">仅看实际</el-button>
         <el-button size="small" :loading="refreshLoading" @click="refreshCurrentMonth">同步当月数据</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
       </div>
@@ -197,6 +199,7 @@ const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const refreshLoading = ref(false)
+const preProductionMode = ref(false)
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -519,83 +522,103 @@ async function loadData(){
         Array.isArray(res?.data) ? res.data :
           Array.isArray(res?.Data) ? res.Data :
             Array.isArray(res?.result) ? res.result : []
-
-    rawRows.value = rows // 记录原始数据供导出
-    console.debug('[WZ_ProductionOutput] rows sample =>', rows?.slice?.(0,5))
-
-    // 日期轴
-    const days = daysBetween(state.rangeStart, state.rangeEnd)
-    const idxMap = buildIdxMap(days)
-    const daysCount = days.length
-
-    // 动态收集 阀体→产线
-    const catMap = new Map() // Map<string, Set<string>>
-    const thresholdMap = {}
-    for (const r of rows){
-      const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
-      const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
-      const thr = Number(r.currentThreshold ?? r.CurrentThreshold)
-      if (!v || !l) continue
-      if (!catMap.has(v)) catMap.set(v, new Set())
-      catMap.get(v).add(l)
-      if (!Number.isNaN(thr)) {
-        if (!thresholdMap[v]) thresholdMap[v] = {}
-        if (typeof thresholdMap[v][l] !== 'number') thresholdMap[v][l] = thr
-      }
-    }
-    // 排序
-    const categories = Array.from(catMap.keys())
-      .sort((a,b)=>a.localeCompare(b, 'zh-Hans-CN'))
-      .map(v=>{
-        const lines = Array.from(catMap.get(v)).sort((a,b)=>{
-          const na=a.match(/\d+/)?.[0], nb=b.match(/\d+/)?.[0]
-          if (na && nb && na!==nb) return Number(na)-Number(nb)
-          return a.localeCompare(b, 'zh-Hans-CN')
-        })
-        return { name:v, lines }
-      })
-    state.categories = categories
-
-    // 初始化矩阵 & 阈值
-    state.data = {}
-    for (const cat of state.categories){
-      if(!state.data[cat.name]) state.data[cat.name] = {}
-      if(!state.thresholds[cat.name]) state.thresholds[cat.name] = {}
-      for (const l of cat.lines){
-        state.data[cat.name][l] = Array(daysCount).fill(0)
-        if (typeof thresholdMap?.[cat.name]?.[l] === 'number') {
-          state.thresholds[cat.name][l] = thresholdMap[cat.name][l]
-        } else if (typeof state.thresholds[cat.name][l] !== 'number') {
-          state.thresholds[cat.name][l] = 20
-        }
-      }
-    }
-
-    // 填充
-    let filled = 0
-    for (const r of rows){
-      const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
-      const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
-      const d = getProductionDateStr(r) // 'YYYY-MM-DD'
-      const q = Number(r.quantity ?? r.Quantity ?? 0)
-      const i = idxMap.get(d)
-      if (i==null || !state.data?.[v]?.[l]) continue
-      state.data[v][l][i] += q
-      filled++
-    }
-    console.debug(`[WZ_ProductionOutput] categories=${state.categories.length}, lines=${state.categories.reduce((a,c)=>a+c.lines.length,0)}, filled=${filled}`)
-
-    renderAll()
-    if (rows.length === 0) {
-      ElMessage.warning('接口返回为空，请检查筛选条件或后端聚合。')
-    } else if (filled === 0) {
-      ElMessage.warning('未匹配到当前日期范围内的数据（确认 productionDate 是否在所选范围内）。')
-    } else {
-      ElMessage.success('数据加载成功')
-    }
+    preProductionMode.value = false
+    applyRows(rows, '数据加载成功')
   }catch(e){
     console.error(e)
     ElMessage.error('加载失败，请查看控制台 Network/Console 日志')
+  }
+}
+
+async function loadPreProduction(){
+  try{
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/merge')
+    const rows =
+      Array.isArray(res) ? res :
+        Array.isArray(res?.data) ? res.data :
+          Array.isArray(res?.Data) ? res.Data :
+            Array.isArray(res?.result) ? res.result : []
+    preProductionMode.value = true
+    applyRows(rows, '预排产合并数据加载成功')
+  }catch(e){
+    console.error(e)
+    ElMessage.error('预排产合并加载失败')
+  }
+}
+
+function applyRows(rows, successMessage){
+  rawRows.value = rows // 记录原始数据供导出
+  console.debug('[WZ_ProductionOutput] rows sample =>', rows?.slice?.(0,5))
+
+  // 日期轴
+  const days = daysBetween(state.rangeStart, state.rangeEnd)
+  const idxMap = buildIdxMap(days)
+  const daysCount = days.length
+
+  // 动态收集 阀体→产线
+  const catMap = new Map() // Map<string, Set<string>>
+  const thresholdMap = {}
+  for (const r of rows){
+    const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
+    const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
+    const thr = Number(r.currentThreshold ?? r.CurrentThreshold)
+    if (!v || !l) continue
+    if (!catMap.has(v)) catMap.set(v, new Set())
+    catMap.get(v).add(l)
+    if (!Number.isNaN(thr)) {
+      if (!thresholdMap[v]) thresholdMap[v] = {}
+      if (typeof thresholdMap[v][l] !== 'number') thresholdMap[v][l] = thr
+    }
+  }
+  // 排序
+  const categories = Array.from(catMap.keys())
+    .sort((a,b)=>a.localeCompare(b, 'zh-Hans-CN'))
+    .map(v=>{
+      const lines = Array.from(catMap.get(v)).sort((a,b)=>{
+        const na=a.match(/\d+/)?.[0], nb=b.match(/\d+/)?.[0]
+        if (na && nb && na!==nb) return Number(na)-Number(nb)
+        return a.localeCompare(b, 'zh-Hans-CN')
+      })
+      return { name:v, lines }
+    })
+  state.categories = categories
+
+  // 初始化矩阵 & 阈值
+  state.data = {}
+  for (const cat of state.categories){
+    if(!state.data[cat.name]) state.data[cat.name] = {}
+    if(!state.thresholds[cat.name]) state.thresholds[cat.name] = {}
+    for (const l of cat.lines){
+      state.data[cat.name][l] = Array(daysCount).fill(0)
+      if (typeof thresholdMap?.[cat.name]?.[l] === 'number') {
+        state.thresholds[cat.name][l] = thresholdMap[cat.name][l]
+      } else if (typeof state.thresholds[cat.name][l] !== 'number') {
+        state.thresholds[cat.name][l] = 20
+      }
+    }
+  }
+
+  // 填充
+  let filled = 0
+  for (const r of rows){
+    const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
+    const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
+    const d = getProductionDateStr(r) // 'YYYY-MM-DD'
+    const q = Number(r.quantity ?? r.Quantity ?? 0)
+    const i = idxMap.get(d)
+    if (i==null || !state.data?.[v]?.[l]) continue
+    state.data[v][l][i] += q
+    filled++
+  }
+  console.debug(`[WZ_ProductionOutput] categories=${state.categories.length}, lines=${state.categories.reduce((a,c)=>a+c.lines.length,0)}, filled=${filled}`)
+
+  renderAll()
+  if (rows.length === 0) {
+    ElMessage.warning('接口返回为空，请检查筛选条件或后端聚合。')
+  } else if (filled === 0) {
+    ElMessage.warning('未匹配到当前日期范围内的数据（确认 productionDate 是否在所选范围内）。')
+  } else {
+    ElMessage.success(successMessage)
   }
 }
 

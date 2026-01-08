@@ -77,5 +77,17 @@ namespace HDPro.CY.Order.Controllers.WZ
             var count = await _service.RefreshAsync(dto.Start, dto.End, ct);
             return Ok(new { inserted = count, range = $"{dto.Start:yyyy-MM-dd}~{dto.End:yyyy-MM-dd}" });
         }
+
+        /// <summary>
+        /// 预排产展示：汇总预排产输出并合并实际产量
+        /// POST /api/WZ/ProductionOutput/preproduction/merge
+        /// body: 无需参数
+        /// </summary>
+        [HttpPost("preproduction/merge")]
+        public async Task<ActionResult<List<WZ_ProductionOutput>>> MergePreProduction(CancellationToken ct = default)
+        {
+            var list = await _service.GetWithPreProductionAsync(ct);
+            return Ok(list);
+        }
     }
 }

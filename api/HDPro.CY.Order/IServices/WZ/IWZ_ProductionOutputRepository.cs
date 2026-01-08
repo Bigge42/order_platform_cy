@@ -33,5 +33,10 @@ namespace HDPro.CY.Order.IServices.WZ
         Task<int> UpdateThresholdsAsync(
             IReadOnlyCollection<(string ValveCategory, string ProductionLine, decimal Threshold)> thresholds,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 查询：合并实际产量与预排产汇总数据
+        /// </summary>
+        Task<List<WZ_ProductionOutput>> GetWithPreProductionAsync(CancellationToken ct = default);
     }
 }

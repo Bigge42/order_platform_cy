@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 using HDPro.Core.EFDbContext;
 using HDPro.Core.Extensions.AutofacManager; // IDependency
 using HDPro.CY.Order.IServices.WZ;
+using HDPro.Entity.DomainModels;
 using HDPro.Entity.DomainModels.OrderCollaboration;
 
 namespace HDPro.CY.Order.Services.WZ
@@ -29,6 +30,7 @@ namespace HDPro.CY.Order.Services.WZ
     public partial class WZProductionOutputService : IWZProductionOutputService, IDependency
     {
         private static readonly SemaphoreSlim _refreshGate = new(1, 1); // 防并发刷新
+        private static readonly SemaphoreSlim _preProductionGate = new(1, 1); // 防并发汇总预排产
         private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
         private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
@@ -293,6 +295,173 @@ namespace HDPro.CY.Order.Services.WZ
                 await tx.RollbackAsync(ct);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 汇总预排产输出表：按 ProductionDate × 产线聚合，写入 WZ_PreProductionOutput_1
+        /// </summary>
+        private async Task<int> RefreshPreProductionOutputAsync(CancellationToken ct = default)
+        {
+            await _preProductionGate.WaitAsync(ct);
+            try
+            {
+                var rows = await _db.Set<WZ_PreProductionOutput>()
+                    .AsNoTracking()
+                    .Select(p => new
+                    {
+                        p.ProductionDate,
+                        p.ValveCategory,
+                        p.ProductionLine,
+                        p.Quantity
+                    })
+                    .ToListAsync(ct);
+
+                var buckets = rows
+                    .Where(r => r.ProductionDate.HasValue)
+                    .Select(r => new
+                    {
+                        Date = r.ProductionDate!.Value.Date,
+                        Line = NormalizeStr(r.ProductionLine),
+                        Qty = r.Quantity
+                    })
+                    .Where(x => x.Line.Length > 0)
+                    .GroupBy(x => new { x.Date, x.Line })
+                    .Select(g => new
+                    {
+                        g.Key.Date,
+                        g.Key.Line,
+                        Sum = g.Sum(z => z.Qty)
+                    })
+                    .ToList();
+
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
+                try
+                {
+                    try
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_PreProductionOutput_1];", ct);
+                    }
+                    catch
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_PreProductionOutput_1];", ct);
+                    }
+
+                    if (buckets.Count > 0)
+                    {
+                        var batch = new List<WZ_PreProductionOutput_1>(InsertBatchSize);
+                        foreach (var item in buckets)
+                        {
+                            batch.Add(new WZ_PreProductionOutput_1
+                            {
+                                ProductionDate = item.Date,
+                                ValveCategory = "合计",
+                                ProductionLine = item.Line,
+                                Quantity = item.Sum
+                            });
+
+                            if (batch.Count >= InsertBatchSize)
+                            {
+                                await _db.Set<WZ_PreProductionOutput_1>().AddRangeAsync(batch, ct);
+                                await _db.SaveChangesAsync(ct);
+                                batch.Clear();
+                            }
+                        }
+
+                        if (batch.Count > 0)
+                        {
+                            await _db.Set<WZ_PreProductionOutput_1>().AddRangeAsync(batch, ct);
+                            await _db.SaveChangesAsync(ct);
+                        }
+                    }
+
+                    await tx.CommitAsync(ct);
+                    return buckets.Count;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+            }
+            finally
+            {
+                _preProductionGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 查询：合并实际产量与预排产汇总数据
+        /// </summary>
+        public async Task<List<WZ_ProductionOutput>> GetWithPreProductionAsync(CancellationToken ct = default)
+        {
+            await RefreshPreProductionOutputAsync(ct);
+
+            var actualRows = await _db.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .Select(x => new
+                {
+                    Date = x.ProductionDate.Date,
+                    Line = NormalizeStr(x.ProductionLine),
+                    Qty = x.Quantity
+                })
+                .Where(x => x.Line.Length > 0)
+                .ToListAsync(ct);
+
+            var preRows = await _db.Set<WZ_PreProductionOutput_1>()
+                .AsNoTracking()
+                .Select(x => new
+                {
+                    Date = x.ProductionDate.Date,
+                    Line = NormalizeStr(x.ProductionLine),
+                    Qty = x.Quantity
+                })
+                .Where(x => x.Line.Length > 0)
+                .ToListAsync(ct);
+
+            var merged = new Dictionary<(DateTime Date, string Line), WZ_ProductionOutput>();
+
+            foreach (var row in actualRows)
+            {
+                var key = (row.Date, row.Line);
+                if (merged.TryGetValue(key, out var existing))
+                {
+                    existing.Quantity += row.Qty;
+                }
+                else
+                {
+                    merged[key] = new WZ_ProductionOutput
+                    {
+                        ProductionDate = row.Date,
+                        ValveCategory = "合计",
+                        ProductionLine = row.Line,
+                        Quantity = row.Qty
+                    };
+                }
+            }
+
+            foreach (var row in preRows)
+            {
+                var key = (row.Date, row.Line);
+                if (merged.TryGetValue(key, out var existing))
+                {
+                    existing.Quantity += row.Qty;
+                }
+                else
+                {
+                    merged[key] = new WZ_ProductionOutput
+                    {
+                        ProductionDate = row.Date,
+                        ValveCategory = "合计",
+                        ProductionLine = row.Line,
+                        Quantity = row.Qty
+                    };
+                }
+            }
+
+            return merged.Values
+                .OrderBy(x => x.ProductionDate)
+                .ThenBy(x => x.ProductionLine)
+                .ToList();
         }
     }
 }
