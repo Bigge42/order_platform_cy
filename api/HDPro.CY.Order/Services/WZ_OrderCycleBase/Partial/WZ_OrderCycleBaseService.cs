@@ -594,6 +594,12 @@ namespace HDPro.CY.Order.Services
                 return "蝶阀4";
             }
 
+            if (!string.IsNullOrWhiteSpace(normalizedValveCategory)
+                && normalizedValveCategory.StartsWith("直通", StringComparison.Ordinal))
+            {
+                return normalizedProductionLine;
+            }
+
             if (SoftSealProductionLines.Contains(normalizedProductionLine)
                 && string.Equals(normalizedValveCategory, "软密封球阀", StringComparison.Ordinal))
             {
@@ -615,6 +621,8 @@ SET AssignedProductionLine = CASE
             WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN350', N'DN400', N'DN450', N'DN500', N'DN600') THEN N'蝶阀3'
             ELSE N'蝶阀4'
         END
+    WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N''
+         AND ValveCategory LIKE N'直通%' THEN LTRIM(RTRIM(ProductionLine))
     WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N''
          AND ProductionLine IN (N'旋转1', N'旋转2', N'旋转3', N'旋转4', N'旋转5')
          AND ValveCategory = N'软密封球阀' THEN ProductionLine + N'A'
