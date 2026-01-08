@@ -234,8 +234,8 @@ namespace HDPro.CY.Order.Services
                     .AsNoTracking()
                     .Select(p => new WZ_PreProductionOutput
                     {
-                        ProductionDate = (p.ScheduleDate ?? p.CapacityScheduleDate ?? DateTime.Today).Date,
-                        CapacityScheduleDate = (p.CapacityScheduleDate ?? p.ScheduleDate ?? DateTime.Today).Date,
+                        ProductionDate = p.ScheduleDate,
+                        CapacityScheduleDate = p.CapacityScheduleDate,
                         ValveCategory = p.ValveCategory,
                         ProductionLine = p.AssignedProductionLine,
                         Quantity = p.OrderQty ?? 0M

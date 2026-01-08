@@ -18,15 +18,13 @@ namespace HDPro.Entity.DomainModels
 
         [Display(Name = "生产日期")]
         [Column(TypeName = "date")]
-        [Required]
         [Editable(true)]
-        public DateTime ProductionDate { get; set; }
+        public DateTime? ProductionDate { get; set; }
 
         [Display(Name = "产能排产日期")]
         [Column(TypeName = "date")]
-        [Required]
         [Editable(true)]
-        public DateTime CapacityScheduleDate { get; set; }
+        public DateTime? CapacityScheduleDate { get; set; }
 
         [Display(Name = "阀门类别")]
         [MaxLength(50)]
