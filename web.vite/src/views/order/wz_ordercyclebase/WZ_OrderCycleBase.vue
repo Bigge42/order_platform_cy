@@ -29,9 +29,16 @@
       <div class="wz-ordercyclebase-action">
         <el-button type="primary"
                    :loading="syncLoading"
-                   :disabled="ruleLoading"
+                   :disabled="ruleLoading || initLoading"
                    @click="handleSync">同步排产数据</el-button>
-        <el-button type="success" :loading="ruleLoading" @click="handleOptimize">智能体优化</el-button>
+        <el-button type="warning"
+                   :loading="initLoading"
+                   :disabled="syncLoading || ruleLoading"
+                   @click="handleInitialize">排产初始化</el-button>
+        <el-button type="success"
+                   :loading="ruleLoading"
+                   :disabled="initLoading"
+                   @click="handleOptimize">智能体优化</el-button>
       </div>
     </template>
   </view-grid>
@@ -76,6 +83,7 @@ const { proxy } = getCurrentInstance()
 const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = reactive(viewOptions())
 
 const syncLoading = ref(false);
+const initLoading = ref(false);
 const ruleLoading = ref(false);
 const progressVisible = ref(false);
 const progressSummary = reactive({
@@ -224,6 +232,46 @@ const handleOptimize = async () => {
     ElMessage.error('智能体优化失败');
   } finally {
     ruleLoading.value = false;
+  }
+};
+
+const handleInitialize = async () => {
+  if (initLoading.value || syncLoading.value || ruleLoading.value) {
+    return;
+  }
+
+  initLoading.value = true;
+  const steps = [
+    { url: '/api/WZ_OrderCycleBase/fill-valve-category-by-rule', label: '阀门品类规则匹配' },
+    { url: '/api/WZ_OrderCycleBase/batch-assign-production-line-by-rule', label: '产线规则分配' },
+    { url: '/api/WZ_OrderCycleBase/calculate-capacity-schedule-date', label: '产能排期计算' },
+    { url: '/api/WZ_OrderCycleBase/sync-pre-production-output', label: '预生产输出同步' }
+  ];
+  const failures = [];
+
+  try {
+    for (const step of steps) {
+      try {
+        const response = await proxy.http.post(step.url);
+        if (!response.status) {
+          failures.push(response.message || `${step.label}失败`);
+        }
+      } catch (error) {
+        failures.push(`${step.label}失败`);
+      }
+    }
+
+    if (gridRef && gridRef.search) {
+      gridRef.search();
+    }
+
+    if (failures.length === 0) {
+      ElMessage.success('排产初始化完成');
+    } else {
+      ElMessage.error(`排产初始化完成，但有 ${failures.length} 个步骤失败：${failures.join('；')}`);
+    }
+  } finally {
+    initLoading.value = false;
   }
 };
 //监听表单输入，做实时计算
