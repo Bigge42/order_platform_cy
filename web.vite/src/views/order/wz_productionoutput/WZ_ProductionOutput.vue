@@ -127,6 +127,8 @@ import { ElMessage } from 'element-plus'
 const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
+const LABEL_GAP = { normal: 10, compact: 6 }
+const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -185,6 +187,7 @@ const state = reactive({
   categories: [],      // [{ name, lines: [] }]
   data: {},            // { [valve]: { [line]: number[] } }
   thresholds: {},      // { [valve]: { [line]: number } }
+  githubLine: {},      // { [valve]: string | null }
   big: false,
   compact: false,
 })
@@ -263,6 +266,14 @@ function setThr(valve, line, val){
   if (!thrDraft.value[valve]) thrDraft.value[valve] = {}
   thrDraft.value[valve][line] = Number(val ?? 0)
 }
+function getGithubLine(valve){
+  return state.githubLine?.[valve] || null
+}
+function toggleGithubLine(valve, line){
+  if (!state.githubLine) state.githubLine = {}
+  state.githubLine[valve] = state.githubLine[valve] === line ? null : line
+  renderAll()
+}
 
 /* 渲染（SVG） */
 function renderAll(){
@@ -289,9 +300,10 @@ function renderAll(){
   stats.rangeText = `${fmtYMD(days[0])} ~ ${fmtYMD(days[daysCount-1])}（${daysCount} 天）`
 
   // 画布
-  const cellSize = state.big ? SIZE.big : SIZE.small
-  const gap = state.compact ? GAP.compact : GAP.normal
-  const pad = state.compact ? PAD.compact : PAD.normal
+  const baseCellSize = state.big ? SIZE.big : SIZE.small
+  const baseGap = state.compact ? GAP.compact : GAP.normal
+  const basePad = state.compact ? PAD.compact : PAD.normal
+  const baseLabelGap = state.compact ? LABEL_GAP.compact : LABEL_GAP.normal
   const svgNS='http://www.w3.org/2000/svg'
   const container = chartsEl.value
   container.style.gap = state.compact ? '12px' : '16px'
@@ -340,34 +352,51 @@ function renderAll(){
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
-    const width = pad*2 + cols*(cellSize+gap) - gap
-    const height= pad*2 + rows*(cellSize+gap) - gap
+    const githubLine = getGithubLine(v)
+    const useGithub = Boolean(githubLine)
+    const cellSize = useGithub ? (state.big ? SIZE.big : GITHUB.size) : baseCellSize
+    const gap = useGithub ? (state.big ? baseGap : GITHUB.gap) : baseGap
+    const pad = useGithub ? (state.big ? basePad : GITHUB.pad) : basePad
+    const labelGap = useGithub ? (state.big ? baseLabelGap : GITHUB.labelGap) : baseLabelGap
+    const padX = pad + labelGap
+    const weekCols = useGithub ? Math.ceil(daysCount / GITHUB.rows) : cols
+    const githubRows = GITHUB.rows
+    const width = padX + pad + weekCols*(cellSize+gap) - gap
+    const height= pad*2 + (useGithub ? githubRows : rows) * (cellSize+gap) - gap
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
 
     // 月份文本
     monthsStartIndex.forEach(k=>{
       const d=days[k]
-      const x=pad + k*(cellSize+gap)
+      const xIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
+      const x=padX + xIndex*(cellSize+gap)
       const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',x); t.setAttribute('y',pad-10)
       t.setAttribute('font-size','10'); t.setAttribute('fill','#475569'); t.textContent=`${d.getMonth()+1}月`
       svg.appendChild(t)
     })
     // 产线文本
     cat.lines.forEach((l,r)=>{
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + r*(cellSize+gap) + Math.min(9, cellSize-3))
+      if (useGithub && l !== githubLine) return
+      const rowIndex = useGithub ? 0 : r
+      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
       t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
+      t.style.cursor = 'pointer'
+      t.addEventListener('click', ()=> toggleGithubLine(v, l))
       svg.appendChild(t)
     })
 
     // 单元格
     cat.lines.forEach((l,r)=>{
+      if (useGithub && l !== githubLine) return
       const arr = state.data?.[v]?.[l] || []
       let lineMax=0, lineMin=Infinity
       for(let i=0;i<cols;i++){ const val=arr[i]||0; if(val>lineMax) lineMax=val; if(val<lineMin) lineMin=val }
       if(lineMin===Infinity) lineMin=0
 
       for(let k=0;k<cols;k++){
-        const x=pad + k*(cellSize+gap), y=pad + r*(cellSize+gap)
+        const weekIndex = useGithub ? Math.floor(k / GITHUB.rows) : k
+        const dayIndex = useGithub ? k % GITHUB.rows : r
+        const x=padX + weekIndex*(cellSize+gap), y=pad + dayIndex*(cellSize+gap)
         const val = arr[k] ?? 0
         const thr = ensureThr(v, l)
         const aboveMax = Math.max(0, lineMax-thr), belowMax = Math.max(thr - lineMin, 0)
