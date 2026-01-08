@@ -60,7 +60,6 @@
         <el-button size="small" :type="buttonType('preproduction')" @click="loadPreProduction">展示预排产</el-button>
         <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
         <el-button size="small" :type="buttonType('actual')" @click="loadData">仅看实际</el-button>
-        <el-button size="small" :loading="refreshLoading" @click="refreshCurrentMonth">同步当月数据</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
       </div>
     </header>
@@ -199,7 +198,6 @@ const thrDialog = ref(false)
 const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
-const refreshLoading = ref(false)
 const viewMode = ref('actual')
 
 /* 原始返回数据（用于导出） */
@@ -656,33 +654,6 @@ function applyRows(rows, successMessage){
     ElMessage.warning('未匹配到当前日期范围内的数据（确认 productionDate 是否在所选范围内）。')
   } else {
     ElMessage.success(successMessage)
-  }
-}
-
-async function refreshCurrentMonth(){
-  if (refreshLoading.value) return
-  refreshLoading.value = true
-  try{
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    const payload = {
-      start: fmtYMD(monthStart),
-      end: fmtYMD(nextMonthStart)
-    }
-    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
-    const status = res?.status ?? res?.Status ?? res?.success ?? res?.Success
-    if (status === false) {
-      ElMessage.error(res?.message || res?.Message || '同步当月数据失败')
-    } else {
-      ElMessage.success(res?.message || res?.Message || '同步当月数据成功')
-      await loadData()
-    }
-  }catch(e){
-    console.error(e)
-    ElMessage.error('同步当月数据失败')
-  }finally{
-    refreshLoading.value = false
   }
 }
 
