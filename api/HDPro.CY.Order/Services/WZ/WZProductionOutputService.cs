@@ -437,8 +437,8 @@ namespace HDPro.CY.Order.Services.WZ
                 merged[key] = new WZ_ProductionOutput
                 {
                     ProductionDate = row.ProductionDate.Date,
-                    ValveCategory = key.Cat,
-                    ProductionLine = key.Line,
+                    ValveCategory = key.Item2,
+                    ProductionLine = key.Item3,
                     Quantity = row.Quantity,
                     CurrentThreshold = row.CurrentThreshold
                 };
@@ -456,8 +456,8 @@ namespace HDPro.CY.Order.Services.WZ
                     merged[key] = new WZ_ProductionOutput
                     {
                         ProductionDate = row.ProductionDate.Date,
-                        ValveCategory = key.Cat,
-                        ProductionLine = key.Line,
+                        ValveCategory = key.Item2,
+                        ProductionLine = key.Item3,
                         Quantity = row.Quantity
                     };
                 }
