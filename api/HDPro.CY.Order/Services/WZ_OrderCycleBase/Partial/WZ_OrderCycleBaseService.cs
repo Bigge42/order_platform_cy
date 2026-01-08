@@ -449,6 +449,208 @@ namespace HDPro.CY.Order.Services
             return updatedTotal;
         }
 
+        public async Task<AssignedProductionLineBatchSummary> BatchAssignProductionLineByRuleAsync(int batchSize = 1000, CancellationToken cancellationToken = default)
+        {
+            if (batchSize <= 0)
+            {
+                batchSize = 1000;
+            }
+
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var summary = new AssignedProductionLineBatchSummary
+            {
+                SqlPreview = BuildAssignedProductionLineSql()
+            };
+
+            var lastId = 0;
+
+            while (true)
+            {
+                var batch = await context.Set<WZ_OrderCycleBase>()
+                    .AsNoTracking()
+                    .Where(p => p.Id > lastId
+                        && p.ProductionLine != null
+                        && p.ProductionLine != string.Empty)
+                    .OrderBy(p => p.Id)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.ProductionLine,
+                        p.ValveCategory,
+                        p.NominalDiameter,
+                        p.AssignedProductionLine
+                    })
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
+
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                summary.Total += batch.Count;
+
+                var entitiesToUpdate = new List<WZ_OrderCycleBase>();
+                var updateIds = new List<int>();
+
+                foreach (var item in batch)
+                {
+                    try
+                    {
+                        var newValue = CalcAssignedProductionLine(item.ProductionLine, item.ValveCategory, item.NominalDiameter);
+                        if (string.IsNullOrEmpty(newValue)
+                            || string.Equals(newValue, item.AssignedProductionLine, StringComparison.Ordinal))
+                        {
+                            summary.Skipped++;
+                            continue;
+                        }
+
+                        entitiesToUpdate.Add(new WZ_OrderCycleBase
+                        {
+                            Id = item.Id,
+                            AssignedProductionLine = newValue
+                        });
+                        updateIds.Add(item.Id);
+                    }
+                    catch
+                    {
+                        summary.Failed++;
+                        summary.FailedIds.Add(item.Id);
+                    }
+                }
+
+                if (entitiesToUpdate.Count > 0)
+                {
+                    using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+                    try
+                    {
+                        foreach (var entity in entitiesToUpdate)
+                        {
+                            context.Attach(entity);
+                            context.Entry(entity).Property(p => p.AssignedProductionLine).IsModified = true;
+                        }
+
+                        await context.SaveChangesAsync(cancellationToken);
+                        await transaction.CommitAsync(cancellationToken);
+                        summary.Updated += entitiesToUpdate.Count;
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        summary.Failed += entitiesToUpdate.Count;
+                        summary.FailedIds.AddRange(updateIds);
+                    }
+                    finally
+                    {
+                        foreach (var entity in entitiesToUpdate)
+                        {
+                            context.Entry(entity).State = EntityState.Detached;
+                        }
+                    }
+                }
+
+                lastId = batch[batch.Count - 1].Id;
+            }
+
+            return summary;
+        }
+
+        public string GetAssignedProductionLineSql()
+        {
+            return BuildAssignedProductionLineSql();
+        }
+
+        public static string CalcAssignedProductionLine(string productionLine, string valveCategory, string nominalDiameter)
+        {
+            var normalizedProductionLine = productionLine?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedProductionLine))
+            {
+                return null;
+            }
+
+            var normalizedValveCategory = valveCategory?.Trim();
+            var normalizedNominalDiameter = nominalDiameter?.Trim();
+
+            if (normalizedProductionLine.StartsWith("旋转", StringComparison.Ordinal)
+                && string.Equals(normalizedValveCategory, "蝶阀", StringComparison.Ordinal))
+            {
+                if (ButterflyGroup1.Contains(normalizedNominalDiameter))
+                {
+                    return "蝶阀1";
+                }
+
+                if (ButterflyGroup2.Contains(normalizedNominalDiameter))
+                {
+                    return "蝶阀2";
+                }
+
+                if (ButterflyGroup3.Contains(normalizedNominalDiameter))
+                {
+                    return "蝶阀3";
+                }
+
+                return "蝶阀4";
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedValveCategory)
+                && normalizedValveCategory.StartsWith("直通", StringComparison.Ordinal))
+            {
+                return normalizedProductionLine;
+            }
+
+            if (SoftSealProductionLines.Contains(normalizedProductionLine)
+                && string.Equals(normalizedValveCategory, "软密封球阀", StringComparison.Ordinal))
+            {
+                return normalizedProductionLine + "A";
+            }
+
+            return null;
+        }
+
+        private static string BuildAssignedProductionLineSql()
+        {
+            return @"UPDATE dbo.WZ_OrderCycleBase
+SET AssignedProductionLine = CASE
+    WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N''
+         AND ProductionLine LIKE N'旋转%' AND ValveCategory = N'蝶阀' THEN
+        CASE
+            WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN50', N'DN65', N'DN80', N'DN100', N'DN125', N'DN150') THEN N'蝶阀1'
+            WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN200', N'DN250', N'DN300', N'DN100') THEN N'蝶阀2'
+            WHEN LTRIM(RTRIM(NominalDiameter)) IN (N'DN350', N'DN400', N'DN450', N'DN500', N'DN600') THEN N'蝶阀3'
+            ELSE N'蝶阀4'
+        END
+    WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N''
+         AND ValveCategory LIKE N'直通%' THEN LTRIM(RTRIM(ProductionLine))
+    WHEN ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N''
+         AND ProductionLine IN (N'旋转1', N'旋转2', N'旋转3', N'旋转4', N'旋转5')
+         AND ValveCategory = N'软密封球阀' THEN ProductionLine + N'A'
+    ELSE AssignedProductionLine
+END
+WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
+        }
+
+        private static readonly HashSet<string> ButterflyGroup1 = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "DN50", "DN65", "DN80", "DN100", "DN125", "DN150"
+        };
+
+        private static readonly HashSet<string> ButterflyGroup2 = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "DN200", "DN250", "DN300", "DN100"
+        };
+
+        private static readonly HashSet<string> ButterflyGroup3 = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "DN350", "DN400", "DN450", "DN500", "DN600"
+        };
+
+        private static readonly HashSet<string> SoftSealProductionLines = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "旋转1", "旋转2", "旋转3", "旋转4", "旋转5"
+        };
+
         private static int? TryParseId(string id)
         {
             return int.TryParse(id, out var value) ? value : null;
