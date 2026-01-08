@@ -209,6 +209,59 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
+        /// 从订单周期基础表同步预排产输出数据
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>同步的总行数</returns>
+        public async Task<int> SyncPreProductionOutputAsync(CancellationToken cancellationToken = default)
+        {
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_PreProductionOutput];", cancellationToken);
+                }
+                catch
+                {
+                    await context.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_PreProductionOutput];", cancellationToken);
+                }
+
+                var outputs = await context.Set<WZ_OrderCycleBase>()
+                    .AsNoTracking()
+                    .Select(p => new WZ_PreProductionOutput
+                    {
+                        ProductionDate = (p.ScheduleDate ?? p.CapacityScheduleDate ?? DateTime.Today).Date,
+                        CapacityScheduleDate = (p.CapacityScheduleDate ?? p.ScheduleDate ?? DateTime.Today).Date,
+                        ValveCategory = p.ValveCategory,
+                        ProductionLine = p.AssignedProductionLine,
+                        Quantity = p.OrderQty ?? 0M
+                    })
+                    .ToListAsync(cancellationToken);
+
+                if (outputs.Count == 0)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return 0;
+                }
+
+                context.Set<WZ_PreProductionOutput>().AddRange(outputs);
+                await context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                return outputs.Count;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 调用 Python 阀门规则服务批量计算周期及排产信息
         /// </summary>
         /// <param name="cancellationToken">取消令牌</param>

@@ -25,5 +25,13 @@ namespace HDPro.Entity.DomainModels
         [Column(TypeName = "nvarchar(2000)")]
         [Editable(true)]
         public string AssignedProductionLine { get; set; }
+
+        /// <summary>
+        /// 产能排产日期
+        /// </summary>
+        [Display(Name = "产能排产日期")]
+        [Column(TypeName = "date")]
+        [Editable(true)]
+        public DateTime? CapacityScheduleDate { get; set; }
     }
 }
