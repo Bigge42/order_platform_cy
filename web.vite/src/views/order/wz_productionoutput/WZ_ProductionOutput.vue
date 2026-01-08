@@ -57,6 +57,7 @@
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
+        <el-button size="small" :loading="refreshLoading" @click="refreshCurrentMonth">同步当月数据</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
       </div>
     </header>
@@ -192,6 +193,7 @@ const thrDialog = ref(false)
 const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
+const refreshLoading = ref(false)
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -530,6 +532,33 @@ async function loadData(){
   }catch(e){
     console.error(e)
     ElMessage.error('加载失败，请查看控制台 Network/Console 日志')
+  }
+}
+
+async function refreshCurrentMonth(){
+  if (refreshLoading.value) return
+  refreshLoading.value = true
+  try{
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const payload = {
+      start: fmtYMD(monthStart),
+      end: fmtYMD(nextMonthStart)
+    }
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
+    const status = res?.status ?? res?.Status ?? res?.success ?? res?.Success
+    if (status === false) {
+      ElMessage.error(res?.message || res?.Message || '同步当月数据失败')
+    } else {
+      ElMessage.success(res?.message || res?.Message || '同步当月数据成功')
+      await loadData()
+    }
+  }catch(e){
+    console.error(e)
+    ElMessage.error('同步当月数据失败')
+  }finally{
+    refreshLoading.value = false
   }
 }
 
