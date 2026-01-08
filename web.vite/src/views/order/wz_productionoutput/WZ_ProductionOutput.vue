@@ -150,7 +150,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick, getCurrentInstance } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, getCurrentInstance, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 /* ===== 尺寸参数 ===== */
@@ -226,12 +226,17 @@ const thrDialog = ref(false)
 const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
-const refreshLoading = ref(false)
 const displayMode = ref('actual')
 const preProductionLoaded = ref(false)
 const optimizedLoaded = ref(false)
 const preProductionCache = ref([])
 const optimizedCache = ref([])
+function resetPreProductionCache(){
+  preProductionLoaded.value = false
+  optimizedLoaded.value = false
+  preProductionCache.value = []
+  optimizedCache.value = []
+}
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -249,21 +254,25 @@ function onYearChange(){
   state.rangeEnd   = new Date(state.year,11,31)
   startDateModel.value = state.rangeStart
   endDateModel.value   = state.rangeEnd
+  resetPreProductionCache()
   renderAll()
 }
 function onStartChange(val){
   const d = new Date(val); if (d > state.rangeEnd) { state.rangeEnd = d; endDateModel.value = d }
   state.rangeStart = d; renderAll()
+  resetPreProductionCache()
 }
 function onEndChange(val){
   const d = new Date(val); if (d < state.rangeStart) { state.rangeStart = d; startDateModel.value = d }
   state.rangeEnd = d; renderAll()
+  resetPreProductionCache()
 }
 function resetFullYear(){
   state.rangeStart = new Date(state.year,0,1)
   state.rangeEnd   = new Date(state.year,11,31)
   startDateModel.value = state.rangeStart
   endDateModel.value   = state.rangeEnd
+  resetPreProductionCache()
   renderAll()
 }
 function toggleBig(){ state.big=!state.big; renderAll() }
@@ -272,6 +281,7 @@ function toggleCompact(){ state.compact=!state.compact; nextTick(()=>renderAll()
 /* 额外查询参数（可空） */
 const valveCategory  = ref('')
 const productionLine = ref('')
+watch([valveCategory, productionLine], resetPreProductionCache)
 
 /* 统计卡片 */
 const stats = reactive({
@@ -697,33 +707,6 @@ function applyRows(rows, successMessage){
     ElMessage.warning('未匹配到当前日期范围内的数据（确认 productionDate 是否在所选范围内）。')
   } else {
     ElMessage.success(successMessage)
-  }
-}
-
-async function refreshCurrentMonth(){
-  if (refreshLoading.value) return
-  refreshLoading.value = true
-  try{
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    const payload = {
-      start: fmtYMD(monthStart),
-      end: fmtYMD(nextMonthStart)
-    }
-    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
-    const status = res?.status ?? res?.Status ?? res?.success ?? res?.Success
-    if (status === false) {
-      ElMessage.error(res?.message || res?.Message || '同步当月数据失败')
-    } else {
-      ElMessage.success(res?.message || res?.Message || '同步当月数据成功')
-      await loadData()
-    }
-  }catch(e){
-    console.error(e)
-    ElMessage.error('同步当月数据失败')
-  }finally{
-    refreshLoading.value = false
   }
 }
 
