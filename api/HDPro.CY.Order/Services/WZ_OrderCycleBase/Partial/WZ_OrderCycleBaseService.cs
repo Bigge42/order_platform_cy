@@ -93,10 +93,10 @@ namespace HDPro.CY.Order.Services
             var orderCycleContext = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-            /*.Where(p => p.PrdScheduleDate == null)*/
+/*.Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")*/
             var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
                 .AsNoTracking()
-                .Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")
+                .Where(p => p.PrdScheduleDate == null)
                 .ToListAsync(cancellationToken);
 
             var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
