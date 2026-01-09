@@ -31,14 +31,14 @@
                    :loading="syncLoading"
                    :disabled="ruleLoading || initLoading"
                    @click="handleSync">同步排产数据</el-button>
-        <el-button type="warning"
-                   :loading="initLoading"
-                   :disabled="syncLoading || ruleLoading"
-                   @click="handleInitialize">排产初始化</el-button>
         <el-button type="success"
                    :loading="ruleLoading"
                    :disabled="initLoading"
                    @click="handleOptimize">智能体优化</el-button>
+        <el-button type="warning"
+                   :loading="initLoading"
+                   :disabled="syncLoading || ruleLoading"
+                   @click="handleInitialize">排产初始化</el-button>
       </div>
     </template>
   </view-grid>
