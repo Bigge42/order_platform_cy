@@ -1080,7 +1080,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             target.RequestedDeliveryDate = orderTracking.DeliveryDate;
             target.MaterialCode = orderTracking.MaterialNumber;
             target.OrderQty = orderTracking.OrderQty;
-            target.FENTRYID = orderTracking.SOEntryID;
+            target.FENTRYID = orderTracking.SOBillID;
 
             if (materialInfo != null)
             {
