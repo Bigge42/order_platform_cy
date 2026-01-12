@@ -163,6 +163,12 @@ const resetProgressSummary = () => {
   progressSummary.logFiles = [];
 };
 
+const refreshGrid = () => {
+  if (gridRef && gridRef.search) {
+    gridRef.search();
+  }
+};
+
 const handleSync = async () => {
   if (syncLoading.value || ruleLoading.value) {
     return;
@@ -187,14 +193,12 @@ const handleSync = async () => {
     const response = await proxy.http.post('/api/WZ_OrderCycleBase/sync-from-order-tracking');
     if (response.status) {
       ElMessage.success(response.message || '同步排产数据成功');
-      if (gridRef && gridRef.search) {
-        gridRef.search();
-      }
+      refreshGrid();
     } else {
-      ElMessage.error(response.message || '同步排产数据失败');
+      refreshGrid();
     }
   } catch (error) {
-    ElMessage.error('同步排产数据失败');
+    refreshGrid();
   } finally {
     syncLoading.value = false;
   }
@@ -219,17 +223,15 @@ const handleOptimize = async () => {
       progressSummary.batchCount = response.data.batchCount || 0;
       progressSummary.logFiles = response.data.logFiles || [];
 
-      if (gridRef && gridRef.search) {
-        gridRef.search();
-      }
+      refreshGrid();
 
       const successMsg = `优化完成，成功 ${progressSummary.succeeded} 条，更新 ${progressSummary.updated} 条`;
       ElMessage.success(response.message || successMsg);
     } else {
-      ElMessage.error(response.message || '智能体优化失败');
+      refreshGrid();
     }
   } catch (error) {
-    ElMessage.error('智能体优化失败');
+    refreshGrid();
   } finally {
     ruleLoading.value = false;
   }
@@ -261,14 +263,10 @@ const handleInitialize = async () => {
       }
     }
 
-    if (gridRef && gridRef.search) {
-      gridRef.search();
-    }
+    refreshGrid();
 
     if (failures.length === 0) {
       ElMessage.success('排产初始化完成');
-    } else {
-      ElMessage.error(`排产初始化完成，但有 ${failures.length} 个步骤失败：${failures.join('；')}`);
     }
   } finally {
     initLoading.value = false;
