@@ -221,31 +221,70 @@ const handleRefreshOrders = async () => {
     return;
   }
 
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  const payload = {
-    StartDate: formatDate(yesterday),
-    EndDate: formatDate(today)
-  };
-
   refreshLoading.value = true;
   try {
-    const [salesResponse, trackingResponse] = await Promise.all([
-      proxy.http.post('/api/ESBSync/Task/SalesManagementSync', payload),
-      proxy.http.post('/api/ESBSync/Task/OrderTrackingSync', payload)
-    ]);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const payload = {
+      StartDate: formatDate(yesterday),
+      EndDate: formatDate(today)
+    };
+    const postData = JSON.stringify(payload);
+    const taskUrls = [
+      '/api/ESBSync/Task/SalesManagementSync',
+      '/api/ESBSync/Task/OrderTrackingSync'
+    ];
 
-    if (salesResponse?.status && trackingResponse?.status) {
-      ElMessage.success('订单数据刷新完成');
-    } else {
-      ElMessage.error('订单数据刷新失败');
+    const tasks = await Promise.all(taskUrls.map((taskUrl) => loadQuartzTask(taskUrl)));
+    const missingTask = tasks.find((task) => !task);
+    if (missingTask) {
+      ElMessage.error('未找到对应的定时任务，请先在 Sys_QuartzOptions 配置任务');
+      return;
     }
+
+    const runResults = await Promise.all(tasks.map((task) => runQuartzTask(task, postData)));
+    const hasFailure = runResults.some((result) => result?.status === false);
+    if (hasFailure) {
+      ElMessage.error('订单数据刷新失败');
+      return;
+    }
+
+    ElMessage.success('订单数据刷新完成');
   } catch (error) {
     ElMessage.error('订单数据刷新异常');
   } finally {
     refreshLoading.value = false;
   }
+};
+
+const loadQuartzTask = async (taskUrl) => {
+  const requestBody = {
+    page: 1,
+    rows: 10,
+    wheres: JSON.stringify([
+      {
+        name: 'ApiUrl',
+        value: taskUrl,
+        displayType: 'like'
+      }
+    ])
+  };
+  const response = await proxy.http.post('/api/Sys_QuartzOptions/getPageData', requestBody);
+  if (response?.status !== 0) {
+    return null;
+  }
+  const rows = response.rows || [];
+  return rows.find((row) => row.ApiUrl && row.ApiUrl.includes(taskUrl)) || null;
+};
+
+const runQuartzTask = (task, postData) => {
+  const taskOptions = {
+    ...task,
+    PostData: postData,
+    Method: task.Method || 'post'
+  };
+  return proxy.http.post('/api/Sys_QuartzOptions/run', taskOptions);
 };
 
 const handleOptimize = async () => {
