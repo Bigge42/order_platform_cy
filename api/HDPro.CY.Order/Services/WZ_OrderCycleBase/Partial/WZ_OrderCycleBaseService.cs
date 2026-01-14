@@ -619,6 +619,7 @@ namespace HDPro.CY.Order.Services
                     FlowCharacteristic = item.FlowCharacteristic,
                     Actuator = item.Actuator,
                     OutsourcedValveBody = item.OutsourcedValveBody,
+                    ValveCategory1 = item.ValveCategory1,
                     ValveCategory = item.ValveCategory,
                     SealFaceForm = item.SealFaceForm,
                     SpecialProduct = item.SpecialProduct,
@@ -1008,6 +1009,9 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             [JsonProperty("wai_gou_fa_ti")]
             public string OutsourcedValveBody { get; set; }
+
+            [JsonProperty("fa_men_da_lei")]
+            public string ValveCategory1 { get; set; }
 
             [JsonProperty("fa_men_lei_bie")]
             public string ValveCategory { get; set; }

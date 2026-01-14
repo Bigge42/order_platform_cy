@@ -42,6 +42,7 @@ export default function(){
                        {field:'FlowCharacteristic',title:'流量特性',type:'string',width:150,align:'left'},
                        {field:'Actuator',title:'执行机构',type:'string',width:150,align:'left'},
                        {field:'OutsourcedValveBody',title:'外购阀体',type:'string',width:150,align:'left'},
+                       {field:'ValveCategory1',title:'阀门大类',type:'string',width:150,align:'left'},
                        {field:'ValveCategory',title:'阀门类别',type:'string',width:150,align:'left'},
                        {field:'ProductionLine',title:'生产线',type:'string',width:110,align:'left'},
                        {field:'FixedCycleDays',title:'固定周期(天)',type:'int',width:110,align:'left'},
