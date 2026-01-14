@@ -27,6 +27,8 @@ namespace HDPro.CY.Order.Models.OrderCycleBaseDtos
 
         public string OutsourcedValveBody { get; set; }
 
+        public string ValveCategory1 { get; set; }
+
         public string ValveCategory { get; set; }
 
         public string SealFaceForm { get; set; }

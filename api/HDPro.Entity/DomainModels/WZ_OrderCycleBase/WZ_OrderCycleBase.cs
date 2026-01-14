@@ -174,6 +174,15 @@ namespace HDPro.Entity.DomainModels
        public string OutsourcedValveBody { get; set; }
 
        /// <summary>
+       ///阀门大类
+       /// </summary>
+       [Display(Name ="阀门大类")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
+       [Editable(true)]
+       public string ValveCategory1 { get; set; }
+
+       /// <summary>
        ///阀门类别
        /// </summary>
        [Display(Name ="阀门类别")]
