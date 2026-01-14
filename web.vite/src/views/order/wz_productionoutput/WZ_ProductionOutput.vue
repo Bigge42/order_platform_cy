@@ -56,6 +56,7 @@
         <el-input v-model="valveCategory" placeholder="阀体类别(可空)" size="small" style="width:140px" clearable />
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
+        <el-button type="primary" size="small" :loading="syncLoading" @click="syncData">同步数据</el-button>
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
         <el-button size="small" :type="buttonType('preproduction')" @click="loadPreProduction">展示预排产</el-button>
         <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
@@ -199,6 +200,7 @@ const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const viewMode = ref('actual')
+const syncLoading = ref(false)
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -526,6 +528,30 @@ async function loadData(){
   }catch(e){
     console.error(e)
     ElMessage.error('加载失败，请查看控制台 Network/Console 日志')
+  }
+}
+
+async function syncData(){
+  if (syncLoading.value) return
+  syncLoading.value = true
+  try{
+    const payload = {
+      start: '2025-01-01',
+      end: '2026-12-31'
+    }
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
+    const inserted = res?.inserted ?? res?.data?.inserted ?? res?.Data?.inserted
+    const range = res?.range ?? res?.data?.range ?? res?.Data?.range
+    if (typeof inserted === 'number') {
+      ElMessage.success(`同步完成：${range || '指定范围'}，写入 ${inserted} 条`)
+    } else {
+      ElMessage.success('同步完成')
+    }
+  }catch(e){
+    console.error(e)
+    ElMessage.error('同步失败，请查看控制台 Network/Console 日志')
+  }finally{
+    syncLoading.value = false
   }
 }
 
