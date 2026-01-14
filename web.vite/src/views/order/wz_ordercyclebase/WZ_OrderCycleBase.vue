@@ -27,6 +27,10 @@
              :modelOpenAfter="modelOpenAfter">
     <template #btnLeft>
       <div class="wz-ordercyclebase-action">
+        <el-button type="info"
+                   :loading="refreshLoading"
+                   :disabled="syncLoading || ruleLoading || initLoading"
+                   @click="handleRefreshOrders">刷新订单数据</el-button>
         <el-button type="primary"
                    :loading="syncLoading"
                    :disabled="ruleLoading || initLoading"
@@ -85,6 +89,7 @@ const { table, editFormFields, editFormOptions, searchFormFields, searchFormOpti
 const syncLoading = ref(false);
 const initLoading = ref(false);
 const ruleLoading = ref(false);
+const refreshLoading = ref(false);
 const progressVisible = ref(false);
 const progressSummary = reactive({
   total: 0,
@@ -201,6 +206,45 @@ const handleSync = async () => {
     refreshGrid();
   } finally {
     syncLoading.value = false;
+  }
+};
+
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const handleRefreshOrders = async () => {
+  if (refreshLoading.value || syncLoading.value || ruleLoading.value || initLoading.value) {
+    return;
+  }
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const payload = {
+    StartDate: formatDate(yesterday),
+    EndDate: formatDate(today)
+  };
+
+  refreshLoading.value = true;
+  try {
+    const [salesResponse, trackingResponse] = await Promise.all([
+      proxy.http.post('/api/ESBSync/Task/SalesManagementSync', payload),
+      proxy.http.post('/api/ESBSync/Task/OrderTrackingSync', payload)
+    ]);
+
+    if (salesResponse?.status && trackingResponse?.status) {
+      ElMessage.success('订单数据刷新完成');
+    } else {
+      ElMessage.error('订单数据刷新失败');
+    }
+  } catch (error) {
+    ElMessage.error('订单数据刷新异常');
+  } finally {
+    refreshLoading.value = false;
   }
 };
 

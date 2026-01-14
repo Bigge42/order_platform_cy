@@ -96,7 +96,13 @@ namespace HDPro.CY.Order.Services
 /*.Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")*/
             var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
                 .AsNoTracking()
-                .Where(p => p.PrdScheduleDate == null && p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")
+                .Where(p => p.PrdScheduleDate == null
+                    && p.BillStatus == "正常"
+                    && p.MtoNoStatus != "冻结"
+                    && p.MtoNoStatus != "终止"
+                    && p.SOBillNo != null
+                    && !p.SOBillNo.StartsWith("W")
+                    && !p.SOBillNo.Contains("JWX"))
                 .ToListAsync(cancellationToken);
 
             var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
