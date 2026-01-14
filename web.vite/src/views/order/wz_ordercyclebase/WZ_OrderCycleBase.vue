@@ -231,16 +231,18 @@ const handleRefreshOrders = async () => {
 
   refreshLoading.value = true;
   try {
-    const baseUrl = 'http://127.0.0.1:9200';
     const [salesResponse, trackingResponse] = await Promise.all([
-      proxy.http.post(`${baseUrl}/api/ESBSync/Task/SalesManagementSync`, payload),
-      proxy.http.post(`${baseUrl}/api/ESBSync/Task/OrderTrackingSync`, payload)
+      proxy.http.post('/api/ESBSync/Task/SalesManagementSync', payload),
+      proxy.http.post('/api/ESBSync/Task/OrderTrackingSync', payload)
     ]);
 
     if (salesResponse?.status && trackingResponse?.status) {
       ElMessage.success('订单数据刷新完成');
+    } else {
+      ElMessage.error('订单数据刷新失败');
     }
   } catch (error) {
+    ElMessage.error('订单数据刷新异常');
   } finally {
     refreshLoading.value = false;
   }
