@@ -32,7 +32,7 @@ namespace HDPro.CY.Order.Services
     public partial class WZ_OrderCycleBaseService
     {
         private readonly IWZ_OrderCycleBaseRepository _repository;//访问数据库
-        private readonly IOCP_OrderTrackingRepository _orderTrackingRepository;
+        private readonly IERP_OrderTrackingRepository _orderTrackingRepository;
         private readonly IOCP_MaterialRepository _materialRepository;
         private readonly IHttpClientFactory _httpClientFactory;
 
@@ -40,7 +40,7 @@ namespace HDPro.CY.Order.Services
         public WZ_OrderCycleBaseService(
             IWZ_OrderCycleBaseRepository dbRepository,
             IHttpContextAccessor httpContextAccessor,
-            IOCP_OrderTrackingRepository orderTrackingRepository,
+            IERP_OrderTrackingRepository orderTrackingRepository,
             IOCP_MaterialRepository materialRepository,
             IHttpClientFactory httpClientFactory
             )
@@ -94,19 +94,15 @@ namespace HDPro.CY.Order.Services
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
 /*.Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")*/
-            var orderTrackingList = await orderTrackingContext.Set<OCP_OrderTracking>()
+            var orderTrackingList = await orderTrackingContext.Set<ERP_OrderTracking>()
                 .AsNoTracking()
-                .Where(p => p.PrdScheduleDate == null
-                    && p.BillStatus == "正常"
-                    && p.MtoNoStatus != "冻结"
-                    && p.MtoNoStatus != "终止"
-                    && p.SOBillNo != null
-                    && !p.SOBillNo.StartsWith("W")
-                    && !p.SOBillNo.Contains("JWX"))
+                .Where(p => p.FBILLNO != null
+                    && !p.FBILLNO.StartsWith("W")
+                    && !p.FBILLNO.Contains("JWX"))
                 .ToListAsync(cancellationToken);
 
-            var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MaterialNumber))
-                .Select(p => p.MaterialNumber)
+            var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.FNUMBER))
+                .Select(p => p.FNUMBER)
                 .Distinct()
                 .ToList();
 
@@ -119,13 +115,13 @@ namespace HDPro.CY.Order.Services
                     .GroupBy(p => p.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-            var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.SOBillNo))
-                .Select(p => p.SOBillNo)
+            var salesOrderNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.FBILLNO))
+                .Select(p => p.FBILLNO)
                 .Distinct()
                 .ToList();
 
-            var planTrackingNos = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.MtoNo))
-                .Select(p => p.MtoNo)
+            var planTrackingNos = orderTrackingList.Select(p => NormalizePlanTrackingNo(p.FMTONO))
+                .Where(p => !string.IsNullOrWhiteSpace(p))
                 .Distinct()
                 .ToList();
 
@@ -170,14 +166,15 @@ namespace HDPro.CY.Order.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.SOBillNo) || string.IsNullOrWhiteSpace(orderTracking.MtoNo))
+                    var planTrackingNo = NormalizePlanTrackingNo(orderTracking?.FMTONO);
+                    if (orderTracking == null || string.IsNullOrWhiteSpace(orderTracking.FBILLNO) || string.IsNullOrWhiteSpace(planTrackingNo))
                     {
                         continue;
                     }
 
-                    materialDict.TryGetValue(orderTracking.MaterialNumber ?? string.Empty, out var materialInfo);
+                    materialDict.TryGetValue(orderTracking.FNUMBER ?? string.Empty, out var materialInfo);
 
-                    var key = $"{orderTracking.SOBillNo}__{orderTracking.MtoNo}";
+                    var key = $"{orderTracking.FBILLNO}__{planTrackingNo}";
 
                     if (existingDict.TryGetValue(key, out var existing))
                     {
@@ -1080,17 +1077,17 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public string LogFile { get; set; }
         }
 
-        private static void MapFields(OCP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
+        private static void MapFields(ERP_OrderTracking orderTracking, OCP_Material materialInfo, WZ_OrderCycleBase target)
         {
-            target.SalesOrderNo = orderTracking.SOBillNo;
-            target.PlanTrackingNo = orderTracking.MtoNo;
+            target.SalesOrderNo = orderTracking.FBILLNO;
+            target.PlanTrackingNo = NormalizePlanTrackingNo(orderTracking.FMTONO);
 
-            target.OrderApprovedDate = orderTracking.OrderAuditDate;
-            target.ReplyDeliveryDate = orderTracking.ReplyDeliveryDate;
-            target.RequestedDeliveryDate = orderTracking.DeliveryDate;
-            target.MaterialCode = orderTracking.MaterialNumber;
-            target.OrderQty = orderTracking.OrderQty;
-            target.FENTRYID = orderTracking.SOBillID;
+            target.OrderApprovedDate = orderTracking.FAPPROVEDATE;
+            target.ReplyDeliveryDate = orderTracking.F_BLN_HFJHRQ;
+            target.RequestedDeliveryDate = orderTracking.F_ORA_DATETIME;
+            target.MaterialCode = orderTracking.FNUMBER;
+            target.OrderQty = orderTracking.FQTY;
+            target.FENTRYID = orderTracking.FENTRYID;
 
             if (materialInfo != null)
             {
@@ -1105,6 +1102,11 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 target.NominalDiameter = materialInfo.NominalDiameter;
                 target.NominalPressure = materialInfo.NominalPressure;
             }
+        }
+
+        private static string NormalizePlanTrackingNo(string planTrackingNo)
+        {
+            return string.IsNullOrWhiteSpace(planTrackingNo) ? null : planTrackingNo;
         }
     }
 }
