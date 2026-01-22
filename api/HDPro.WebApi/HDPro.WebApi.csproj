@@ -22,6 +22,25 @@
     <Content Remove="Download\**" />
     <EmbeddedResource Remove="Download\**" />
     <None Remove="Download\**" />
+    <None Remove="quartz\error\2026-01-17.txt" />
+    <None Remove="quartz\error\2026-01-14.txt" />
+    <None Remove="quartz\error\2026-01-13.txt" />
+    <None Remove="quartz\error\2026-01-12.txt" />
+    <None Remove="quartz\error\2026-01-09.txt" />
+    <None Remove="quartz\error\2026-01-08.txt" />
+    <None Remove="quartz\error\2026-01-07.txt" />
+    <None Remove="quartz\error\2026-01-06.txt" />
+    <None Remove="quartz\error\2026-01-04.txt" />
+    <None Remove="quartz\error\2025-12-30.txt" />
+    <None Remove="quartz\error\2025-12-29.txt" />
+    <None Remove="quartz\error\2025-12-28.txt" />
+    <None Remove="quartz\error\2025-12-27.txt" />
+    <None Remove="quartz\error\2025-12-24.txt" />
+    <None Remove="quartz\error\2025-12-23.txt" />
+    <None Remove="quartz\error\2025-12-16.txt" />
+    <None Remove="quartz\error\2025-12-05.txt" />
+    <None Remove="quartz\error\2025-11-19.txt" />
+    <None Remove="quartz\error\2025-11-10.txt" />
   </ItemGroup>
 
   <ItemGroup>
