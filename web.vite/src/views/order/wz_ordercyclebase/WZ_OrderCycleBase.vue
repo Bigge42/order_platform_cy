@@ -267,7 +267,40 @@ const handleRefreshOrders = async () => {
 
   refreshLoading.value = true;
   try {
-    const response = await proxy.http.post('/api/ERP_OrderTracking/ERPOrderTrackingSync', {}, true);
+    const taskNameQuery = {
+      page: 1,
+      rows: 1,
+      wheres: [
+        {
+          name: 'TaskName',
+          value: 'ERP直连数据',
+          displayType: 'like'
+        }
+      ]
+    };
+    let taskResponse = await proxy.http.post('/api/Sys_QuartzOptions/getPageData', taskNameQuery, true);
+    let taskOptions = taskResponse?.rows?.[0];
+    if (!taskOptions) {
+      const apiUrlQuery = {
+        page: 1,
+        rows: 1,
+        wheres: [
+          {
+            name: 'ApiUrl',
+            value: 'http://localhost:9200/api/ERP_OrderTracking/ERPOrderTrackingSync',
+            displayType: 'like'
+          }
+        ]
+      };
+      taskResponse = await proxy.http.post('/api/Sys_QuartzOptions/getPageData', apiUrlQuery, true);
+      taskOptions = taskResponse?.rows?.[0];
+    }
+    if (!taskOptions) {
+      ElMessage.error('未找到订单跟踪同步任务，请在Sys_QuartzOptions中配置');
+      return;
+    }
+
+    const response = await proxy.http.post('/api/Sys_QuartzOptions/Run?val=once', taskOptions, true);
     if (response?.status === false) {
       ElMessage.error(response.message || '订单数据刷新失败');
       return;
