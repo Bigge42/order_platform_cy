@@ -246,7 +246,7 @@ const handleSyncConfirm = async () => {
   const [startDate, endDate] = range;
   const query = new URLSearchParams({ startDate, endDate }).toString();
   try {
-    const response = await proxy.http.post(`http://localhost:9200/api/WZ_OrderCycleBase/sync-from-order-tracking?${query}`);
+    const response = await proxy.http.post(`/api/WZ_OrderCycleBase/sync-from-order-tracking?${query}`, {}, true);
     if (response.status) {
       ElMessage.success(response.message || '同步排产数据成功');
       refreshGrid();
@@ -267,7 +267,7 @@ const handleRefreshOrders = async () => {
 
   refreshLoading.value = true;
   try {
-    const response = await proxy.http.post('http://localhost:9200/api/ERP_OrderTracking/ERPOrderTrackingSync');
+    const response = await proxy.http.post('/api/ERP_OrderTracking/ERPOrderTrackingSync', {}, true);
     if (response?.status === false) {
       ElMessage.error(response.message || '订单数据刷新失败');
       return;
