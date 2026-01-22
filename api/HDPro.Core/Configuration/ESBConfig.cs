@@ -72,6 +72,9 @@ namespace HDPro.Core.Configuration
         
         // 订单跟踪服务
         public string OrderTrackingESBSyncService { get; set; } = "/gateway/DataCenter/SearchSalOder";
+
+        // ERP订单跟踪明细同步服务
+        public string ERPOrderTrackingESBSyncService { get; set; } = "DDPTSeacherSalOrderEntry";
         
         // 缺料管理服务
         public string LackMtrlResultESBSyncService { get; set; } = "/gateway/DataCenter/SearchQLCal";
