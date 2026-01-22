@@ -82,9 +82,11 @@ namespace HDPro.CY.Order.Services
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
+        /// <param name="approvedDateStart">审核日期起</param>
+        /// <param name="approvedDateEnd">审核日期止</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>同步的总行数</returns>
-        public async Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default)
+        public async Task<int> SyncFromOrderTrackingAsync(DateTime? approvedDateStart, DateTime? approvedDateEnd, CancellationToken cancellationToken = default)
         {
             var orderTrackingContext = _orderTrackingRepository?.DbContext
                 ?? throw new InvalidOperationException("订单跟踪仓储未正确初始化");
@@ -93,13 +95,26 @@ namespace HDPro.CY.Order.Services
             var orderCycleContext = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-/*.Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")*/
-            var orderTrackingList = await orderTrackingContext.Set<ERP_OrderTracking>()
+            /*.Where(p => p.BillStatus == "正常" && p.MtoNoStatus != "冻结" && p.MtoNoStatus != "终止")*/
+            var orderTrackingQuery = orderTrackingContext.Set<ERP_OrderTracking>()
                 .AsNoTracking()
                 .Where(p => p.FBILLNO != null
                     && !p.FBILLNO.StartsWith("W")
-                    && !p.FBILLNO.Contains("JWX"))
-                .ToListAsync(cancellationToken);
+                    && !p.FBILLNO.Contains("JWX"));
+
+            if (approvedDateStart.HasValue)
+            {
+                var startDate = approvedDateStart.Value.Date;
+                orderTrackingQuery = orderTrackingQuery.Where(p => p.FAPPROVEDATE >= startDate);
+            }
+
+            if (approvedDateEnd.HasValue)
+            {
+                var endDate = approvedDateEnd.Value.Date;
+                orderTrackingQuery = orderTrackingQuery.Where(p => p.FAPPROVEDATE <= endDate);
+            }
+
+            var orderTrackingList = await orderTrackingQuery.ToListAsync(cancellationToken);
 
             var materialNumbers = orderTrackingList.Where(p => !string.IsNullOrWhiteSpace(p.FNUMBER))
                 .Select(p => p.FNUMBER)

@@ -75,12 +75,40 @@
       <el-button @click="progressVisible = false" :disabled="ruleLoading">关闭</el-button>
     </template>
   </el-dialog>
+
+  <el-dialog v-model="syncDialogVisible"
+             class="wz-sync-dialog"
+             title="选择订单审核日期范围"
+             width="520px"
+             :body-style="{ padding: '16px 20px' }"
+             :close-on-click-modal="false">
+    <div class="wz-sync-dialog__content">
+      <p class="wz-sync-dialog__tip">
+        同步排产数据会重置当前页面全部数据，需要重新排产，请确认审核日期范围。
+      </p>
+      <el-form :model="syncForm" label-width="120px">
+        <el-form-item label="审核日期范围">
+          <el-date-picker v-model="syncForm.approvedDateRange"
+                          type="daterange"
+                          range-separator="至"
+                          start-placeholder="开始日期"
+                          end-placeholder="结束日期"
+                          format="YYYY-MM-DD"
+                          value-format="YYYY-MM-DD" />
+        </el-form-item>
+      </el-form>
+    </div>
+    <template #footer>
+      <el-button @click="syncDialogVisible = false" :disabled="syncLoading">取消</el-button>
+      <el-button type="primary" :loading="syncLoading" @click="handleSyncConfirm">开始同步</el-button>
+    </template>
+  </el-dialog>
 </template>
 <script setup lang="jsx">
 import extend from "@/extension/order//wz_ordercyclebase/WZ_OrderCycleBase.jsx";
 import viewOptions from './WZ_OrderCycleBase/options.js'
 import { ref, reactive, getCurrentInstance, computed } from "vue";
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 const grid = ref(null);
 const { proxy } = getCurrentInstance()
 //http请求，proxy.http.post/get
@@ -91,6 +119,10 @@ const initLoading = ref(false);
 const ruleLoading = ref(false);
 const refreshLoading = ref(false);
 const progressVisible = ref(false);
+const syncDialogVisible = ref(false);
+const syncForm = reactive({
+  approvedDateRange: []
+});
 const progressSummary = reactive({
   total: 0,
   succeeded: 0,
@@ -159,6 +191,20 @@ const modelOpenAfter = (row) => {
   //弹出框打开后方法,设置表单默认值,按钮操作等
 }
 
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDefaultApprovedDateRange = () => {
+  const start = new Date();
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  return [formatDate(start), formatDate(end)];
+};
+
 const resetProgressSummary = () => {
   progressSummary.total = 0;
   progressSummary.succeeded = 0;
@@ -179,23 +225,28 @@ const handleSync = async () => {
     return;
   }
 
-  try {
-    await ElMessageBox.confirm(
-      '同步排产数据会重置当前页面全部数据，需要重新排产，是否继续？',
-      '提示',
-      {
-        type: 'warning',
-        confirmButtonText: '继续',
-        cancelButtonText: '取消'
-      }
-    );
-  } catch (error) {
+  syncForm.approvedDateRange = getDefaultApprovedDateRange();
+  syncDialogVisible.value = true;
+};
+
+const handleSyncConfirm = async () => {
+  if (syncLoading.value || ruleLoading.value) {
+    return;
+  }
+
+  const range = syncForm.approvedDateRange || [];
+  if (!Array.isArray(range) || range.length !== 2) {
+    ElMessage.warning('请选择审核日期范围');
     return;
   }
 
   syncLoading.value = true;
+  syncDialogVisible.value = false;
+
+  const [startDate, endDate] = range;
+  const query = new URLSearchParams({ startDate, endDate }).toString();
   try {
-    const response = await proxy.http.post('/api/WZ_OrderCycleBase/sync-from-order-tracking');
+    const response = await proxy.http.post(`http://localhost:9200/api/WZ_OrderCycleBase/sync-from-order-tracking?${query}`);
     if (response.status) {
       ElMessage.success(response.message || '同步排产数据成功');
       refreshGrid();
@@ -328,5 +379,17 @@ defineExpose({})
   flex-direction: column;
   gap: 4px;
   word-break: break-all;
+}
+
+.wz-sync-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wz-sync-dialog__tip {
+  margin: 0;
+  color: #606266;
+  font-size: 13px;
 }
 </style>
