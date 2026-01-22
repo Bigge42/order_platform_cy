@@ -13,7 +13,7 @@ namespace HDPro.CY.Order.IServices
 {
     public partial interface IWZ_OrderCycleBaseService
     {
-        Task<int> SyncFromOrderTrackingAsync(CancellationToken cancellationToken = default);
+        Task<int> SyncFromOrderTrackingAsync(DateTime? approvedDateStart, DateTime? approvedDateEnd, CancellationToken cancellationToken = default);
 
         Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
 
