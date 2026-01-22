@@ -17,14 +17,21 @@ namespace HDPro.CY.Order.Controllers
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
+        /// <param name="startDate">审核日期起</param>
+        /// <param name="endDate">审核日期止</param>
         /// <returns>同步的记录数量</returns>
         [HttpPost("sync-from-order-tracking")]
         [AllowAnonymous]
-        public async Task<IActionResult> SyncFromOrderTracking()
+        public async Task<IActionResult> SyncFromOrderTracking([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
         {
             try
             {
-                var result = await Service.SyncFromOrderTrackingAsync();
+                if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                {
+                    return JsonNormal(new WebResponseContent().Error("审核日期范围不合法，请重新选择"));
+                }
+
+                var result = await Service.SyncFromOrderTrackingAsync(startDate, endDate);
                 return JsonNormal(new WebResponseContent().OK($"同步完成，共同步 {result} 条数据", result, false));
             }
             catch (Exception ex)
