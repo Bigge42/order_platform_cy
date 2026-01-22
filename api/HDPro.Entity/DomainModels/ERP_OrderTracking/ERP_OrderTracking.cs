@@ -49,8 +49,8 @@ namespace HDPro.Entity.DomainModels
        ///
        /// </summary>
        [Display(Name ="FNUMBER")]
-       [MaxLength(60)]
-       [Column(TypeName="nvarchar(60)")]
+       [MaxLength(2000)]
+       [Column(TypeName="nvarchar(2000)")]
        [Editable(true)]
        [Required(AllowEmptyStrings=false)]
        public string FNUMBER { get; set; }
