@@ -5,7 +5,6 @@
  */
 using Microsoft.AspNetCore.Mvc;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
@@ -42,7 +41,7 @@ namespace HDPro.CY.Order.Controllers
         /// <returns>同步结果</returns>
         [ApiTask]
         [HttpGet, HttpPost, Route("ERPOrderTrackingSync")]
-        public async Task<IActionResult> ERPOrderTrackingSyncTask([FromBody] ESBSyncRequest request)
+        public async Task<IActionResult> ERPOrderTrackingSyncTask()
         {
             try
             {
