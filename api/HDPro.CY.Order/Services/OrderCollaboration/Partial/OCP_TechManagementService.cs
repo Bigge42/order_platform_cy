@@ -435,16 +435,16 @@ namespace HDPro.CY.Order.Services
             QueryRelativeList = (List<SearchParameters> parameters) =>
             {
                 // 添加默认查询条件：HasBOM=0
-                bool hasHasBOMCondition = parameters.Any(p => p.Name == "HasBOM");
-                if (!hasHasBOMCondition)
-                {
-                    parameters.Add(new SearchParameters
-                    {
-                        Name = "HasBOM",
-                        Value = "0",
-                        DisplayType = "selectList"
-                    });
-                }
+                //bool hasHasBOMCondition = parameters.Any(p => p.Name == "HasBOM");
+                //if (!hasHasBOMCondition)
+                //{
+                //    parameters.Add(new SearchParameters
+                //    {
+                //        Name = "HasBOM",
+                //        Value = "0",
+                //        DisplayType = "selectList"
+                //    });
+                //}
             };
 
             // 添加物料编码和订单状态过滤条件
