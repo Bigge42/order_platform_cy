@@ -43,6 +43,11 @@
                    :loading="initLoading"
                    :disabled="syncLoading || ruleLoading"
                    @click="handleInitialize">排产初始化</el-button>
+        <el-button type="primary"
+                   plain
+                   :loading="dictSyncLoading"
+                   :disabled="syncLoading || ruleLoading || initLoading || refreshLoading"
+                   @click="handleSyncDictionary">同步字典</el-button>
       </div>
     </template>
   </view-grid>
@@ -118,6 +123,7 @@ const syncLoading = ref(false);
 const initLoading = ref(false);
 const ruleLoading = ref(false);
 const refreshLoading = ref(false);
+const dictSyncLoading = ref(false);
 const progressVisible = ref(false);
 const syncDialogVisible = ref(false);
 const syncForm = reactive({
@@ -380,6 +386,26 @@ const handleInitialize = async () => {
     }
   } finally {
     initLoading.value = false;
+  }
+};
+
+const handleSyncDictionary = async () => {
+  if (dictSyncLoading.value || syncLoading.value || ruleLoading.value || initLoading.value || refreshLoading.value) {
+    return;
+  }
+
+  dictSyncLoading.value = true;
+  try {
+    const response = await proxy.http.post('http://10.11.10.101:8000/sync_fmzd_today?dry_run=false', {}, true);
+    if (response?.status === false) {
+      ElMessage.error(response.message || '同步字典失败');
+      return;
+    }
+    ElMessage.success(response?.message || '同步字典完成');
+  } catch (error) {
+    ElMessage.error('同步字典异常');
+  } finally {
+    dictSyncLoading.value = false;
   }
 };
 //监听表单输入，做实时计算
