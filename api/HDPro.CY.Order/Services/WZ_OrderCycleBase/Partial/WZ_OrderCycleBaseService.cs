@@ -1112,7 +1112,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 target.FlowCharacteristic = materialInfo.FlowCharacteristic;
                 target.Actuator = materialInfo.ActuatorModel;
                 target.BodyMaterial = materialInfo.BodyMaterial;
-                target.SealFaceForm = materialInfo.SealFaceForm;
+                target.SealFaceForm = materialInfo.FlangeSealType;
                 target.ProductName = materialInfo.ProductModel;
                 target.NominalDiameter = materialInfo.NominalDiameter;
                 target.NominalPressure = materialInfo.NominalPressure;
