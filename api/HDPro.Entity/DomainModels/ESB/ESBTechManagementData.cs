@@ -83,6 +83,11 @@ namespace HDPro.Entity.DomainModels.ESB
         public string FISBOM { get; set; }
 
         /// <summary>
+        /// BOM齐套性
+        /// </summary>
+        public string FBOMFINISHEDNAME { get; set; }
+
+        /// <summary>
         /// 计划要求完工日期
         /// </summary>
         public string FPLANFINISHDATE { get; set; }
