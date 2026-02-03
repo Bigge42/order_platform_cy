@@ -271,6 +271,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.TechManagement
             // BOM信息
             entity.BOMCreateDate = ParseDate(esbData.BOMCREATEDATE);
             entity.HasBOM = esbData.FISBOM == "是" ? 1 : 0;
+            entity.FBOMFINISHEDNAME = esbData.FBOMFINISHEDNAME;
 
             // 日期字段映射
             entity.RequiredCompletionDate = ParseDate(esbData.FPLANFINISHDATE);

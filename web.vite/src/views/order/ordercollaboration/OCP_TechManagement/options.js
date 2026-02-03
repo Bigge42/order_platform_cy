@@ -86,6 +86,7 @@ export default function(){
                        {field:'MaterialID',title:'物料ID',type:'long',width:80,hidden:true,align:'left'},
                        {field:'OrderStatus',title:'订单状态',type:'string',sort:true,width:220,hidden:true,align:'left'},
                        {field:'HasBOM',title:'是否有BOM',type:'int',bind:{ key:'enable',data:[]},sort:true,width:110,align:'left'},
+                       {field:'FBOMFINISHEDNAME',title:'BOM齐套性',type:'string',sort:true,width:120,align:'left'},
                        {field:'RequiredFinishTime',title:'要求完工时间',type:'date',sort:true,width:150,hidden:true,align:'left'},
                        {field:'CreateID',title:'创建人ID',type:'int',width:80,hidden:true,align:'left'},
                        {field:'CreateDate',title:'创建日期',type:'datetime',width:150,hidden:true,align:'left'},

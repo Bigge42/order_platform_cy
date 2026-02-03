@@ -280,6 +280,15 @@ namespace HDPro.Entity.DomainModels
        public int? HasBOM { get; set; }
 
        /// <summary>
+       ///BOM齐套性
+       /// </summary>
+       [Display(Name ="BOM齐套性")]
+       [MaxLength(20)]
+       [Column(TypeName="nvarchar(20)")]
+       [Editable(true)]
+       public string FBOMFINISHEDNAME { get; set; }
+
+       /// <summary>
        ///要求完工时间
        /// </summary>
        [Display(Name ="要求完工时间")]
