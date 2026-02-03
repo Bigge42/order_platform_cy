@@ -29,5 +29,16 @@ namespace HDPro.CY.Order.Controllers
             _service = service;
             _httpContextAccessor = httpContextAccessor;
         }
+
+        /// <summary>
+        /// 同步技术日期
+        /// </summary>
+        [HttpPost]
+        [Route("sync-order-dates")]
+        public async Task<IActionResult> SyncOrderDatesAsync()
+        {
+            var result = await _service.SyncOrderDatesAsync();
+            return Json(result);
+        }
     }
 }

@@ -112,6 +112,15 @@ namespace HDPro.Entity.DomainModels
        public string TCBomCreator { get; set; }
 
        /// <summary>
+       ///BOM齐套性
+       /// </summary>
+       [Display(Name ="BOM齐套性")]
+       [MaxLength(20)]
+       [Column(TypeName="nvarchar(20)")]
+       [Editable(true)]
+       public string FBOMFINISHEDNAME { get; set; }
+
+       /// <summary>
        ///物料名称
        /// </summary>
        [Display(Name ="物料名称")]
