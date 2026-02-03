@@ -17,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
+using System.Threading.Tasks;
 
 namespace HDPro.CY.Order.Services
 {
@@ -59,6 +60,21 @@ namespace HDPro.CY.Order.Services
             // 在此处添加vw_OCP_Tech_BOM_Status_Monthly特有的数据验证逻辑
             
             return response;
+        }
+
+        public async Task<WebResponseContent> SyncOrderDatesAsync()
+        {
+            var response = new WebResponseContent();
+            const string sql = @"UPDATE tm
+SET
+    tm.OrderAuditDate  = ot.OrderAuditDate,
+    tm.OrderCreateDate = ot.OrderCreateDate
+FROM [dbo].[OCP_TechManagement] AS tm
+         JOIN [dbo].[OCP_OrderTracking]  AS ot
+              ON ot.SOBillNo = tm.SOBillNo;";
+
+            await _repository.DbContext.Database.ExecuteSqlRawAsync(sql);
+            return response.OK("同步技术日期成功");
         }
   }
 } 

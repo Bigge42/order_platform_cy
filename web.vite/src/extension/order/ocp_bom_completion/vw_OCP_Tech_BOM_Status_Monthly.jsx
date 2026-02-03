@@ -22,6 +22,8 @@ let extension = {
   methods: {
      //下面这些方法可以保留也可以删除
     onInit() {  //框架初始化配置前，
+        const syncUrl = "/api/vw_OCP_Tech_BOM_Status_Monthly/sync-order-dates";
+        this.http.post(syncUrl, {}, false);
         //示例：在按钮的最前面添加一个按钮
         //   this.buttons.unshift({  //也可以用push或者splice方法来修改buttons数组
         //     name: '按钮', //按钮名称
