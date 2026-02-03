@@ -9,4 +9,4 @@ namespace HDPro.CY.Order.IServices.MaterialCallBoard
         /// <param name="pruneAfter">是否在刷新快照后，按白名单删除 MaterialCallBoard 中缺席的记录</param>
         Task<WebResponseContent> SyncSnapshotFromWmsAsync(bool pruneAfter);
     }
-}
+    }
