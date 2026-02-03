@@ -66,6 +66,7 @@ export default function(){
                        {field:'MaterialCode',title:'物料码',type:'string',sort:true,width:120,align:'left'},
                        {field:'MaterialName',title:'物料名称',type:'string',sort:true,width:220,align:'left'},
                        {field:'Specification',title:'规格型号',type:'string',width:220,align:'left'},
+                       {field:'NominalPressure',title:'公称压力',type:'string',width:120,align:'left'},
                        {field:'MaterialCategory',title:'物料分类',type:'string',width:120,align:'left'},
                        {field:'CGSQCreateDate',title:'采购申请单创建日期',type:'date',sort:true,width:170,align:'left'},
                        {field:'CGSQAuditDate',title:'采购申请单审核日期',type:'date',sort:true,width:170,align:'left'},

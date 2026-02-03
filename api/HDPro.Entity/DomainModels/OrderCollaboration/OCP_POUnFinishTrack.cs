@@ -97,6 +97,15 @@ namespace HDPro.Entity.DomainModels
        public string Specification { get; set; }
 
        /// <summary>
+       ///公称压力
+       /// </summary>
+       [Display(Name ="公称压力")]
+       [MaxLength(20)]
+       [Column(TypeName="nvarchar(20)")]
+       [Editable(true)]
+       public string NominalPressure { get; set; }
+
+       /// <summary>
        ///物料分类
        /// </summary>
        [Display(Name ="物料分类")]
