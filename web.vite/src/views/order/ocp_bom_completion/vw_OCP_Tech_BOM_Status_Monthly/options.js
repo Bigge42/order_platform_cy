@@ -30,6 +30,7 @@ export default function(){
                        {field:'BomDelayDays',title:'BOM创建延迟天数',type:'int',sort:true,width:160,readonly:true,align:'left'},
                        {field:'BomMissingDays',title:'BOM已缺失天数',type:'int',sort:true,width:160,readonly:true,align:'left'},
                        {field:'TCBomCreator',title:'BOM创建人',type:'string',width:110,readonly:true,align:'left'},
+                       {field:'FBOMFINISHEDNAME',title:'BOM齐套性',type:'string',width:120,readonly:true,align:'left'},
                        {field:'MaterialName',title:'物料名称',type:'string',width:220,readonly:true,align:'left'},
                        {field:'CV',title:'CV',type:'string',width:220,readonly:true,align:'left'},
                        {field:'NominalDiameter',title:'公称通径',type:'string',width:220,readonly:true,align:'left'},
