@@ -213,6 +213,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Purchase
                 entity.MaterialCode = material.MaterialCode ?? string.Empty;
                 entity.MaterialName = material.MaterialName ?? string.Empty;
                 entity.Specification = material.SpecModel ?? string.Empty;        // 规格型号
+                entity.NominalPressure = material.NominalPressure ?? string.Empty; // 公称压力
                 entity.MaterialCategory = GetMaterialCategoryByCode(material.MaterialCode, material.MaterialName);  // 根据编码规则确定物料分类
             }
             else
@@ -221,6 +222,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.Purchase
                 entity.MaterialCode = string.Empty;
                 entity.MaterialName = string.Empty;
                 entity.Specification = string.Empty;
+                entity.NominalPressure = string.Empty;
                 entity.MaterialCategory = string.Empty;
 
                 // 记录警告日志
