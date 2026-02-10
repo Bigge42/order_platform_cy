@@ -516,7 +516,18 @@ namespace HDPro.Core.Utilities
                         else if (dateArr != null && dateArr.Contains(propertyInfo[j].Name))
                         {
                             object value = propertyInfo[j].GetValue(list[i]);
-                            cellValue = value == null ? "" : ((DateTime)value).ToString("yyyy-MM-dd HH:mm:sss");
+                            if (value == null)
+                            {
+                                cellValue = "";
+                            }
+                            else
+                            {
+                                var currentOption = cellOptions.Where(x => x.ColumnName == propertyInfo[j].Name).FirstOrDefault();
+                                var format = string.Equals(currentOption?.EditType, "date", StringComparison.OrdinalIgnoreCase)
+                                    ? "yyyy-MM-dd"
+                                    : "yyyy-MM-dd HH:mm:sss";
+                                cellValue = ((DateTime)value).ToString(format);
+                            }
                         }
                         else
                         {
