@@ -31,6 +31,7 @@ export default function(){
                        {field:'CapacityScheduleDate',title:'排产优化日期',type:'date',width:150,align:'left'},
                        {field:'MaterialCode',title:'物料编码',type:'string',width:120,align:'left'},
                        {field:'OrderQty',title:'订单数量',type:'decimal',width:110,require:true,align:'left'},
+                       {field:'GUI_GE_XING_HAO',title:'规格型号',type:'string',width:180,align:'left'},
                        {field:'ProductName',title:'产品名称',type:'string',width:180,align:'left'},
                        {field:'NominalDiameter',title:'公称通径',type:'string',width:110,align:'left'},
                        {field:'NominalPressure',title:'公称压力',type:'string',width:110,align:'left'},
