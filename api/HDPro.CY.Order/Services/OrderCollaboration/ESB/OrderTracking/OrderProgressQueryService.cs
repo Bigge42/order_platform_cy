@@ -305,131 +305,15 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
                 if (totalQty > 0)
                 {
                     mobileResponse.ShippingProgress = Math.Round((mobileResponse.FCKREALQTY / totalQty) * 100, 0);
-                    mobileResponse.ShippingStatus = mobileResponse.ShippingProgress >= 100 ? "已完成" : 
+                    mobileResponse.ShippingStatus = mobileResponse.ShippingProgress >= 100 ? "已完成" :
                         mobileResponse.ShippingProgress >= 98 ? "即将完成" : $"未完成({mobileResponse.ShippingProgress}%)";
                 }
 
                 // 逾期状态
                 mobileResponse.OverdueStatus = mobileResponse.OverdueQty > 0 ? "逾期" : "未逾期";
 
-                // BOM创建进度
-                if (totalQty > 0)
-                {
-                    var bomQty = data.FISBOMQTY ?? 0; // BOM数量
-                    mobileResponse.BOMProgress = Math.Round((bomQty / totalQty) * 100, 0);
-                    mobileResponse.BOMStatus = GetProgressStatus(mobileResponse.BOMProgress, "BOM创建");
-                }
-
-                // 计划确认进度
-                if (totalQty > 0)
-                {
-                    var planConfirmQty = data.FJHQRSL ?? 0; // 计划确认数量
-                    mobileResponse.PlanConfirmProgress = Math.Round((planConfirmQty / totalQty) * 100, 0);
-                    mobileResponse.PlanConfirmStatus = GetProgressStatus(mobileResponse.PlanConfirmProgress, "计划确认");
-                }
-
-                // 物料准备进度
-                if (totalQty > 0)
-                {
-                    var materialPrepQty = data.FJHQRWKGSL ?? 0; // 计划确认未开工数量
-                    mobileResponse.MaterialPrepProgress = Math.Round((materialPrepQty / totalQty) * 100, 0);
-                    mobileResponse.MaterialPrepStatus = GetProgressStatus(mobileResponse.MaterialPrepProgress, "物料准备");
-                }
-
-                // 推送生产进度
-                if (totalQty > 0)
-                {
-                    var productionQty = data.FKGSL ?? 0; // 开工数量
-                    mobileResponse.ProductionPushProgress = Math.Round((productionQty / totalQty) * 100, 0);
-                    mobileResponse.ProductionPushStatus = GetProgressStatus(mobileResponse.ProductionPushProgress, "推送生产");
-                }
-
-                // 领料进度
-                if (totalQty > 0)
-                {
-                    var materialCollectionQty = data.LLQTY ?? 0; // 已领料工单数量
-                    mobileResponse.MaterialCollectionProgress = Math.Round((materialCollectionQty / totalQty) * 100, 0);
-                    mobileResponse.MaterialCollectionStatus = GetProgressStatus(mobileResponse.MaterialCollectionProgress, "领料");
-                }
-
-                // 预装进度
-                if (totalQty > 0)
-                {
-                    var preAssemblyQty = data.YZQTY ?? 0; // 已预装工单数量
-                    mobileResponse.PreAssemblyProgress = Math.Round((preAssemblyQty / totalQty) * 100, 0);
-                    mobileResponse.PreAssemblyStatus = GetProgressStatus(mobileResponse.PreAssemblyProgress, "预装");
-                }
-
-                // 部件装配进度
-                if (totalQty > 0)
-                {
-                    var partAssemblyQty = data.FTBJJZJJGZPQTY ?? 0; // 阀体部件及执行机构装配工单数量
-                    mobileResponse.PartAssemblyProgress = Math.Round((partAssemblyQty / totalQty) * 100, 0);
-                    mobileResponse.PartAssemblyStatus = GetProgressStatus(mobileResponse.PartAssemblyProgress, "部件装配");
-                }
-
-                // 强压泄漏进度
-                if (totalQty > 0)
-                {
-                    var pressureTestQty = data.QYXLSYQTY ?? 0; // 强压泄漏试验工单数量
-                    mobileResponse.PressureTestProgress = Math.Round((pressureTestQty / totalQty) * 100, 0);
-                    mobileResponse.PressureTestStatus = GetProgressStatus(mobileResponse.PressureTestProgress, "强压泄漏");
-                }
-
-                // 附件安装进度
-                if (totalQty > 0)
-                {
-                    var accessoryInstallQty = data.FJAZJTSQTY ?? 0; // 附件安装及调试工单数量
-                    mobileResponse.AccessoryInstallProgress = Math.Round((accessoryInstallQty / totalQty) * 100, 0);
-                    mobileResponse.AccessoryInstallStatus = GetProgressStatus(mobileResponse.AccessoryInstallProgress, "附件安装");
-                }
-
-                // 终检进度
-                if (totalQty > 0)
-                {
-                    var finalInspectionQty = data.ZJQTY ?? 0; // 终检工单数量
-                    mobileResponse.FinalInspectionProgress = Math.Round((finalInspectionQty / totalQty) * 100, 0);
-                    mobileResponse.FinalInspectionStatus = GetProgressStatus(mobileResponse.FinalInspectionProgress, "终检");
-                }
-
-                // 油漆进度
-                if (totalQty > 0)
-                {
-                    var paintingQty = data.YQQTY ?? 0; // 油漆工单数量
-                    mobileResponse.PaintingProgress = Math.Round((paintingQty / totalQty) * 100, 0);
-                    mobileResponse.PaintingStatus = GetProgressStatus(mobileResponse.PaintingProgress, "油漆");
-                }
-
-                // 装箱进度
-                if (totalQty > 0)
-                {
-                    var packingQty = data.ZXQTY ?? 0; // 装箱工单数量
-                    mobileResponse.PackingProgress = Math.Round((packingQty / totalQty) * 100, 0);
-                    mobileResponse.PackingStatus = GetProgressStatus(mobileResponse.PackingProgress, "装箱");
-                }
-
-                // 装箱检验进度
-                if (totalQty > 0)
-                {
-                    var packingInspectionQty = data.ZXJYQTY ?? 0; // 装箱检验工单数量
-                    mobileResponse.PackingInspectionProgress = Math.Round((packingInspectionQty / totalQty) * 100, 0);
-                    mobileResponse.PackingInspectionStatus = GetProgressStatus(mobileResponse.PackingInspectionProgress, "装箱检验");
-                }
-
-                // 装配完工进度
-                if (totalQty > 0)
-                {
-                    var assemblyCompleteQty = data.ZPWGQTY ?? 0; // 装配完工工单数量
-                    mobileResponse.AssemblyCompleteProgress = Math.Round((assemblyCompleteQty / totalQty) * 100, 0);
-                    mobileResponse.AssemblyCompleteStatus = GetProgressStatus(mobileResponse.AssemblyCompleteProgress, "装配完工");
-                }
-
-                // 出库进度
-                if (totalQty > 0)
-                {
-                    mobileResponse.OutboundProgress = Math.Round((mobileResponse.FCKREALQTY / totalQty) * 100, 0);
-                    mobileResponse.OutboundStatus = GetProgressStatus(mobileResponse.OutboundProgress, "出库");
-                }
+                // 构建进度节点树形结构
+                mobileResponse.ProgressNodes = BuildProgressNodes(data, totalQty);
 
                 _logger.LogInformation("获取移动端订单进度信息成功，订单号：{BillNo}", billNo);
                 return mobileResponse;
@@ -506,6 +390,181 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
         }
 
         /// <summary>
+        /// 构建进度节点树形结构
+        /// </summary>
+        /// <param name="data">订单进度数据</param>
+        /// <param name="totalQty">总数量</param>
+        /// <returns>进度节点列表</returns>
+        private List<ProgressNode> BuildProgressNodes(OrderProgressQueryResponse data, decimal totalQty)
+        {
+            var nodes = new List<ProgressNode>();
+
+            if (totalQty <= 0)
+            {
+                return nodes;
+            }
+
+            // 1. 计划确认节点
+            var planConfirmQty = data.FJHQRSL ?? 0;
+            var planConfirmPercent = Math.Round((planConfirmQty / totalQty) * 100, 0);
+            nodes.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(planConfirmPercent, "计划确认"),
+                Percent = planConfirmPercent,
+                Key = "PlanConfirmStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 2. 物料准备节点
+            var materialPrepQty = data.FJHQRWKGSL ?? 0;
+            var materialPrepPercent = Math.Round((materialPrepQty / totalQty) * 100, 0);
+            nodes.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(materialPrepPercent, "物料准备"),
+                Percent = materialPrepPercent,
+                Key = "MaterialPrepStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3. 推送生产节点（包含子节点）
+            var productionQty = data.FKGSL ?? 0;
+            var productionPercent = Math.Round((productionQty / totalQty) * 100, 0);
+            var productionNode = new ProgressNode
+            {
+                Name = GetProgressStatus(productionPercent, "推送生产"),
+                Percent = productionPercent,
+                Key = "ProductionPushStatus",
+                Children = new List<ProgressNode>()
+            };
+
+            // 推送生产的子节点
+            // 3.1 领料
+            var materialCollectionQty = data.LLQTY ?? 0;
+            var materialCollectionPercent = Math.Round((materialCollectionQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(materialCollectionPercent, "领料"),
+                Percent = materialCollectionPercent,
+                Key = "MaterialCollectionStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.2 预装
+            var preAssemblyQty = data.YZQTY ?? 0;
+            var preAssemblyPercent = Math.Round((preAssemblyQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(preAssemblyPercent, "预装"),
+                Percent = preAssemblyPercent,
+                Key = "PreAssemblyStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.3 部件装配
+            var partAssemblyQty = data.FTBJJZJJGZPQTY ?? 0;
+            var partAssemblyPercent = Math.Round((partAssemblyQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(partAssemblyPercent, "部件装配"),
+                Percent = partAssemblyPercent,
+                Key = "PartAssemblyStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.4 强压泄漏
+            var pressureTestQty = data.QYXLSYQTY ?? 0;
+            var pressureTestPercent = Math.Round((pressureTestQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(pressureTestPercent, "强压泄漏"),
+                Percent = pressureTestPercent,
+                Key = "PressureTestStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.5 附件安装
+            var accessoryInstallQty = data.FJAZJTSQTY ?? 0;
+            var accessoryInstallPercent = Math.Round((accessoryInstallQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(accessoryInstallPercent, "附件安装"),
+                Percent = accessoryInstallPercent,
+                Key = "AccessoryInstallStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.6 终检
+            var finalInspectionQty = data.ZJQTY ?? 0;
+            var finalInspectionPercent = Math.Round((finalInspectionQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(finalInspectionPercent, "终检"),
+                Percent = finalInspectionPercent,
+                Key = "FinalInspectionStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.7 油漆
+            var paintingQty = data.YQQTY ?? 0;
+            var paintingPercent = Math.Round((paintingQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(paintingPercent, "油漆"),
+                Percent = paintingPercent,
+                Key = "PaintingStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.8 装箱
+            var packingQty = data.ZXQTY ?? 0;
+            var packingPercent = Math.Round((packingQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(packingPercent, "装箱"),
+                Percent = packingPercent,
+                Key = "PackingStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.9 装箱检验
+            var packingInspectionQty = data.ZXJYQTY ?? 0;
+            var packingInspectionPercent = Math.Round((packingInspectionQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(packingInspectionPercent, "装箱检验"),
+                Percent = packingInspectionPercent,
+                Key = "PackingInspectionStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            // 3.10 装配完工
+            var assemblyCompleteQty = data.ZPWGQTY ?? 0;
+            var assemblyCompletePercent = Math.Round((assemblyCompleteQty / totalQty) * 100, 0);
+            productionNode.Children.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(assemblyCompletePercent, "装配完工"),
+                Percent = assemblyCompletePercent,
+                Key = "AssemblyCompleteStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            nodes.Add(productionNode);
+
+            //4.出库节点
+            var outStockQty = data.FCKREALQTY ?? 0;
+            var outStockPercent = Math.Round((outStockQty / totalQty) * 100, 0);
+            nodes.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(outStockPercent, "出库"),
+                Percent = outStockPercent,
+                Key = "OutboundStatus",
+                Children = new List<ProgressNode>()
+            });
+
+            return nodes;
+        }
+
+        /// <summary>
         /// 获取订单进度统计信息
         /// </summary>
         /// <param name="billNo">销售订单号</param>
@@ -560,6 +619,32 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
     }
 
     /// <summary>
+    /// 进度节点模型
+    /// </summary>
+    public class ProgressNode
+    {
+        /// <summary>
+        /// 节点名称
+        /// </summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 进度百分比
+        /// </summary>
+        public decimal Percent { get; set; }
+
+        /// <summary>
+        /// 节点标识Key
+        /// </summary>
+        public string Key { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 子节点列表
+        /// </summary>
+        public List<ProgressNode> Children { get; set; } = new List<ProgressNode>();
+    }
+
+    /// <summary>
     /// 移动端订单进度查询响应模型
     /// 包含业务逻辑处理后的字段和进度百分比
     /// </summary>
@@ -568,32 +653,32 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
         /// <summary>
         /// 销售订单号
         /// </summary>
-        public string FBILLNO { get; set; }
+        public string FBILLNO { get; set; } = string.Empty;
 
         /// <summary>
         /// 销售合同号
         /// </summary>
-        public string F_BLN_CONTACTNONAME { get; set; }
+        public string? F_BLN_CONTACTNONAME { get; set; }
 
         /// <summary>
         /// 用户合同号
         /// </summary>
-        public string F_BLN_YHHTH { get; set; }
+        public string? F_BLN_YHHTH { get; set; }
 
         /// <summary>
         /// 销售负责人
         /// </summary>
-        public string XSYNAME { get; set; }
+        public string? XSYNAME { get; set; }
 
         /// <summary>
         /// 项目名称
         /// </summary>
-        public string F_ORA_XMMC { get; set; }
+        public string? F_ORA_XMMC { get; set; }
 
         /// <summary>
         /// 客户名称
         /// </summary>
-        public string FCUSTName { get; set; }
+        public string? FCUSTName { get; set; }
 
         /// <summary>
         /// 订货台数
@@ -608,17 +693,17 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
         /// <summary>
         /// 合同签订时间
         /// </summary>
-        public string F_ORA_DATE4 { get; set; }
+        public string? F_ORA_DATE4 { get; set; }
 
         /// <summary>
         /// 排产日期
         /// </summary>
-        public string F_ORA_DATE1 { get; set; }
+        public string? F_ORA_DATE1 { get; set; }
 
         /// <summary>
         /// 交货日期
         /// </summary>
-        public string F_BLN_HFJHRQ { get; set; }
+        public string? F_BLN_HFJHRQ { get; set; }
 
         /// <summary>
         /// 入库数量
@@ -648,162 +733,17 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
         /// <summary>
         /// 发货状态描述
         /// </summary>
-        public string ShippingStatus { get; set; }
+        public string? ShippingStatus { get; set; }
 
         /// <summary>
         /// 逾期状态
         /// </summary>
-        public string OverdueStatus { get; set; }
+        public string? OverdueStatus { get; set; }
 
         /// <summary>
-        /// BOM创建进度（百分比）
+        /// 进度节点列表（树形结构）
         /// </summary>
-        public decimal BOMProgress { get; set; }
-
-        /// <summary>
-        /// BOM创建状态描述
-        /// </summary>
-        public string BOMStatus { get; set; }
-
-        /// <summary>
-        /// 计划确认进度（百分比）
-        /// </summary>
-        public decimal PlanConfirmProgress { get; set; }
-
-        /// <summary>
-        /// 计划确认状态描述
-        /// </summary>
-        public string PlanConfirmStatus { get; set; }
-
-        /// <summary>
-        /// 物料准备进度（百分比）
-        /// </summary>
-        public decimal MaterialPrepProgress { get; set; }
-
-        /// <summary>
-        /// 物料准备状态描述
-        /// </summary>
-        public string MaterialPrepStatus { get; set; }
-
-        /// <summary>
-        /// 推送生产进度（百分比）
-        /// </summary>
-        public decimal ProductionPushProgress { get; set; }
-
-        /// <summary>
-        /// 推送生产状态描述
-        /// </summary>
-        public string ProductionPushStatus { get; set; }
-
-        /// <summary>
-        /// 领料进度（百分比）
-        /// </summary>
-        public decimal MaterialCollectionProgress { get; set; }
-
-        /// <summary>
-        /// 领料状态描述
-        /// </summary>
-        public string MaterialCollectionStatus { get; set; }
-
-        /// <summary>
-        /// 预装进度（百分比）
-        /// </summary>
-        public decimal PreAssemblyProgress { get; set; }
-
-        /// <summary>
-        /// 预装状态描述
-        /// </summary>
-        public string PreAssemblyStatus { get; set; }
-
-        /// <summary>
-        /// 部件装配进度（百分比）
-        /// </summary>
-        public decimal PartAssemblyProgress { get; set; }
-
-        /// <summary>
-        /// 部件装配状态描述
-        /// </summary>
-        public string PartAssemblyStatus { get; set; }
-
-        /// <summary>
-        /// 强压泄漏进度（百分比）
-        /// </summary>
-        public decimal PressureTestProgress { get; set; }
-
-        /// <summary>
-        /// 强压泄漏状态描述
-        /// </summary>
-        public string PressureTestStatus { get; set; }
-
-        /// <summary>
-        /// 附件安装进度（百分比）
-        /// </summary>
-        public decimal AccessoryInstallProgress { get; set; }
-
-        /// <summary>
-        /// 附件安装状态描述
-        /// </summary>
-        public string AccessoryInstallStatus { get; set; }
-
-        /// <summary>
-        /// 终检进度（百分比）
-        /// </summary>
-        public decimal FinalInspectionProgress { get; set; }
-
-        /// <summary>
-        /// 终检状态描述
-        /// </summary>
-        public string FinalInspectionStatus { get; set; }
-
-        /// <summary>
-        /// 油漆进度（百分比）
-        /// </summary>
-        public decimal PaintingProgress { get; set; }
-
-        /// <summary>
-        /// 油漆状态描述
-        /// </summary>
-        public string PaintingStatus { get; set; }
-
-        /// <summary>
-        /// 装箱进度（百分比）
-        /// </summary>
-        public decimal PackingProgress { get; set; }
-
-        /// <summary>
-        /// 装箱状态描述
-        /// </summary>
-        public string PackingStatus { get; set; }
-
-        /// <summary>
-        /// 装箱检验进度（百分比）
-        /// </summary>
-        public decimal PackingInspectionProgress { get; set; }
-
-        /// <summary>
-        /// 装箱检验状态描述
-        /// </summary>
-        public string PackingInspectionStatus { get; set; }
-
-        /// <summary>
-        /// 装配完工进度（百分比）
-        /// </summary>
-        public decimal AssemblyCompleteProgress { get; set; }
-
-        /// <summary>
-        /// 装配完工状态描述
-        /// </summary>
-        public string AssemblyCompleteStatus { get; set; }
-
-        /// <summary>
-        /// 出库进度（百分比）
-        /// </summary>
-        public decimal OutboundProgress { get; set; }
-
-        /// <summary>
-        /// 出库状态描述
-        /// </summary>
-        public string OutboundStatus { get; set; }
+        public List<ProgressNode> ProgressNodes { get; set; } = new List<ProgressNode>();
     }
 
     /// <summary>
