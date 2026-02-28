@@ -403,6 +403,16 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
             {
                 return nodes;
             }
+            //0. BOM创建进度节点
+            var bomQty = data.FISBOMQTY ?? 0;
+            var bomCreatePercent = Math.Round((bomQty / totalQty) * 100, 0);
+            nodes.Add(new ProgressNode
+            {
+                Name = GetProgressStatus(bomCreatePercent, "BOM创建"),
+                Percent = bomCreatePercent,
+                Key = "BOMStatus",
+                Children = new List<ProgressNode>()
+            });
 
             // 1. 计划确认节点
             var planConfirmQty = data.FJHQRSL ?? 0;
