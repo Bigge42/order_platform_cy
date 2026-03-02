@@ -96,6 +96,13 @@
 
 	<!-- 流程图演示 -->
 	<FlowProgress :steps="steps" :currentKey="currentKey" />
+	<uni-popup ref="nodeDetailRef" type="center" border-radius="10px" background-color="rgb(255,255,255)"
+		:title="nodeName">
+		<view class="nodeDetail">
+			<text class="nodeName">{{nodeName}}</text>
+			<FlowProgress :steps="childrenSteps" :currentKey="childrenKey" />
+		</view>
+	</uni-popup>
 </template>
 <script setup>
 	import options from "./OCP_SOProgressOptions.js";
@@ -114,9 +121,15 @@
 	} from "vue";
 	import FlowProgress from '@/comp/flow/FlowProgress.vue'
 
+	const nodeName = ref("");
+	const showNodeDetail = (node) => {
+		childrenSteps.value = node.Children || [];
+		nodeName.value = node.Name;
+		nodeDetailRef.value.open('center')
+	}
 	//发起请求proxy.http.get/post
 	//消息提示proxy.$toast()
-
+	const nodeDetailRef = ref()
 	const props = defineProps({
 		BillNo: ''
 	})
@@ -209,83 +222,86 @@
 	// 	})
 
 	// 初始化流程步骤（key直接使用接口字段名）
-	const steps = ref([{
-			name: '',
-			percent: 0,
-			key: 'BOMStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PlanConfirmStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'MaterialPrepStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'ProductionPushStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'MaterialCollectionStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PreAssemblyStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PartAssemblyStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PressureTestStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'AccessoryInstallStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'FinalInspectionStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PaintingStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PackingStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'PackingInspectionStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'AssemblyCompleteStatus'
-		},
-		{
-			name: '',
-			percent: 0,
-			key: 'OutboundStatus'
-		},
+	const steps = ref([
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'BOMStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PlanConfirmStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'MaterialPrepStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'ProductionPushStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'MaterialCollectionStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PreAssemblyStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PartAssemblyStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PressureTestStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'AccessoryInstallStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'FinalInspectionStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PaintingStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PackingStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'PackingInspectionStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'AssemblyCompleteStatus'
+		// },
+		// {
+		// 	name: '',
+		// 	percent: 0,
+		// 	key: 'OutboundStatus'
+		// },
 	])
 	const currentKey = ref('')
+	const childrenSteps = ref([]);
+	const childrenKey = ref('');
 
 	// 状态信息
 	const shippingStatus = ref('') // 发货状态
@@ -351,7 +367,7 @@
 		var year = date.getFullYear();
 		var month = (date.getMonth() + 1).toString().padStart(2, '0'); // 月份是从0开始的
 		var day = date.getDate().toString().padStart(2, '0');
-		return  year + '-' + month + '-' + day;
+		return year + '-' + month + '-' + day;
 	}
 
 	// 更新流程进度的方法（直接使用接口字段名）
@@ -359,18 +375,23 @@
 		if (!data) return;
 
 		// 更新步骤数据
-		steps.value.forEach(step => {
-			// 直接使用key作为状态字段名，name已包含百分比
-			step.name = data[step.key] || '';
-			step.percent = data[step.key.replace('Status', 'Progress')] || 0;
-		});
+		// steps.value.forEach(step => {
+		// 	// 直接使用key作为状态字段名，name已包含百分比
+		//	step.name = data[step.key] || '';
+		//	step.percent = data[step.key.replace('Status', 'Progress')] || 0;
+		// });
+		steps.value = data.ProgressNodes;
 
 		// 更新状态信息
 		shippingStatus.value = data.ShippingStatus || '';
 		overdueStatus.value = data.OverdueStatus || '';
 	}
+	defineExpose({
+		showNodeDetail
+	})
 </script>
-<style lang="less">
+
+<style lang="scss" scoped>
 	.sop-process-detail-table {
 		height: 70vh !important;
 
@@ -418,5 +439,16 @@
 	.sale-detail-head-inner {
 		margin: 20rpx;
 		background-color: #fff;
+	}
+
+	.nodeDetail {
+		width: calc(90vw);
+		height: 100%;
+	}
+
+	.nodeName {
+		font-weight: bold;
+		padding-left: 20rpx;
+		margin-top: 20rpx;
 	}
 </style>
