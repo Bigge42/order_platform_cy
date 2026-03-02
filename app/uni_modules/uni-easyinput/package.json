@@ -1,19 +1,20 @@
 {
-  "id": "uni-icons",
-  "displayName": "uni-icons 图标",
-  "version": "2.0.12",
-  "description": "图标组件，用于展示移动端常见的图标，可自定义颜色、大小。",
+  "id": "uni-easyinput",
+  "displayName": "uni-easyinput 增强输入框",
+  "version": "1.1.22",
+  "description": "Easyinput 组件是对原生input组件的增强",
   "keywords": [
     "uni-ui",
     "uniui",
-    "icon",
-    "图标"
+    "input",
+    "uni-easyinput",
+    "输入框"
 ],
   "repository": "https://github.com/dcloudio/uni-ui",
   "engines": {
-    "HBuilderX": "^3.2.14",
-    "uni-app": "^4.08",
-    "uni-app-x": "^4.61"
+    "HBuilderX": "",
+    "uni-app": "^4.07",
+    "uni-app-x": ""
   },
   "directories": {
     "example": "../../temps/example_temps"
@@ -43,7 +44,8 @@
   },
   "uni_modules": {
     "dependencies": [
-      "uni-scss"
+      "uni-scss",
+      "uni-icons"
     ],
     "encrypt": [],
     "platforms": {
@@ -65,10 +67,7 @@
           "app": {
             "vue": "√",
             "nvue": "-",
-            "android": {
-                "extVersion": "",
-                "minVersion": "29"
-            },
+            "android": "√",
             "ios": "√",
             "harmony": "√"
           },
@@ -77,32 +76,29 @@
             "alipay": "√",
             "toutiao": "√",
             "baidu": "√",
-            "kuaishou": "-",
-            "jd": "-",
-            "harmony": "-",
+            "kuaishou": "√",
+            "jd": "√",
+            "harmony": "√",
             "qq": "√",
             "lark": "-"
           },
           "quickapp": {
-            "huawei": "√",
-            "union": "√"
+            "huawei": "-",
+            "union": "-"
           }
         },
         "uni-app-x": {
           "web": {
-            "safari": "√",
-            "chrome": "√"
+            "safari": "-",
+            "chrome": "-"
           },
           "app": {
-            "android": {
-                "extVersion": "",
-                "minVersion": "29"
-            },
-            "ios": "√",
-            "harmony": "√"
+            "android": "-",
+            "ios": "-",
+            "harmony": "-"
           },
           "mp": {
-            "weixin": "√"
+            "weixin": "-"
           }
         }
       }
