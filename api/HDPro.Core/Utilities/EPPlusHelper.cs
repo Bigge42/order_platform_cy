@@ -523,10 +523,13 @@ namespace HDPro.Core.Utilities
                             else
                             {
                                 var currentOption = cellOptions.Where(x => x.ColumnName == propertyInfo[j].Name).FirstOrDefault();
-                                var format = string.Equals(currentOption?.EditType, "date", StringComparison.OrdinalIgnoreCase)
-                                    ? "yyyy-MM-dd"
-                                    : "yyyy-MM-dd HH:mm:sss";
-                                cellValue = ((DateTime)value).ToString(format);
+                                var dateValue = (DateTime)value;
+                                var isDateOnly = string.Equals(currentOption?.EditType, "date", StringComparison.OrdinalIgnoreCase)
+                                    || dateValue.TimeOfDay == TimeSpan.Zero;
+                                var format = isDateOnly
+                                    ? "yyyy/MM/dd"
+                                    : "yyyy-MM-dd HH:mm:ss";
+                                cellValue = dateValue.ToString(format);
                             }
                         }
                         else
