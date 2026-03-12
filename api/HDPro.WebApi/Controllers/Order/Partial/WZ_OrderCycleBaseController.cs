@@ -9,11 +9,33 @@ using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using HDPro.Core.Filters;
+using HDPro.CY.Order.Services;
 
 namespace HDPro.CY.Order.Controllers
 {
     public partial class WZ_OrderCycleBaseController
     {
+        /// <summary>
+        /// 刷新ERP订单跟踪数据（ApiTask）
+        /// </summary>
+        /// <returns>刷新结果</returns>
+        [ApiTask]
+        [HttpGet, HttpPost, Route("refresh-order-tracking")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshOrderTrackingData()
+        {
+            try
+            {
+                var result = await ERP_OrderTrackingService.Instance.SyncERPOrderTrackingAsync();
+                return JsonNormal(result);
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"刷新订单数据失败：{ex.Message}"));
+            }
+        }
+
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
