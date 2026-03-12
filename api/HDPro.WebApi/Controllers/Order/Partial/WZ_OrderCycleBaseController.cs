@@ -72,7 +72,7 @@ namespace HDPro.CY.Order.Controllers
                 var log = new Sys_QuartzLog
                 {
                     LogId = Guid.NewGuid(),
-                    TaskName = "WZ订单看板-刷新订单数据(ApiTask)",
+                    TaskName = "排产看板-刷新ERP数据(ApiTask)",
                     Id = null,
                     StratDate = startTime,
                     EndDate = endTime,
