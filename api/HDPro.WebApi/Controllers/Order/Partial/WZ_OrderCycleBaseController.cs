@@ -5,15 +5,75 @@
  */
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
 using Microsoft.AspNetCore.Authorization;
+using HDPro.Core.Filters;
+using HDPro.CY.Order.Services;
+using HDPro.Core.EFDbContext;
+using HDPro.Entity.DomainModels;
 
 namespace HDPro.CY.Order.Controllers
 {
     public partial class WZ_OrderCycleBaseController
     {
+        /// <summary>
+        /// 刷新ERP订单跟踪数据（ApiTask）
+        /// </summary>
+        /// <returns>刷新结果</returns>
+        [ApiTask]
+        [HttpGet, HttpPost, Route("refresh-order-tracking")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshOrderTrackingData()
+        {
+            var startTime = DateTime.Now;
+            var stopwatch = Stopwatch.StartNew();
+            WebResponseContent result;
+
+            try
+            {
+                result = await ERP_OrderTrackingService.Instance.SyncERPOrderTrackingAsync();
+            }
+            catch (Exception ex)
+            {
+                result = new WebResponseContent().Error($"刷新订单数据失败：{ex.Message}");
+            }
+
+            stopwatch.Stop();
+            await WriteApiTaskQuartzLogAsync(result, startTime, DateTime.Now, stopwatch.Elapsed);
+            return JsonNormal(result);
+        }
+
+        private static async Task WriteApiTaskQuartzLogAsync(WebResponseContent result, DateTime startTime, DateTime endTime, TimeSpan elapsed)
+        {
+            try
+            {
+                using var dbContext = new SysDbContext();
+                var log = new Sys_QuartzLog
+                {
+                    LogId = Guid.NewGuid(),
+                    TaskName = "WZ订单看板-刷新订单数据(ApiTask)",
+                    Id = null,
+                    StratDate = startTime,
+                    EndDate = endTime,
+                    CreateDate = startTime,
+                    ElapsedTime = Math.Max(0, (int)Math.Ceiling(elapsed.TotalSeconds)),
+                    Result = result?.Status == true ? 1 : 0,
+                    ResponseContent = result?.Message,
+                    ErrorMsg = result?.Status == true ? null : result?.Message
+                };
+
+                dbContext.Set<Sys_QuartzLog>().Add(log);
+                await dbContext.SaveChangesAsync();
+            }
+            catch
+            {
+                // 记录日志失败不影响主流程返回
+            }
+        }
+
         /// <summary>
         /// 从订单跟踪表同步数据到订单周期基础表
         /// </summary>
