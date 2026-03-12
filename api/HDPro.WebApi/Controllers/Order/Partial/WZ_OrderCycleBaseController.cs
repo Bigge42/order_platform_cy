@@ -20,13 +20,31 @@ namespace HDPro.CY.Order.Controllers
     public partial class WZ_OrderCycleBaseController
     {
         /// <summary>
-        /// 刷新ERP订单跟踪数据（ApiTask）
+        /// 刷新ERP订单跟踪数据（前端调用）
         /// </summary>
         /// <returns>刷新结果</returns>
-        [ApiTask]
         [HttpGet, HttpPost, Route("refresh-order-tracking")]
         [AllowAnonymous]
         public async Task<IActionResult> RefreshOrderTrackingData()
+        {
+            var result = await ExecuteRefreshOrderTrackingAsync();
+            return JsonNormal(result);
+        }
+
+        /// <summary>
+        /// 刷新ERP订单跟踪数据（ApiTask调用）
+        /// </summary>
+        /// <returns>刷新结果</returns>
+        [ApiTask]
+        [HttpGet, HttpPost, Route("refresh-order-tracking-task")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshOrderTrackingDataTask()
+        {
+            var result = await ExecuteRefreshOrderTrackingAsync();
+            return JsonNormal(result);
+        }
+
+        private static async Task<WebResponseContent> ExecuteRefreshOrderTrackingAsync()
         {
             var startTime = DateTime.Now;
             var stopwatch = Stopwatch.StartNew();
@@ -43,7 +61,7 @@ namespace HDPro.CY.Order.Controllers
 
             stopwatch.Stop();
             await WriteApiTaskQuartzLogAsync(result, startTime, DateTime.Now, stopwatch.Elapsed);
-            return JsonNormal(result);
+            return result;
         }
 
         private static async Task WriteApiTaskQuartzLogAsync(WebResponseContent result, DateTime startTime, DateTime endTime, TimeSpan elapsed)
