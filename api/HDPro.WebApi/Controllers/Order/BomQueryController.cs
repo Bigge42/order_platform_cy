@@ -323,11 +323,11 @@ namespace HDPro.CY.Order.Controllers
                 var filePath = Path.Combine(cacheDir, fileName);
                 var relativePath = $"cache/drawings/{fileName}";
 
-                // 检查缓存是否存在且未过期（1小时）
+                // 检查缓存是否存在且未过期（1分钟）
                 if (System.IO.File.Exists(filePath))
                 {
                     var fileInfo = new FileInfo(filePath);
-                    if (DateTime.Now - fileInfo.LastWriteTime < TimeSpan.FromHours(1))
+                    if (DateTime.Now - fileInfo.LastWriteTime < TimeSpan.FromMinutes(1))
                     {
                         _logger.LogInformation("使用缓存的PDF文件，物料编码: {MaterialCode}", materialCode);
                         return relativePath;
