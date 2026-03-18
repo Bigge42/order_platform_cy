@@ -1,0 +1,57 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# UniApp 项目开发规范（Haodee.CY.Order.OCP 专用）
+
+## 组件使用优先级
+1. **项目自定义组件（vol-系列）**：如 vol-table、vol-form、vol-button 等，优先复用，保持 UI/交互一致性。
+2. **uview-plus 组件库**：多端兼容，自动按需引入，常用基础UI组件优先选用。
+3. **uni_modules 生态组件**：如 uni-popup、uni-icons、lime-echart 等，按需引入。
+4. **原生/自定义实现**：仅在无可复用组件时使用。
+
+## 工具函数与 API 调用
+- **工具函数**：统一使用 `@/util/common.js` 提供的日期、判空、图片处理等工具方法。
+- **API 调用**：统一通过 `@/util/http.js` 封装的 get/post/request 方法，自动处理 token、loading、错误提示等。
+- **禁止直接使用 uni.request**，必须走 http.js 封装。
+
+## 状态管理
+- 采用 Vuex，store 目录集中管理。
+- 获取/设置用户信息、token 等全局状态，统一通过 store 的 getters/mutations。
+
+## 页面与组件开发
+- 页面文件统一放在 `pages/` 下，按业务模块分子目录。
+- 组件统一放在 `components/` 下，vol-系列为主。
+- 页面/组件命名采用小写+中划线或驼峰，保持一致。
+- 页面跳转、Tab 切换等统一用 uni-app 路由API（如 uni.navigateTo、uni.switchTab），如有项目封装方法优先用封装。
+
+## 样式与主题
+- 统一使用 SCSS/Less 变量，支持多端适配。
+- 主题色、字体、间距等通过全局变量管理。
+- 禁止在组件内硬编码颜色、字体等样式，必须引用变量。
+
+## 目录结构规范
+```
+app/
+├── components/      # 自定义组件（vol-系列为主）
+├── pages/           # 页面，按业务模块分子目录
+├── store/           # Vuex 状态管理
+├── util/            # 工具函数与API封装
+├── uni_modules/     # uview-plus及uni生态组件
+├── static/          # 静态资源
+├── styles/          # 全局样式、主题变量
+└── ...
+```
+
+## 代码风格与最佳实践
+- 使用 ES6+ 语法，保持代码简洁、可读。
+- 适当添加注释，解释复杂逻辑。
+- 组件/页面保持单一职责，便于维护和复用。
+- 禁止重复造轮子，开发前先查阅已有组件和工具。
+- 代码提交前自查，确保无明显 bug 和语法错误。
+
+## 其他说明
+- 如需扩展新功能，优先考虑与现有组件/工具的兼容与复用。
+- 不确定是否已有封装时，先查阅目录或询问负责人。
+- 保持与现有代码风格、目录结构一致。

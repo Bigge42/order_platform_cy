@@ -436,129 +436,149 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking
                 Children = new List<ProgressNode>()
             });
 
-            // 3. 推送生产节点（包含子节点）
+            // 3. 计算"生产中"各子节点的百分比
             var productionQty = data.FKGSL ?? 0;
             var productionPercent = Math.Round((productionQty / totalQty) * 100, 0);
-            var productionNode = new ProgressNode
-            {
-                Name = GetProgressStatus(productionPercent, "推送生产"),
-                Percent = productionPercent,
-                Key = "ProductionPushStatus",
-                Children = new List<ProgressNode>()
-            };
 
-            // 推送生产的子节点
-            // 3.1 领料
             var materialCollectionQty = data.LLQTY ?? 0;
             var materialCollectionPercent = Math.Round((materialCollectionQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(materialCollectionPercent, "领料"),
-                Percent = materialCollectionPercent,
-                Key = "MaterialCollectionStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.2 预装
             var preAssemblyQty = data.YZQTY ?? 0;
             var preAssemblyPercent = Math.Round((preAssemblyQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(preAssemblyPercent, "预装"),
-                Percent = preAssemblyPercent,
-                Key = "PreAssemblyStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.3 部件装配
             var partAssemblyQty = data.FTBJJZJJGZPQTY ?? 0;
             var partAssemblyPercent = Math.Round((partAssemblyQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(partAssemblyPercent, "部件装配"),
-                Percent = partAssemblyPercent,
-                Key = "PartAssemblyStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.4 强压泄漏
             var pressureTestQty = data.QYXLSYQTY ?? 0;
             var pressureTestPercent = Math.Round((pressureTestQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(pressureTestPercent, "强压泄漏"),
-                Percent = pressureTestPercent,
-                Key = "PressureTestStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.5 附件安装
             var accessoryInstallQty = data.FJAZJTSQTY ?? 0;
             var accessoryInstallPercent = Math.Round((accessoryInstallQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(accessoryInstallPercent, "附件安装"),
-                Percent = accessoryInstallPercent,
-                Key = "AccessoryInstallStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.6 终检
             var finalInspectionQty = data.ZJQTY ?? 0;
             var finalInspectionPercent = Math.Round((finalInspectionQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(finalInspectionPercent, "终检"),
-                Percent = finalInspectionPercent,
-                Key = "FinalInspectionStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.7 油漆
             var paintingQty = data.YQQTY ?? 0;
             var paintingPercent = Math.Round((paintingQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(paintingPercent, "油漆"),
-                Percent = paintingPercent,
-                Key = "PaintingStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.8 装箱
             var packingQty = data.ZXQTY ?? 0;
             var packingPercent = Math.Round((packingQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(packingPercent, "装箱"),
-                Percent = packingPercent,
-                Key = "PackingStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.9 装箱检验
             var packingInspectionQty = data.ZXJYQTY ?? 0;
             var packingInspectionPercent = Math.Round((packingInspectionQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(packingInspectionPercent, "装箱检验"),
-                Percent = packingInspectionPercent,
-                Key = "PackingInspectionStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            // 3.10 装配完工
             var assemblyCompleteQty = data.ZPWGQTY ?? 0;
             var assemblyCompletePercent = Math.Round((assemblyCompleteQty / totalQty) * 100, 0);
-            productionNode.Children.Add(new ProgressNode
-            {
-                Name = GetProgressStatus(assemblyCompletePercent, "装配完工"),
-                Percent = assemblyCompletePercent,
-                Key = "AssemblyCompleteStatus",
-                Children = new List<ProgressNode>()
-            });
 
-            nodes.Add(productionNode);
+            // 生产中父节点：百分比 = 所有子节点百分比之和 / 子节点数量（11个）
+            var inProductionChildPercents = new[]
+            {
+                productionPercent, materialCollectionPercent, preAssemblyPercent,
+                partAssemblyPercent, pressureTestPercent, accessoryInstallPercent,
+                finalInspectionPercent, paintingPercent, packingPercent,
+                packingInspectionPercent, assemblyCompletePercent
+            };
+            var inProductionPercent = Math.Round(inProductionChildPercents.Average(), 0);
+
+            var inProductionNode = new ProgressNode
+            {
+                Name = GetProgressStatus(inProductionPercent, "生产中"),
+                Percent = inProductionPercent,
+                Key = "InProductionStatus",
+                Children = new List<ProgressNode>
+                {
+                    // 3.1 推送生产（第1个子节点）
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(productionPercent, "推送生产"),
+                        Percent = productionPercent,
+                        Key = "ProductionPushStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.2 领料
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(materialCollectionPercent, "领料"),
+                        Percent = materialCollectionPercent,
+                        Key = "MaterialCollectionStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.3 预装
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(preAssemblyPercent, "预装"),
+                        Percent = preAssemblyPercent,
+                        Key = "PreAssemblyStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.4 部件装配
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(partAssemblyPercent, "部件装配"),
+                        Percent = partAssemblyPercent,
+                        Key = "PartAssemblyStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.5 强压泄漏
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(pressureTestPercent, "强压泄漏"),
+                        Percent = pressureTestPercent,
+                        Key = "PressureTestStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.6 附件安装
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(accessoryInstallPercent, "附件安装"),
+                        Percent = accessoryInstallPercent,
+                        Key = "AccessoryInstallStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.7 终检
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(finalInspectionPercent, "终检"),
+                        Percent = finalInspectionPercent,
+                        Key = "FinalInspectionStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.8 油漆
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(paintingPercent, "油漆"),
+                        Percent = paintingPercent,
+                        Key = "PaintingStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.9 装箱
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(packingPercent, "装箱"),
+                        Percent = packingPercent,
+                        Key = "PackingStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.10 装箱检验
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(packingInspectionPercent, "装箱检验"),
+                        Percent = packingInspectionPercent,
+                        Key = "PackingInspectionStatus",
+                        Children = new List<ProgressNode>()
+                    },
+                    // 3.11 装配完工
+                    new ProgressNode
+                    {
+                        Name = GetProgressStatus(assemblyCompletePercent, "装配完工"),
+                        Percent = assemblyCompletePercent,
+                        Key = "AssemblyCompleteStatus",
+                        Children = new List<ProgressNode>()
+                    }
+                }
+            };
+
+            nodes.Add(inProductionNode);
 
             //4.出库节点
             var outStockQty = data.FCKREALQTY ?? 0;

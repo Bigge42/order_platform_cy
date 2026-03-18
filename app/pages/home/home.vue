@@ -45,7 +45,7 @@
 	} from 'vue';
 
 	const noticeText = ref('');
-	noticeText.value = 'xxx'
+	noticeText.value = '欢迎使用控制阀订单智能管理系统移动端！'
 
 	const fn = ref([{
 			name: "菜单功能",

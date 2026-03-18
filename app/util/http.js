@@ -3,7 +3,7 @@ import store from '../store/index.js'
 var ipAddress;
 if (process.env.NODE_ENV === 'development') {
 	//本地开发改为这个地址
-	ipAddress = "http://localhost:9100/"
+	ipAddress = "http://localhost:9200/"
 } else {
 	//发布后的地址
 	//ipAddress = "http://10.11.0.18:9200/" //内网地址
