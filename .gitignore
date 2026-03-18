@@ -362,3 +362,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 error/*
+/app/unpackage/dist
+/api/HDPro.WebApi/quartz
+/app/unpackage
+/app/unpackage
