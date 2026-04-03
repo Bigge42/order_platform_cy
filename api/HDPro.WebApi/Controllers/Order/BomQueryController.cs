@@ -6,15 +6,21 @@ using HDPro.Entity.SystemModels;
 using HDPro.Core.Utilities;
 using HDPro.Core.Configuration;
 using HDPro.CY.Order.Services.K3Cloud;
+using HDPro.CY.Order.Services.K3Cloud.Models;
 using HDPro.CY.Order.IRepositories;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 using HDPro.Core.Controllers.Basic;
 using HDPro.Core.ManageUser;
+using HDPro.Entity.DomainModels;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -33,6 +39,13 @@ namespace HDPro.CY.Order.Controllers
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IWebHostEnvironment _webHostEnvironment;
         private readonly ILogger<BomQueryController> _logger;
+        private static readonly HashSet<string> ExportAuthorizedUsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "cyadmin",
+            "002166",
+            "013675",
+            "004356"
+        };
 
         public BomQueryController(
             IK3CloudService k3CloudService,
@@ -173,6 +186,266 @@ namespace HDPro.CY.Order.Controllers
         /// </summary>
         /// <param name="materialCode">物料编码</param>
         /// <returns>图纸预览URL</returns>
+        #region 物料信息导出
+
+        [HttpPost("ExportCurrentMaterialInfo")]
+        public async Task<IActionResult> ExportCurrentMaterialInfo([FromBody] MaterialExportRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.MaterialCode))
+                {
+                    return Json(new WebResponseContent().Error("物料编码不能为空"));
+                }
+
+                if (!HasExportPermission())
+                {
+                    return BuildExportPermissionDeniedResult("导出当前物料信息", request.MaterialCode);
+                }
+
+                var materialCode = request.MaterialCode.Trim();
+                var material = await _materialRepository.FindAsyncFirst(m => m.MaterialCode == materialCode);
+                if (material == null)
+                {
+                    return Json(new WebResponseContent().Error($"未找到物料信息：{materialCode}"));
+                }
+
+                var rows = await BuildExportRowsAsync(new List<BomExpandItemDto> { CreateRootBomItem(material) });
+                return BuildMaterialExportFile(rows, $"{materialCode}_物料信息_{DateTime.Now:yyyyMMddHHmmss}.xlsx");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "导出当前物料信息失败，物料编码: {MaterialCode}", request?.MaterialCode);
+                return Json(new WebResponseContent().Error($"导出当前物料信息失败：{ex.Message}"));
+            }
+        }
+
+        [HttpPost("ExportBomMaterialInfo")]
+        public async Task<IActionResult> ExportBomMaterialInfo([FromBody] BomMaterialExportRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.MaterialNumber))
+                {
+                    return Json(new WebResponseContent().Error("查询物料编码不能为空"));
+                }
+
+                if (!HasExportPermission())
+                {
+                    return BuildExportPermissionDeniedResult("导出BOM全部物料信息", request.MaterialNumber);
+                }
+
+                var materialNumber = request.MaterialNumber.Trim();
+                var bomItems = await GetBomItemsForExportAsync(materialNumber);
+                if (bomItems.Count == 0)
+                {
+                    return Json(new WebResponseContent().Error($"未找到可导出的BOM物料：{materialNumber}"));
+                }
+
+                var rows = await BuildExportRowsAsync(bomItems);
+                return BuildMaterialExportFile(rows, $"{materialNumber}_BOM物料信息_{DateTime.Now:yyyyMMddHHmmss}.xlsx");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "导出BOM全部物料信息失败，查询物料编码: {MaterialNumber}", request?.MaterialNumber);
+                return Json(new WebResponseContent().Error($"导出BOM全部物料信息失败：{ex.Message}"));
+            }
+        }
+
+        private async Task<List<BomExpandItemDto>> GetBomItemsForExportAsync(string materialNumber)
+        {
+            var result = await _k3CloudService.ExpandBomAsync(materialNumber);
+            if (result.IsSuccess && result.Data != null && result.Data.Count > 0)
+            {
+                return result.Data;
+            }
+
+            var material = await _materialRepository.FindAsyncFirst(m => m.MaterialCode == materialNumber);
+            if (material == null)
+            {
+                return new List<BomExpandItemDto>();
+            }
+
+            return new List<BomExpandItemDto> { CreateRootBomItem(material) };
+        }
+
+        private bool HasExportPermission()
+        {
+            var currentUserName = UserContext.Current?.UserName?.Trim();
+            return !string.IsNullOrWhiteSpace(currentUserName) && ExportAuthorizedUsers.Contains(currentUserName);
+        }
+
+        private IActionResult BuildExportPermissionDeniedResult(string actionName, string materialCode)
+        {
+            var currentUserName = UserContext.Current?.UserName?.Trim() ?? string.Empty;
+            _logger.LogWarning("用户 {UserName} 尝试{ActionName}但无权限，目标物料: {MaterialCode}",
+                currentUserName, actionName, materialCode ?? string.Empty);
+
+            return Json(new WebResponseContent().Error("当前账号无导出权限"));
+        }
+
+        private static BomExpandItemDto CreateRootBomItem(OCP_Material material)
+        {
+            return new BomExpandItemDto
+            {
+                BomLevel = 0,
+                Number = material.MaterialCode,
+                Name = material.MaterialName,
+                Numerator = 1,
+                Denominator = 1,
+                Specification = material.SpecModel,
+                ParentEntryId = string.Empty,
+                EntryId = "1",
+                UnitNumber = material.BasicUnit,
+                UnitName = material.BasicUnit
+            };
+        }
+
+        private async Task<List<MaterialExportRow>> BuildExportRowsAsync(List<BomExpandItemDto> bomItems)
+        {
+            var validBomItems = bomItems?
+                .Where(item => !string.IsNullOrWhiteSpace(item?.Number))
+                .ToList() ?? new List<BomExpandItemDto>();
+
+            if (validBomItems.Count == 0)
+            {
+                return new List<MaterialExportRow>();
+            }
+
+            var materialCodes = validBomItems
+                .Select(item => item.Number.Trim())
+                .Distinct()
+                .ToList();
+
+            var materials = await _materialRepository.FindAsync(m => materialCodes.Contains(m.MaterialCode));
+            var materialMap = materials
+                .GroupBy(m => m.MaterialCode)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            var bomMap = validBomItems
+                .Where(item => !string.IsNullOrWhiteSpace(item.EntryId))
+                .GroupBy(item => item.EntryId)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            return validBomItems.Select(item =>
+            {
+                materialMap.TryGetValue(item.Number.Trim(), out var material);
+                var parentMaterialCode = string.Empty;
+                if (!string.IsNullOrWhiteSpace(item.ParentEntryId) && bomMap.TryGetValue(item.ParentEntryId, out var parentItem))
+                {
+                    parentMaterialCode = parentItem.Number;
+                }
+
+                return new MaterialExportRow
+                {
+                    BomLevel = item.BomLevel,
+                    ParentMaterialCode = parentMaterialCode,
+                    MaterialCode = item.Number,
+                    BomMaterialName = item.Name,
+                    Specification = material?.SpecModel ?? item.Specification,
+                    Numerator = item.Numerator,
+                    Denominator = item.Denominator,
+                    UnitNumber = item.UnitNumber,
+                    UnitName = item.UnitName,
+                    MaterialName = material?.MaterialName ?? item.Name,
+                    NominalDiameter = material?.NominalDiameter,
+                    NominalPressure = material?.NominalPressure,
+                    Cv = material?.CV,
+                    FlangeStandard = material?.FlangeStandard,
+                    FlangeSealType = material?.FlangeSealType,
+                    BodyMaterial = material?.BodyMaterial,
+                    TrimMaterial = material?.TrimMaterial,
+                    FlowCharacteristic = material?.FlowCharacteristic,
+                    PackingForm = material?.PackingForm,
+                    FlangeConnection = material?.FlangeConnection,
+                    ActuatorModel = material?.ActuatorModel,
+                    ActuatorStroke = material?.ActuatorStroke,
+                    DrawingNo = material?.DrawingNo,
+                    Material = material?.Material,
+                    TcReleaser = material?.TCReleaser
+                };
+            }).ToList();
+        }
+
+        private IActionResult BuildMaterialExportFile(List<MaterialExportRow> rows, string fileName)
+        {
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("物料信息");
+
+            var columns = new List<MaterialExportColumn>
+            {
+                new("BOM层级", row => row.BomLevel, 12),
+                new("父级物料编码", row => row.ParentMaterialCode, 20),
+                new("物料编码", row => row.MaterialCode, 20),
+                new("BOM名称", row => row.BomMaterialName, 28),
+                new("规格型号", row => row.Specification, 24),
+                new("分子", row => row.Numerator, 10),
+                new("分母", row => row.Denominator, 10),
+                new("单位编码", row => row.UnitNumber, 12),
+                new("单位名称", row => row.UnitName, 12),
+                new("物料名称", row => row.MaterialName, 28),
+                new("公称通径", row => row.NominalDiameter, 16),
+                new("公称压力", row => row.NominalPressure, 16),
+                new("CV", row => row.Cv, 12),
+                new("法兰标准", row => row.FlangeStandard, 20),
+                new("法兰密封面形式", row => row.FlangeSealType, 22),
+                new("阀体材质", row => row.BodyMaterial, 18),
+                new("阀内件材质", row => row.TrimMaterial, 18),
+                new("流量特性", row => row.FlowCharacteristic, 18),
+                new("填料形式", row => row.PackingForm, 18),
+                new("法兰连接方式", row => row.FlangeConnection, 20),
+                new("执行机构型号", row => row.ActuatorModel, 20),
+                new("执行机构行程", row => row.ActuatorStroke, 18),
+                new("图号", row => row.DrawingNo, 20),
+                new("材质", row => row.Material, 18),
+                new("TC发布人", row => row.TcReleaser, 18)
+            };
+
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+            {
+                var cell = worksheet.Cells[1, columnIndex + 1];
+                cell.Value = columns[columnIndex].Header;
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(64, 158, 255));
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                worksheet.Column(columnIndex + 1).Width = columns[columnIndex].Width;
+            }
+
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                {
+                    var cell = worksheet.Cells[rowIndex + 2, columnIndex + 1];
+                    cell.Value = columns[columnIndex].ValueSelector(rows[rowIndex]) ?? string.Empty;
+                    cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    cell.Style.WrapText = true;
+                }
+            }
+
+            using (var range = worksheet.Cells[1, 1, Math.Max(rows.Count + 1, 2), columns.Count])
+            {
+                range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            }
+
+            worksheet.Row(1).Height = 22;
+            worksheet.View.FreezePanes(2, 1);
+            worksheet.Cells[1, 1, Math.Max(rows.Count + 1, 2), columns.Count].AutoFilter = true;
+
+            var fileBytes = package.GetAsByteArray();
+            return File(
+                fileBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+
+        #endregion
+
         [HttpGet]
         [Route("GetDrawing")]
         public async Task<IActionResult> GetDrawing(string materialCode)
@@ -447,6 +720,59 @@ namespace HDPro.CY.Order.Controllers
         public string LastModified { get; set; }
         public string RequestUser { get; set; }
         public int? RequestUserId { get; set; }
+    }
+
+    public class MaterialExportRequest
+    {
+        public string? MaterialCode { get; set; }
+    }
+
+    public class BomMaterialExportRequest
+    {
+        public string? MaterialNumber { get; set; }
+    }
+
+    public class MaterialExportRow
+    {
+        public int BomLevel { get; set; }
+        public string? ParentMaterialCode { get; set; }
+        public string? MaterialCode { get; set; }
+        public string? BomMaterialName { get; set; }
+        public string? Specification { get; set; }
+        public decimal Numerator { get; set; }
+        public decimal Denominator { get; set; }
+        public string? UnitNumber { get; set; }
+        public string? UnitName { get; set; }
+        public string? MaterialName { get; set; }
+        public string? NominalDiameter { get; set; }
+        public string? NominalPressure { get; set; }
+        public string? Cv { get; set; }
+        public string? FlangeStandard { get; set; }
+        public string? FlangeSealType { get; set; }
+        public string? BodyMaterial { get; set; }
+        public string? TrimMaterial { get; set; }
+        public string? FlowCharacteristic { get; set; }
+        public string? PackingForm { get; set; }
+        public string? FlangeConnection { get; set; }
+        public string? ActuatorModel { get; set; }
+        public string? ActuatorStroke { get; set; }
+        public string? DrawingNo { get; set; }
+        public string? Material { get; set; }
+        public string? TcReleaser { get; set; }
+    }
+
+    public class MaterialExportColumn
+    {
+        public MaterialExportColumn(string header, Func<MaterialExportRow, object?> valueSelector, double width)
+        {
+            Header = header;
+            ValueSelector = valueSelector;
+            Width = width;
+        }
+
+        public string Header { get; }
+        public Func<MaterialExportRow, object?> ValueSelector { get; }
+        public double Width { get; }
     }
 
     #endregion
