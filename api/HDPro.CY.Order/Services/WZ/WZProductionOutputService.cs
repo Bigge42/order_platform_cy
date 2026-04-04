@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Text;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +36,8 @@ namespace HDPro.CY.Order.Services.WZ
         private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
         private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
+        private const int MaxEsbRetryCount = 3; // 单个时间片最大重试次数
+        private const int EsbRetryDelayMilliseconds = 1500; // 失败重试基础等待时长
 
         private readonly ServiceDbContext _db;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -94,6 +97,122 @@ namespace HDPro.CY.Order.Services.WZ
             return null;
         }
 
+        private static string BuildEsbPayload(DateTime startDate, DateTime endDate)
+        {
+            return JsonConvert.SerializeObject(new
+            {
+                FSTARTDATE = startDate.ToString("yyyy-MM-dd"),
+                FENDDATE = endDate.ToString("yyyy-MM-dd")
+            });
+        }
+
+        private static string TruncateForLog(string text, int maxLength = 300)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return text.Length <= maxLength ? text : $"{text.Substring(0, maxLength)}...";
+        }
+
+        private static List<EsbRow> ParseEsbRows(string json, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<List<EsbRow>>(json) ?? new List<EsbRow>();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"ESB 返回解析失败，时间段 {startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}，响应片段：{TruncateForLog(json)}",
+                    ex);
+            }
+        }
+
+        private async Task<List<EsbRow>> RequestEsbRowsWithRetryAsync(HttpClient client, DateTime startDate, DateTime endDate, CancellationToken ct)
+        {
+            var payloadJson = BuildEsbPayload(startDate, endDate);
+            Exception lastException = null;
+
+            for (var attempt = 1; attempt <= MaxEsbRetryCount; attempt++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Post, EsbUrl)
+                    {
+                        Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+                    };
+
+                    using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                    var body = await resp.Content.ReadAsStringAsync(ct);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        return ParseEsbRows(body, startDate, endDate);
+                    }
+
+                    var message = $"ESB 返回 {(int)resp.StatusCode}({resp.StatusCode})，时间段 {startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}，响应片段：{TruncateForLog(body)}";
+                    lastException = new HttpRequestException(message, null, resp.StatusCode);
+                    _logger.LogWarning("【WZ 刷新】第 {Attempt}/{MaxAttempt} 次请求失败：{Message}", attempt, MaxEsbRetryCount, message);
+                }
+                catch (Exception ex) when (!(ex is OperationCanceledException))
+                {
+                    lastException = ex;
+                    _logger.LogWarning(ex, "【WZ 刷新】第 {Attempt}/{MaxAttempt} 次请求异常，时间段 {S}~{E}",
+                        attempt, MaxEsbRetryCount, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+                }
+
+                if (attempt < MaxEsbRetryCount)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(EsbRetryDelayMilliseconds * attempt), ct);
+                }
+            }
+
+            throw lastException ?? new InvalidOperationException(
+                $"ESB 请求失败（未知异常），时间段 {startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}");
+        }
+
+        private async Task<List<EsbRow>> RequestEsbRowsAdaptiveAsync(HttpClient client, DateTime startDate, DateTime endDate, CancellationToken ct)
+        {
+            try
+            {
+                return await RequestEsbRowsWithRetryAsync(client, startDate, endDate, ct);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                var days = (endDate.Date - startDate.Date).Days + 1;
+                if (days <= 1)
+                {
+                    throw;
+                }
+
+                var leftEnd = startDate.Date.AddDays((days / 2) - 1);
+                if (leftEnd < startDate.Date || leftEnd >= endDate.Date)
+                {
+                    throw;
+                }
+
+                var rightStart = leftEnd.AddDays(1);
+
+                _logger.LogWarning(ex,
+                    "【WZ 刷新】时间段 {S}~{E} 请求失败，自动拆分为 {LS}~{LE} 与 {RS}~{RE} 后重试",
+                    startDate.ToString("yyyy-MM-dd"),
+                    endDate.ToString("yyyy-MM-dd"),
+                    startDate.ToString("yyyy-MM-dd"),
+                    leftEnd.ToString("yyyy-MM-dd"),
+                    rightStart.ToString("yyyy-MM-dd"),
+                    endDate.ToString("yyyy-MM-dd"));
+
+                var leftRows = await RequestEsbRowsAdaptiveAsync(client, startDate, leftEnd, ct);
+                var rightRows = await RequestEsbRowsAdaptiveAsync(client, rightStart, endDate, ct);
+
+                leftRows.AddRange(rightRows);
+                return leftRows;
+            }
+        }
+
         /// <summary>
         /// 刷新（全量重建）：按“修改日期窗口”从 ESB 分段拉取数据，按“排产日×阀体×产线”聚合，最后一次性清表并入库。
         /// 返回值：最终写入表中的“键行数”（即不同的 ProductionDate×ValveCategory×ProductionLine 的条目数）。
@@ -116,25 +235,7 @@ namespace HDPro.CY.Order.Services.WZ
                 foreach (var (S, E) in ChunkDates(startDate, endDate, ChunkDays))
                 {
                     ct.ThrowIfCancellationRequested();
-
-                    var payload = new
-                    {
-                        FSTARTDATE = S.ToString("yyyy-MM-dd"),
-                        FENDDATE = E.ToString("yyyy-MM-dd")
-                    };
-
-                    using var req = new HttpRequestMessage(HttpMethod.Post, EsbUrl)
-                    {
-                        Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json")
-                    };
-
-                    using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-                    resp.EnsureSuccessStatusCode();
-
-                    var json = await resp.Content.ReadAsStringAsync(ct);
-
-                    // ESB 直接返回数组；若为包裹结构（如 {data:[...]})，这里需加一层模型解析
-                    var rows = JsonConvert.DeserializeObject<List<EsbRow>>(json) ?? new List<EsbRow>();
+                    var rows = await RequestEsbRowsAdaptiveAsync(client, S, E, ct);
 
                     // —— 本段内先做一次分组（按键求和），再汇入全局桶
                     var aggregates = rows

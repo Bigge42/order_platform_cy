@@ -1,36 +1,32 @@
 <template>
   <div class="bom-query-container">
-    <!-- 查询区域 -->
     <div class="query-header">
-     
       <div class="query-input">
         <el-input
           v-model="materialCode"
           placeholder="请输入物料编码"
           clearable
+          class="material-code-input"
           @keyup.enter="handleQuery"
-          style="width: 400px"
         >
           <template #prepend>物料编码</template>
         </el-input>
-        <el-button type="primary" @click="handleQuery" :loading="loading">
+        <el-button type="primary" :loading="loading" @click="handleQuery">
           查询
         </el-button>
       </div>
     </div>
 
-    <!-- 主体内容区域 -->
     <div class="bom-content">
-      <!-- 左侧BOM树 -->
-      <div class="bom-left" v-show="!bomTreeCollapsed">
+      <div v-show="!bomTreeCollapsed" class="bom-left" :style="{ width: `${bomTreeWidth}px` }">
         <div class="bom-tree-title">
-          BOM结构
+          <span>BOM结构</span>
           <el-button
             text
             :icon="ArrowLeft"
-            @click="bomTreeCollapsed = true"
-            title="收起BOM树"
             class="collapse-btn"
+            title="收起BOM结构"
+            @click="bomTreeCollapsed = true"
           />
         </div>
         <el-scrollbar class="bom-tree-scrollbar">
@@ -42,184 +38,169 @@
             node-key="entryId"
             :default-expand-all="true"
             :highlight-current="true"
-            @node-click="handleNodeClick"
             class="bom-tree"
+            @node-click="handleNodeClick"
           >
             <template #default="{ data }">
               <span class="custom-tree-node">
                 <span class="tree-label">
-                  {{ data.number }} / {{ data.name }}
+                  {{ data.number }} / {{ data.name }} / {{ data.requiredQtyDisplay || '--' }}
                 </span>
               </span>
             </template>
           </el-tree>
           <el-empty
             v-else
-            description="请输入物料编码进行查询"
+            description="请输入物料编码后查询BOM结构"
             :image-size="100"
-          ></el-empty>
+          />
         </el-scrollbar>
       </div>
 
-      <!-- BOM树收起后的展开按钮 -->
-      <div class="bom-left-collapsed" v-show="bomTreeCollapsed">
+      <div
+        v-show="!bomTreeCollapsed"
+        class="panel-resizer"
+        title="拖动调整BOM结构宽度"
+        @mousedown.prevent="startBomTreeResize"
+      />
+
+      <div v-show="bomTreeCollapsed" class="bom-left-collapsed">
         <el-button
           text
           :icon="ArrowRight"
-          @click="bomTreeCollapsed = false"
-          title="展开BOM树"
           class="expand-btn"
+          title="展开BOM结构"
+          @click="bomTreeCollapsed = false"
         />
       </div>
 
-      <!-- 右侧物料信息和图纸 -->
       <div class="bom-right">
-        <!-- 物料信息 -->
-        <div class="material-info" v-show="!materialInfoCollapsed">
+        <div v-show="!materialInfoCollapsed" class="material-info">
           <div class="info-title">
-            物料信息
-            <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
-              {{ currentMaterial.number || currentMaterial.materialCode }}
-            </span>
-            <el-button
-              text
-              :icon="ArrowUp"
-              @click="materialInfoCollapsed = true"
-              title="收起物料信息"
-              class="collapse-btn"
-              style="float: right;"
-            />
+            <div class="info-title-main">
+              <span>物料信息</span>
+              <span v-if="currentMaterialCode" class="info-subtitle">
+                {{ currentMaterialCode }}
+              </span>
+            </div>
+            <div class="info-actions">
+              <el-button
+                v-if="hasExportPermission"
+                link
+                type="primary"
+                :disabled="!currentMaterialCode"
+                :loading="exportingCurrentMaterial"
+                @click="exportCurrentMaterial"
+              >
+                导出当前物料
+              </el-button>
+              <el-button
+                v-if="hasExportPermission"
+                link
+                type="primary"
+                :disabled="!hasData"
+                :loading="exportingBomMaterials"
+                @click="exportBomMaterials"
+              >
+                导出BOM全部物料
+              </el-button>
+              <el-button
+                text
+                :icon="ArrowUp"
+                class="collapse-btn"
+                title="收起物料信息"
+                @click="materialInfoCollapsed = true"
+              />
+            </div>
           </div>
-          <el-descriptions :column="4" border size="small">
-            <el-descriptions-item label="物料名称" :span="1">
-              {{ currentMaterial?.name || currentMaterial?.materialName || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="公称通径" :span="1">
-              {{ currentMaterial?.nominalDiameter || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="公称压力" :span="1">
-              {{ currentMaterial?.nominalPressure || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="CV" :span="1">
-              {{ currentMaterial?.cv || '' }}
-            </el-descriptions-item>
 
-            <el-descriptions-item label="法兰标准" :span="1">
-              {{ currentMaterial?.flangeStandard || '' }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="法兰密封面型式" :span="1">
-              {{ currentMaterial?.flangeSealType || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="阀体材质" :span="1">
-              {{ currentMaterial?.bodyMaterial || '' }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="阀内件材质" :span="1">
-              {{ currentMaterial?.trimMaterial || '' }}
-            </el-descriptions-item>
-          
-             <el-descriptions-item label="流量特性" :span="1">
-              {{ currentMaterial?.flowCharacteristic||'' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="填料形式" :span="1">
-              {{ currentMaterial?.packingForm||'' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="法兰连接方式" :span="1">
-              {{ currentMaterial?.flangeConnection|| '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="执行机构型号" :span="1">
-              {{ currentMaterial?.actuatorModel || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="执行机构行程" :span="1">
-              {{ currentMaterial?.actuatorStroke|| '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="图号" :span="1">
-              {{ currentMaterial?.drawingNo || '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="材质" :span="1">
-              {{ currentMaterial?.material|| '' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="TC发布人" :span="1">
-              {{ currentMaterial?.tcReleaser ||'' }}
-            </el-descriptions-item>
-          </el-descriptions>
+          <div class="material-info-grid">
+            <div
+              v-for="field in materialFields"
+              :key="field.label"
+              class="material-field-card"
+              :style="{ width: `${field.width || 220}px` }"
+            >
+              <div class="material-field-label">{{ field.label }}</div>
+              <div
+                class="material-field-value"
+                :title="getMaterialFieldValue(field) || '--'"
+              >
+                {{ getMaterialFieldValue(field) || '--' }}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- 物料信息收起后的展开按钮 -->
-        <div class="material-info-collapsed" v-show="materialInfoCollapsed">
+        <div v-show="materialInfoCollapsed" class="material-info-collapsed">
           <el-button
             text
             :icon="ArrowDown"
-            @click="materialInfoCollapsed = false"
-            title="展开物料信息"
             class="expand-btn"
+            title="展开物料信息"
+            @click="materialInfoCollapsed = false"
           >
             物料信息
           </el-button>
         </div>
 
-        <!-- 图纸预览 -->
         <div class="drawing-preview">
           <div class="info-title">
-            图纸
-              <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
-              {{ currentMaterial.drawingNo }}
-            </span>
-             <span v-if="currentMaterial" style="margin-left: 20px; font-weight: normal; font-size: 14px;">
-              {{ currentMaterial?.nominalDiameter }}
-            </span>
+            <div class="info-title-main">
+              <span>图纸</span>
+              <span v-if="currentMaterial?.drawingNo" class="info-subtitle">
+                {{ currentMaterial.drawingNo }}
+              </span>
+              <span v-if="currentMaterial?.nominalDiameter" class="info-subtitle">
+                {{ currentMaterial.nominalDiameter }}
+              </span>
+            </div>
             <el-button
               text
               :icon="FullScreen"
-              @click="toggleFullScreen"
-              title="全屏查看图纸"
               class="fullscreen-btn"
-              style="float: right;"
+              title="全屏查看图纸"
+              @click="toggleFullScreen"
             />
           </div>
-          <div class="drawing-content" v-loading="drawingLoading" ref="drawingContentRef">
-            <!-- 全屏模式下的退出按钮 -->
+
+          <div
+            ref="drawingContentRef"
+            v-loading="drawingLoading"
+            class="drawing-content"
+          >
             <div v-if="isFullscreen" class="fullscreen-exit-btn">
               <el-button
                 type="danger"
                 :icon="Close"
-                @click="exitFullScreen"
                 size="large"
                 round
+                @click="exitFullScreen"
               >
-                退出全屏 (ESC)
+                退出全屏（ESC）
               </el-button>
             </div>
 
-            <!-- 图纸iframe -->
             <iframe
               v-if="drawingUrl"
-              :src="drawingUrl + '#toolbar=0&navpanes=0&scrollbar=0'"
+              ref="drawingIframeRef"
+              :src="`${drawingUrl}#toolbar=0&navpanes=0&scrollbar=0`"
               frameborder="0"
               class="drawing-iframe"
-              ref="drawingIframeRef"
-            ></iframe>
-            <!-- 错误提示 -->
-            <el-empty
-              v-else-if="drawingError"
-              :image-size="100"
-            >
+            />
+
+            <el-empty v-else-if="drawingError" :image-size="100">
               <template #description>
                 <div class="drawing-error">
-                  <el-icon :size="20" color="#f56c6c" style="margin-bottom: 8px;">
+                  <el-icon :size="20" color="#f56c6c" style="margin-bottom: 8px">
                     <WarningFilled />
                   </el-icon>
                   <div class="error-message">{{ drawingError }}</div>
                 </div>
               </template>
             </el-empty>
-            <!-- 暂无图纸 -->
-            <el-empty
-              v-else
-              description="暂无图纸"
-              :image-size="100"
-            ></el-empty>
+
+            <el-empty v-else description="暂无图纸" :image-size="100" />
           </div>
         </div>
       </div>
@@ -228,12 +209,42 @@
 </template>
 
 <script setup>
-import { ref, getCurrentInstance, nextTick, onMounted, onUnmounted } from 'vue'
-import { WarningFilled, FullScreen, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Close } from '@element-plus/icons-vue'
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import {
+  WarningFilled,
+  FullScreen,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Close
+} from '@element-plus/icons-vue'
 
 const { proxy } = getCurrentInstance()
 
-// 数据定义
+const excelMimeType =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const exportAuthorizedUsers = ['cyadmin', '002166', '013675', '004356']
+
+const materialFields = [
+  { label: '物料名称', keys: ['materialName', 'name'], width: 320 },
+  { label: '公称通径', keys: ['nominalDiameter'], width: 220 },
+  { label: '公称压力', keys: ['nominalPressure'], width: 220 },
+  { label: 'CV', keys: ['cv', 'CV'], width: 180 },
+  { label: '法兰标准', keys: ['flangeStandard'], width: 240 },
+  { label: '法兰密封面形式', keys: ['flangeSealType'], width: 280 },
+  { label: '阀体材质', keys: ['bodyMaterial'], width: 220 },
+  { label: '阀内件材质', keys: ['trimMaterial'], width: 220 },
+  { label: '流量特性', keys: ['flowCharacteristic'], width: 240 },
+  { label: '填料形式', keys: ['packingForm'], width: 220 },
+  { label: '法兰连接方式', keys: ['flangeConnection'], width: 260 },
+  { label: '执行机构型号', keys: ['actuatorModel'], width: 260 },
+  { label: '执行机构行程', keys: ['actuatorStroke'], width: 220 },
+  { label: '图号', keys: ['drawingNo'], width: 220 },
+  { label: '材质', keys: ['material', 'innerMaterial'], width: 220 },
+  { label: 'TC发布人', keys: ['tcReleaser', 'TCReleaser'], width: 220 }
+]
+
 const materialCode = ref('')
 const loading = ref(false)
 const drawingLoading = ref(false)
@@ -241,25 +252,115 @@ const hasData = ref(false)
 const bomTreeData = ref([])
 const currentMaterial = ref(null)
 const drawingUrl = ref('')
-const drawingError = ref('') // 图纸加载错误信息
+const drawingError = ref('')
 const treeRef = ref(null)
-const drawingContentRef = ref(null) // 图纸容器ref
-const drawingIframeRef = ref(null) // 图纸iframe ref
+const drawingContentRef = ref(null)
+const drawingIframeRef = ref(null)
 
-// 折叠状态
-const bomTreeCollapsed = ref(false) // BOM树折叠状态
-const materialInfoCollapsed = ref(false) // 物料信息折叠状态
-const isFullscreen = ref(false) // 全屏状态
+const bomTreeCollapsed = ref(false)
+const materialInfoCollapsed = ref(false)
+const isFullscreen = ref(false)
+const exportingCurrentMaterial = ref(false)
+const exportingBomMaterials = ref(false)
+const bomTreeWidth = ref(320)
 
-// 树形结构配置
 const treeProps = {
   children: 'children',
   label: 'label'
 }
 
-// 查询BOM
+const currentMaterialCode = computed(() => {
+  return currentMaterial.value?.number || currentMaterial.value?.materialCode || ''
+})
+
+const currentLoginName = computed(() => {
+  const loginName = proxy?.$store?.getters?.getLoginName?.()
+  if (loginName) {
+    return String(loginName).trim()
+  }
+
+  const userInfo = proxy?.$store?.getters?.getUserInfo?.() || {}
+  return String(userInfo?.userName || '').trim()
+})
+
+const hasExportPermission = computed(() => {
+  const loginName = currentLoginName.value
+  if (!loginName) {
+    return false
+  }
+
+  return exportAuthorizedUsers.some(
+    (user) => user.toLowerCase() === loginName.toLowerCase()
+  )
+})
+
+const sanitizeFileName = (value) => {
+  return String(value || '').replace(/[\\/:*?"<>|]+/g, '_')
+}
+
+const getTimestamp = () => {
+  const now = new Date()
+  const pad = (value) => `${value}`.padStart(2, '0')
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(
+    now.getHours()
+  )}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+}
+
+const downloadBlobFile = (content, fileName) => {
+  const blob =
+    content instanceof Blob ? content : new Blob([content], { type: excelMimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  URL.revokeObjectURL(url)
+  document.body.removeChild(link)
+}
+
+const resolveExportBlob = async (content) => {
+  const blob =
+    content instanceof Blob ? content : new Blob([content], { type: excelMimeType })
+
+  if (blob.type?.includes('application/json')) {
+    const text = await blob.text()
+    let message = '导出失败'
+    try {
+      const result = JSON.parse(text)
+      message = result?.message || result?.Message || message
+    } catch (error) {
+      console.error('解析导出错误信息失败:', error)
+    }
+    throw new Error(message)
+  }
+
+  return blob
+}
+
+const getMaterialFieldValue = (field) => {
+  const material = currentMaterial.value || {}
+  for (const key of field.keys) {
+    const value = material[key]
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value)
+    }
+  }
+  return ''
+}
+
+const resetQueryState = () => {
+  hasData.value = false
+  bomTreeData.value = []
+  currentMaterial.value = null
+  drawingUrl.value = ''
+  drawingError.value = ''
+}
+
 const handleQuery = async () => {
-  if (!materialCode.value) {
+  const queryCode = materialCode.value.trim()
+  if (!queryCode) {
     proxy.$message.warning('请输入物料编码')
     return
   }
@@ -267,60 +368,88 @@ const handleQuery = async () => {
   loading.value = true
   try {
     const result = await proxy.http.get(
-      `api/BomQuery/ExpandBom?materialNumber=${materialCode.value}`
+      `api/BomQuery/ExpandBom?materialNumber=${encodeURIComponent(queryCode)}`
     )
 
     if (result.status && result.data) {
-      // 构建树形结构
       bomTreeData.value = buildBomTree(result.data)
-      hasData.value = true
+      hasData.value = bomTreeData.value.length > 0
+      materialCode.value = queryCode
 
-      // 默认选中根节点
-      nextTick(() => {
-        if (bomTreeData.value.length > 0) {
-          treeRef.value.setCurrentKey(bomTreeData.value[0].entryId)
-          handleNodeClick(bomTreeData.value[0])
-        }
-      })
-    } else {
-      proxy.$message.error(result.message || 'BOM查询失败')
-      hasData.value = false
+      await nextTick()
+      if (bomTreeData.value.length > 0 && treeRef.value) {
+        treeRef.value.setCurrentKey(bomTreeData.value[0].entryId)
+        handleNodeClick(bomTreeData.value[0])
+      }
+      return
     }
+
+    resetQueryState()
+    proxy.$message.error(result.message || 'BOM查询失败')
   } catch (error) {
+    resetQueryState()
     console.error('BOM查询失败:', error)
     proxy.$message.error('BOM查询失败')
-    hasData.value = false
   } finally {
     loading.value = false
   }
 }
 
-// 构建BOM树形结构
 const buildBomTree = (bomList) => {
-  if (!bomList || bomList.length === 0) return []
+  if (!Array.isArray(bomList) || bomList.length === 0) {
+    return []
+  }
 
-  // 创建映射表
   const map = new Map()
   const roots = []
 
-  // 第一遍遍历：创建所有节点
+  const formatRequiredQty = (numerator, denominator) => {
+    const numeratorValue = Number(numerator)
+    const denominatorValue = Number(denominator)
+
+    if (!Number.isFinite(numeratorValue)) {
+      return ''
+    }
+    if (!Number.isFinite(denominatorValue) || denominatorValue === 0) {
+      return `${numeratorValue}`
+    }
+
+    const qty = numeratorValue / denominatorValue
+    if (!Number.isFinite(qty)) {
+      return ''
+    }
+
+    if (Number.isInteger(qty)) {
+      return `${qty}`
+    }
+
+    return qty.toFixed(6).replace(/\.?0+$/, '')
+  }
+
+  const formatRequiredQtyDisplay = (numerator, denominator, unitName) => {
+    const qtyText = formatRequiredQty(numerator, denominator)
+    if (!qtyText) {
+      return ''
+    }
+
+    return unitName ? `${qtyText} ${unitName}` : qtyText
+  }
+
   bomList.forEach((item) => {
     map.set(item.entryId, {
       ...item,
       label: `${item.number} / ${item.name}`,
+      requiredQtyText: formatRequiredQty(item.numerator, item.denominator),
+      requiredQtyDisplay: formatRequiredQtyDisplay(item.numerator, item.denominator, item.unitName),
       children: []
     })
   })
 
-  // 第二遍遍历：建立父子关系
   bomList.forEach((item) => {
     const node = map.get(item.entryId)
     if (item.parentEntryId && map.has(item.parentEntryId)) {
-      // 有父节点，添加到父节点的children中
-      const parent = map.get(item.parentEntryId)
-      parent.children.push(node)
+      map.get(item.parentEntryId).children.push(node)
     } else {
-      // 没有父节点或父节点不存在，作为根节点
       roots.push(node)
     }
   })
@@ -328,27 +457,19 @@ const buildBomTree = (bomList) => {
   return roots
 }
 
-// 树节点点击事件
 const handleNodeClick = async (data) => {
-  // 先显示BOM数据中的基本信息
   currentMaterial.value = data
-
-  // 异步加载完整的物料信息
   loadMaterialInfo(data.number)
-
-  // 加载图纸
   await loadDrawing(data.number)
 }
 
-// 加载物料完整信息
-const loadMaterialInfo = async (materialCode) => {
+const loadMaterialInfo = async (selectedMaterialCode) => {
   try {
     const result = await proxy.http.get(
-      `api/BomQuery/GetMaterial?materialCode=${materialCode}`
+      `api/BomQuery/GetMaterial?materialCode=${encodeURIComponent(selectedMaterialCode)}`
     )
 
     if (result.status && result.data) {
-      // 合并物料信息到当前物料对象
       currentMaterial.value = {
         ...currentMaterial.value,
         ...result.data
@@ -359,39 +480,105 @@ const loadMaterialInfo = async (materialCode) => {
   }
 }
 
-// 加载图纸
-const loadDrawing = async (materialCode) => {
+const loadDrawing = async (selectedMaterialCode) => {
   drawingLoading.value = true
   drawingUrl.value = ''
-  drawingError.value = '' // 清空之前的错误信息
+  drawingError.value = ''
 
   try {
     const result = await proxy.http.get(
-      `api/BomQuery/GetDrawing?materialCode=${materialCode}`
+      `api/BomQuery/GetDrawing?materialCode=${encodeURIComponent(selectedMaterialCode)}`
     )
 
-    console.log('图纸接口返回:', result)
-
-    if (result.success && result.data && result.data.previewUrl) {
+    if (result.success && result.data?.previewUrl) {
       drawingUrl.value = result.data.previewUrl
       drawingError.value = ''
-      console.log('设置图纸URL:', drawingUrl.value)
-    } else {
-      drawingUrl.value = ''
-      // 设置错误信息
-      drawingError.value = result.message || '未找到图纸'
-      console.log('图纸加载失败:', drawingError.value)
+      return
     }
+
+    drawingError.value = result.message || '未找到图纸'
   } catch (error) {
     console.error('图纸加载失败:', error)
-    drawingUrl.value = ''
     drawingError.value = error.message || '图纸加载异常'
   } finally {
     drawingLoading.value = false
   }
 }
 
-// 全屏切换
+const exportCurrentMaterial = async () => {
+  if (!hasExportPermission.value) {
+    proxy.$message.error('当前账号无导出权限')
+    return
+  }
+
+  const code = currentMaterialCode.value.trim()
+  if (!code) {
+    proxy.$message.warning('请先选择需要导出的物料')
+    return
+  }
+
+  exportingCurrentMaterial.value = true
+  try {
+    const content = await proxy.http.post(
+      'api/BomQuery/ExportCurrentMaterialInfo',
+      { materialCode: code },
+      '正在导出当前物料信息...',
+      { responseType: 'blob' }
+    )
+    const blob = await resolveExportBlob(content)
+
+    downloadBlobFile(
+      blob,
+      `${sanitizeFileName(code)}_物料信息_${getTimestamp()}.xlsx`
+    )
+    proxy.$message.success('当前物料导出完成')
+  } catch (error) {
+    console.error('导出当前物料失败:', error)
+    proxy.$message.error(error?.message || '导出当前物料失败')
+  } finally {
+    exportingCurrentMaterial.value = false
+  }
+}
+
+const exportBomMaterials = async () => {
+  if (!hasExportPermission.value) {
+    proxy.$message.error('当前账号无导出权限')
+    return
+  }
+
+  const queryCode = materialCode.value.trim()
+  if (!queryCode) {
+    proxy.$message.warning('请先查询BOM结构')
+    return
+  }
+  if (!hasData.value) {
+    proxy.$message.warning('当前没有可导出的BOM物料')
+    return
+  }
+
+  exportingBomMaterials.value = true
+  try {
+    const content = await proxy.http.post(
+      'api/BomQuery/ExportBomMaterialInfo',
+      { materialNumber: queryCode },
+      '正在导出BOM全部物料信息...',
+      { responseType: 'blob' }
+    )
+    const blob = await resolveExportBlob(content)
+
+    downloadBlobFile(
+      blob,
+      `${sanitizeFileName(queryCode)}_BOM物料信息_${getTimestamp()}.xlsx`
+    )
+    proxy.$message.success('BOM全部物料导出完成')
+  } catch (error) {
+    console.error('导出BOM全部物料失败:', error)
+    proxy.$message.error(error?.message || '导出BOM全部物料失败')
+  } finally {
+    exportingBomMaterials.value = false
+  }
+}
+
 const toggleFullScreen = () => {
   const element = drawingContentRef.value
 
@@ -401,7 +588,6 @@ const toggleFullScreen = () => {
   }
 
   if (!document.fullscreenElement) {
-    // 进入全屏
     if (element.requestFullscreen) {
       element.requestFullscreen()
     } else if (element.webkitRequestFullscreen) {
@@ -412,12 +598,10 @@ const toggleFullScreen = () => {
       element.msRequestFullscreen()
     }
   } else {
-    // 退出全屏
     exitFullScreen()
   }
 }
 
-// 退出全屏
 const exitFullScreen = () => {
   if (document.exitFullscreen) {
     document.exitFullscreen()
@@ -430,14 +614,41 @@ const exitFullScreen = () => {
   }
 }
 
-// 监听全屏状态变化
 const handleFullscreenChange = () => {
   isFullscreen.value = !!document.fullscreenElement
 }
 
-// 生命周期钩子
+const clamp = (value, min, max) => {
+  return Math.min(max, Math.max(min, value))
+}
+
+let stopBomTreeResize = null
+
+const startBomTreeResize = (event) => {
+  if (bomTreeCollapsed.value) {
+    return
+  }
+
+  const startX = event.clientX
+  const startWidth = bomTreeWidth.value
+
+  const handleMouseMove = (moveEvent) => {
+    const nextWidth = clamp(startWidth + moveEvent.clientX - startX, 240, 560)
+    bomTreeWidth.value = nextWidth
+  }
+
+  const handleMouseUp = () => {
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+    stopBomTreeResize = null
+  }
+
+  stopBomTreeResize = handleMouseUp
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
+
 onMounted(() => {
-  // 监听全屏状态变化事件
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
   document.addEventListener('mozfullscreenchange', handleFullscreenChange)
@@ -445,27 +656,22 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // 移除全屏状态变化事件监听
   document.removeEventListener('fullscreenchange', handleFullscreenChange)
   document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
   document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
   document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+  stopBomTreeResize && stopBomTreeResize()
 })
-
-
 </script>
 
 <style scoped lang="scss">
 .bom-query-container {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  background: #f5f7fa;
   padding: 12px;
+  background: #f5f7fa;
 
   .query-header {
     margin-bottom: 12px;
@@ -475,30 +681,24 @@ onUnmounted(() => {
     border-radius: 4px;
     flex-shrink: 0;
 
-    .query-title {
-      font-size: 14px;
-      font-weight: bold;
-      margin-bottom: 8px;
-      color: #303133;
-    }
-
     .query-input {
       display: flex;
       gap: 12px;
       align-items: center;
+    }
+
+    .material-code-input {
+      width: 400px;
     }
   }
 
   .bom-content {
     flex: 1;
     display: flex;
-    gap: 12px;
     overflow: hidden;
-    background: transparent;
     min-height: 0;
 
     .bom-left {
-      width: 300px;
       display: flex;
       flex-direction: column;
       border: 1px solid #dcdfe6;
@@ -510,13 +710,12 @@ onUnmounted(() => {
       .bom-tree-title {
         padding: 6px 10px;
         background: #f5f7fa;
-        font-weight: bold;
-        font-size: 16px;
         border-bottom: 1px solid #dcdfe6;
-        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        font-size: 16px;
+        font-weight: 700;
 
         .collapse-btn {
           padding: 4px;
@@ -526,12 +725,12 @@ onUnmounted(() => {
 
       .bom-tree-scrollbar {
         flex: 1;
-        height: 0; // 配合flex: 1使用，确保滚动条正常工作
+        height: 0;
       }
 
       .bom-tree {
-        display: inline-block; // 关键：让树的宽度由内容决定
-        min-width: 100%; // 至少占满容器宽度
+        display: inline-block;
+        min-width: 100%;
       }
 
       .custom-tree-node {
@@ -539,23 +738,45 @@ onUnmounted(() => {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 14px;
         padding-right: 8px;
+        font-size: 14px;
 
         .tree-label {
-          white-space: nowrap; // 不换行，保持单行显示
+          white-space: nowrap;
         }
       }
 
-      // 允许树节点横向滚动
       :deep(.el-tree-node__content) {
-        white-space: nowrap; // 不换行
+        white-space: nowrap;
       }
     }
 
-    // BOM树收起后的展开按钮
+    .panel-resizer {
+      width: 12px;
+      cursor: col-resize;
+      flex-shrink: 0;
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 5px;
+        width: 2px;
+        border-radius: 1px;
+        background: #dcdfe6;
+        transition: background-color 0.2s ease;
+      }
+
+      &:hover::before {
+        background: #409eff;
+      }
+    }
+
     .bom-left-collapsed {
       width: 40px;
+      margin-right: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -577,61 +798,65 @@ onUnmounted(() => {
 
     .bom-right {
       flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
 
       .material-info {
+        margin-left: 12px;
         margin-bottom: 8px;
         border: 1px solid #dcdfe6;
         border-radius: 4px;
-        padding: 0;
         background: #fff;
         flex-shrink: 0;
+        overflow: hidden;
 
-        .info-title {
-          font-size: 16px;
-          font-weight: bold;
-          padding: 6px 10px;
-          background: #f5f7fa;
-          border-bottom: 1px solid #dcdfe6;
-          margin: 0;
+        .material-info-grid {
           display: flex;
-          align-items: center;
-          justify-content: space-between;
-
-          .collapse-btn {
-            padding: 4px;
-            font-size: 16px;
-          }
-        }
-
-        :deep(.el-descriptions) {
+          flex-wrap: wrap;
+          gap: 8px;
           padding: 8px;
+          overflow: auto;
         }
 
-        :deep(.el-descriptions__label) {
+        .material-field-card {
+          min-width: 180px;
+          max-width: 100%;
+          padding: 8px 10px;
+          border: 1px solid #ebeef5;
+          border-radius: 4px;
+          background: #fff;
+          box-sizing: border-box;
+          overflow: auto;
+          resize: horizontal;
+          flex: 0 0 auto;
+        }
+
+        .material-field-label {
           font-size: 12px;
-          padding: 4px 8px;
+          color: #909399;
+          line-height: 1.4;
         }
 
-        :deep(.el-descriptions__content) {
-          font-size: 12px;
-          padding: 4px 8px;
-        }
-
-        :deep(.el-descriptions__cell) {
-          padding: 4px 8px;
+        .material-field-value {
+          margin-top: 6px;
+          font-size: 13px;
+          color: #303133;
+          line-height: 1.6;
+          word-break: break-all;
+          white-space: pre-wrap;
+          min-height: 22px;
         }
       }
 
-      // 物料信息收起后的展开按钮
       .material-info-collapsed {
+        margin-left: 12px;
         margin-bottom: 8px;
+        padding: 8px;
         border: 1px solid #dcdfe6;
         border-radius: 4px;
         background: #fff;
-        padding: 8px;
         text-align: center;
         flex-shrink: 0;
 
@@ -647,48 +872,24 @@ onUnmounted(() => {
 
       .drawing-preview {
         flex: 1;
+        min-height: 0;
+        margin-left: 12px;
         display: flex;
         flex-direction: column;
         border: 1px solid #dcdfe6;
         border-radius: 4px;
-        padding: 0;
         background: #fff;
         overflow: hidden;
-        min-height: 0;
-
-        .info-title {
-          font-size: 16px;
-          font-weight: bold;
-          padding: 6px 10px;
-          background: #f5f7fa;
-          border-bottom: 1px solid #dcdfe6;
-          margin: 0;
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-
-          .fullscreen-btn {
-            padding: 4px;
-            font-size: 16px;
-            color: #409eff;
-
-            &:hover {
-              color: #66b1ff;
-            }
-          }
-        }
 
         .drawing-content {
+          position: relative;
           flex: 1;
-          overflow: hidden;
+          min-height: 0;
           display: flex;
           align-items: stretch;
           justify-content: stretch;
+          overflow: hidden;
           background: #fff;
-          padding: 0;
-          min-height: 0;
-          position: relative;
 
           .fullscreen-exit-btn {
             position: absolute;
@@ -697,24 +898,23 @@ onUnmounted(() => {
             z-index: 9999;
 
             .el-button {
-              box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
-              font-size: 16px;
               padding: 12px 24px;
+              font-size: 16px;
+              box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
             }
           }
 
           .drawing-iframe {
             position: absolute;
-            top: 0;
-            left: 0;
+            inset: 0;
             width: 100%;
             height: 100%;
             border: none;
           }
 
           :deep(.el-empty) {
-            padding: 20px;
             margin: auto;
+            padding: 20px;
           }
 
           .drawing-error {
@@ -725,39 +925,17 @@ onUnmounted(() => {
             color: #606266;
 
             .error-message {
+              margin-top: 4px;
               font-size: 14px;
               color: #f56c6c;
-              margin-top: 4px;
-              text-align: center;
               line-height: 1.5;
+              text-align: center;
             }
           }
 
-          // 全屏模式下的样式
-          &:fullscreen {
-            background: #000;
-
-            .drawing-iframe {
-              background: #fff;
-            }
-          }
-
-          &:-webkit-full-screen {
-            background: #000;
-
-            .drawing-iframe {
-              background: #fff;
-            }
-          }
-
-          &:-moz-full-screen {
-            background: #000;
-
-            .drawing-iframe {
-              background: #fff;
-            }
-          }
-
+          &:fullscreen,
+          &:-webkit-full-screen,
+          &:-moz-full-screen,
           &:-ms-fullscreen {
             background: #000;
 
@@ -769,16 +947,56 @@ onUnmounted(() => {
       }
     }
   }
+}
 
-  .empty-state {
-    flex: 1;
+.info-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid #dcdfe6;
+  background: #f5f7fa;
+  font-size: 16px;
+  font-weight: 700;
+
+  .info-title-main {
+    min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .info-subtitle {
+    font-size: 14px;
+    font-weight: 400;
+    color: #606266;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .info-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .collapse-btn,
+  .fullscreen-btn {
+    padding: 4px;
+    font-size: 16px;
+    color: #409eff;
+
+    &:hover {
+      color: #66b1ff;
+    }
   }
 }
 
-// 树形结构样式优化
 :deep(.el-tree) {
   .el-tree-node__content {
     height: 36px;
@@ -793,6 +1011,35 @@ onUnmounted(() => {
     color: #409eff;
   }
 }
+
+@media (max-width: 1200px) {
+  .bom-query-container {
+    .query-header {
+      .query-input {
+        flex-wrap: wrap;
+      }
+
+      .material-code-input {
+        width: 100%;
+      }
+    }
+
+    .bom-content {
+      .bom-right {
+        .material-info,
+        .material-info-collapsed,
+        .drawing-preview {
+          margin-left: 8px;
+        }
+
+        .material-info {
+          .material-field-card {
+            width: 100% !important;
+            resize: none;
+          }
+        }
+      }
+    }
+  }
+}
 </style>
-
-
