@@ -350,12 +350,15 @@ const getMaterialFieldValue = (field) => {
   return ''
 }
 
-const resetQueryState = () => {
+const loadQueryFallback = async (selectedMaterialCode) => {
   hasData.value = false
   bomTreeData.value = []
-  currentMaterial.value = null
-  drawingUrl.value = ''
-  drawingError.value = ''
+  currentMaterial.value = {
+    number: selectedMaterialCode,
+    materialCode: selectedMaterialCode
+  }
+
+  await Promise.all([loadMaterialInfo(selectedMaterialCode), loadDrawing(selectedMaterialCode)])
 }
 
 const handleQuery = async () => {
@@ -380,16 +383,16 @@ const handleQuery = async () => {
       if (bomTreeData.value.length > 0 && treeRef.value) {
         treeRef.value.setCurrentKey(bomTreeData.value[0].entryId)
         handleNodeClick(bomTreeData.value[0])
+        return
       }
-      return
     }
 
-    resetQueryState()
-    proxy.$message.error(result.message || 'BOM查询失败')
+    await loadQueryFallback(queryCode)
+    proxy.$message.warning(result.message || 'BOM查询失败，已尝试加载图纸')
   } catch (error) {
-    resetQueryState()
+    await loadQueryFallback(queryCode)
     console.error('BOM查询失败:', error)
-    proxy.$message.error('BOM查询失败')
+    proxy.$message.error('BOM查询失败，已尝试加载图纸')
   } finally {
     loading.value = false
   }
