@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI小助手平台智能体应用集成 - 原型交互图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #333; }
+
+  /* ===== 顶部导航 ===== */
+  .top-nav { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid #e4e7ed; display: flex; align-items: center; justify-content: center; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .top-nav h1 { font-size: 18px; font-weight: 600; color: #1a1a1a; }
+  .top-nav .version { font-size: 12px; color: #909399; margin-left: 12px; background: #f0f2f5; padding: 2px 8px; border-radius: 10px; }
+
+  /* ===== Tab 切换 ===== */
+  .tab-bar { position: fixed; top: 56px; left: 0; right: 0; height: 48px; background: #fff; border-bottom: 2px solid #e4e7ed; display: flex; align-items: center; padding: 0 24px; z-index: 99; gap: 4px; }
+  .tab-item { padding: 8px 20px; cursor: pointer; border-radius: 8px 8px 0 0; font-size: 14px; color: #606266; transition: all .2s; border: 1px solid transparent; border-bottom: none; position: relative; }
+  .tab-item:hover { color: #409eff; background: #ecf5ff; }
+  .tab-item.active { color: #409eff; background: #fff; border-color: #e4e7ed; font-weight: 600; }
+  .tab-item.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background: #fff; }
+  .tab-section-label { font-size: 12px; color: #909399; margin-right: 8px; padding: 4px 0; }
+
+  .content { margin-top: 104px; padding: 24px; }
+
+  /* ===== 页面容器 ===== */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ========== PC 端样式 ========== */
+  .pc-frame { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); overflow: hidden; max-width: 1200px; margin: 0 auto; }
+  .pc-header { height: 48px; background: #545c64; display: flex; align-items: center; padding: 0 20px; }
+  .pc-header .logo { color: #fff; font-size: 15px; font-weight: 600; }
+  .pc-header .menu-items { display: flex; margin-left: 40px; gap: 4px; }
+  .pc-header .menu-items span { color: #ccc; padding: 6px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; }
+  .pc-header .menu-items span:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .pc-header .menu-items span.active { color: #fff; background: #409eff; }
+  .pc-header .user-info { margin-left: auto; color: #ccc; font-size: 13px; }
+
+  .pc-body { display: flex; min-height: 560px; }
+  .pc-sidebar { width: 200px; background: #f5f7fa; border-right: 1px solid #e4e7ed; padding: 12px 0; }
+  .pc-sidebar .menu-group { padding: 0 12px; margin-bottom: 8px; }
+  .pc-sidebar .menu-group-title { font-size: 12px; color: #909399; padding: 8px 12px; }
+  .pc-sidebar .menu-link { display: block; padding: 10px 12px; font-size: 13px; color: #606266; border-radius: 6px; cursor: pointer; transition: all .15s; }
+  .pc-sidebar .menu-link:hover { background: #ecf5ff; color: #409eff; }
+  .pc-sidebar .menu-link.active { background: #409eff; color: #fff; }
+
+  .pc-content { flex: 1; padding: 20px; }
+  .pc-page-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #1a1a1a; display: flex; align-items: center; gap: 8px; }
+  .pc-page-title .badge { font-size: 11px; background: #ecf5ff; color: #409eff; padding: 2px 8px; border-radius: 10px; font-weight: 400; }
+
+  /* 工具栏 */
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid #dcdfe6; background: #fff; color: #606266; transition: all .15s; display: inline-flex; align-items: center; gap: 4px; }
+  .btn:hover { border-color: #409eff; color: #409eff; }
+  .btn-primary { background: #409eff; color: #fff; border-color: #409eff; }
+  .btn-primary:hover { background: #66b1ff; }
+  .btn-success { background: #67c23a; color: #fff; border-color: #67c23a; }
+  .btn-success:hover { background: #85ce61; }
+  .btn-danger { background: #f56c6c; color: #fff; border-color: #f56c6c; }
+  .btn-danger:hover { background: #f89898; }
+  .btn-warning { background: #e6a23c; color: #fff; border-color: #e6a23c; }
+  .btn-warning:hover { background: #ebb563; }
+  .toolbar .search-box { margin-left: auto; display: flex; gap: 8px; }
+  .input { padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; outline: none; width: 200px; }
+  .input:focus { border-color: #409eff; }
+
+  /* 表格 */
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th { background: #f5f7fa; padding: 12px; text-align: left; font-weight: 600; color: #606266; border-bottom: 1px solid #ebeef5; }
+  .table td { padding: 12px; border-bottom: 1px solid #ebeef5; color: #606266; }
+  .table tr:hover td { background: #f5f7fa; }
+  .table .checkbox { width: 18px; height: 18px; accent-color: #409eff; }
+
+  .status-tag { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; }
+  .status-tag.enabled { background: #f0f9eb; color: #67c23a; }
+  .status-tag.disabled { background: #fef0f0; color: #f56c6c; }
+  .status-tag.bound { background: #f0f9eb; color: #67c23a; }
+  .status-tag.unbound { background: #fdf6ec; color: #e6a23c; }
+
+  .op-link { color: #409eff; cursor: pointer; font-size: 13px; margin-right: 12px; }
+  .op-link:hover { text-decoration: underline; }
+  .op-link.danger { color: #f56c6c; }
+
+  .icon-cell { font-size: 24px; }
+  .pagination { display: flex; justify-content: flex-end; align-items: center; margin-top: 16px; gap: 8px; font-size: 13px; color: #909399; }
+  .pagination .page-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid #dcdfe6; border-radius: 4px; cursor: pointer; }
+  .pagination .page-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
+
+  /* 弹窗 */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.45); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 12px; width: 520px; max-height: 80vh; overflow: auto; box-shadow: 0 8px 40px rgba(0,0,0,.15); }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid #ebeef5; display: flex; align-items: center; justify-content: space-between; }
+  .modal-header h3 { font-size: 16px; font-weight: 600; }
+  .modal-close { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 6px; font-size: 18px; color: #909399; }
+  .modal-close:hover { background: #f5f7fa; color: #606266; }
+  .modal-body { padding: 20px; }
+  .modal-footer { padding: 12px 20px; border-top: 1px solid #ebeef5; display: flex; justify-content: flex-end; gap: 8px; }
+
+  .form-row { display: flex; align-items: flex-start; margin-bottom: 16px; }
+  .form-label { width: 100px; text-align: right; padding: 8px 12px 8px 0; font-size: 13px; color: #606266; flex-shrink: 0; }
+  .form-control { flex: 1; }
+  .form-control .input { width: 100%; }
+  .form-control textarea { width: 100%; padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; resize: vertical; height: 70px; outline: none; font-family: inherit; }
+  .form-control textarea:focus { border-color: #409eff; }
+  .form-control select { width: 100%; padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; outline: none; background: #fff; }
+  .radio-group { display: flex; gap: 20px; padding: 8px 0; }
+  .radio-group label { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+
+  /* 穿梭框 */
+  .transfer { display: flex; gap: 16px; align-items: stretch; }
+  .transfer-panel { flex: 1; border: 1px solid #ebeef5; border-radius: 8px; overflow: hidden; }
+  .transfer-panel-header { padding: 10px 12px; background: #f5f7fa; font-size: 13px; font-weight: 600; color: #606266; border-bottom: 1px solid #ebeef5; }
+  .transfer-panel-body { padding: 8px; min-height: 200px; }
+  .transfer-item { padding: 8px 12px; font-size: 13px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .transfer-item:hover { background: #f5f7fa; }
+  .transfer-item .check { color: #67c23a; }
+  .transfer-buttons { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .transfer-btn { width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid #dcdfe6; border-radius: 6px; cursor: pointer; font-size: 14px; background: #fff; }
+  .transfer-btn:hover { border-color: #409eff; color: #409eff; }
+
+  /* 同步弹窗 */
+  .sync-item { padding: 10px 12px; border-bottom: 1px solid #f5f7fa; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .sync-item:last-child { border-bottom: none; }
+  .sync-tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+  .sync-tag.exist { background: #fdf6ec; color: #e6a23c; }
+  .sync-tag.new { background: #f0f9eb; color: #67c23a; }
+  .sync-tip { font-size: 12px; color: #909399; margin-top: 12px; padding: 8px 12px; background: #fdf6ec; border-radius: 6px; }
+
+  /* Tab 页签 */
+  .inner-tabs { display: flex; border-bottom: 2px solid #e4e7ed; margin-bottom: 20px; }
+  .inner-tab { padding: 10px 20px; font-size: 14px; color: #606266; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  .inner-tab:hover { color: #409eff; }
+  .inner-tab.active { color: #409eff; border-bottom-color: #409eff; font-weight: 600; }
+
+  /* ========== 手机端样式 ========== */
+  .mobile-container { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+  .phone-frame { width: 375px; height: 750px; background: #fff; border-radius: 40px; box-shadow: 0 8px 40px rgba(0,0,0,.12); overflow: hidden; border: 8px solid #1a1a1a; position: relative; flex-shrink: 0; }
+  .phone-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 150px; height: 28px; background: #1a1a1a; border-radius: 0 0 18px 18px; z-index: 10; }
+  .phone-screen { height: 100%; display: flex; flex-direction: column; background: #f5f6f7; overflow: hidden; }
+  .phone-label { text-align: center; margin-top: 8px; font-size: 13px; color: #909399; }
+
+  /* 手机导航栏 */
+  .m-navbar { height: 88px; padding-top: 40px; background: #fff; display: flex; align-items: center; padding-left: 16px; padding-right: 16px; border-bottom: 1px solid #ebeef5; position: relative; z-index: 5; flex-shrink: 0; }
+  .m-navbar .back { font-size: 20px; cursor: pointer; color: #333; width: 32px; }
+  .m-navbar .title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; color: #1a1a1a; }
+  .m-navbar .action { font-size: 20px; cursor: pointer; color: #666; width: 32px; text-align: right; }
+
+  /* 手机 TabBar */
+  .m-tabbar { height: 56px; background: #fff; border-top: 1px solid #ebeef5; display: flex; align-items: center; justify-content: space-around; flex-shrink: 0; }
+  .m-tabbar-item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: #909399; cursor: pointer; }
+  .m-tabbar-item .icon { font-size: 22px; }
+  .m-tabbar-item.active { color: #409eff; }
+
+  .m-body { flex: 1; overflow-y: auto; }
+
+  /* 搜索栏 */
+  .m-search { padding: 12px 16px; }
+  .m-search-input { width: 100%; padding: 10px 12px 10px 36px; background: #f0f1f3; border-radius: 20px; border: none; font-size: 14px; color: #999; outline: none; position: relative; }
+  .m-search-wrap { position: relative; }
+  .m-search-wrap::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; z-index: 1; }
+
+  /* 分组标题 */
+  .m-section-title { padding: 4px 16px 8px; font-size: 15px; font-weight: 600; color: #1a1a1a; }
+
+  /* 应用卡片网格 */
+  .m-app-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 16px 16px; }
+  .m-app-card { background: #fff; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all .15s; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .m-app-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+  .m-app-card:active { transform: scale(.97); }
+  .m-app-card .app-icon { font-size: 36px; margin-bottom: 8px; }
+  .m-app-card .app-name { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .m-app-card .app-desc { font-size: 11px; color: #909399; line-height: 1.4; }
+  .m-app-card .app-status { display: inline-block; margin-top: 8px; font-size: 10px; color: #67c23a; }
+  .m-app-card .app-status::before { content: ''; display: inline-block; width: 6px; height: 6px; background: #67c23a; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+  /* 最近对话列表 */
+  .m-conv-list { padding: 0 16px; }
+  .m-conv-item { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all .15s; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+  .m-conv-item:hover { background: #f9f9f9; }
+  .m-conv-item:active { background: #f0f2f5; }
+  .m-conv-item .conv-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .m-conv-item .conv-icon { font-size: 18px; }
+  .m-conv-item .conv-app-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+  .m-conv-item .conv-preview { font-size: 13px; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-conv-item .conv-time { text-align: right; font-size: 11px; color: #c0c4cc; margin-top: 4px; }
+
+  /* 会话列表项 */
+  .m-session-item { background: #fff; border-radius: 12px; padding: 14px 16px; margin: 0 16px 10px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+  .m-session-item .session-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .m-session-item .session-preview { font-size: 13px; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+  .m-session-item .session-meta { display: flex; justify-content: space-between; align-items: center; }
+  .m-session-item .session-count { font-size: 11px; color: #c0c4cc; }
+  .m-session-item .session-more { font-size: 18px; color: #c0c4cc; cursor: pointer; }
+
+  /* 对话页 */
+  .m-chat-body { flex: 1; overflow-y: auto; padding: 12px 16px; background: #f5f6f7; }
+  .m-msg { display: flex; margin-bottom: 16px; gap: 8px; align-items: flex-start; }
+  .m-msg.ai { flex-direction: row; }
+  .m-msg.user { flex-direction: row-reverse; }
+  .m-msg .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .m-msg.ai .avatar { background: #ecf5ff; }
+  .m-msg.user .avatar { background: #409eff; color: #fff; font-size: 14px; }
+  .m-msg .bubble { max-width: 75%; padding: 12px 14px; border-radius: 16px; font-size: 14px; line-height: 1.6; }
+  .m-msg.ai .bubble { background: #fff; border-top-left-radius: 4px; color: #333; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .m-msg.user .bubble { background: #409eff; color: #fff; border-top-right-radius: 4px; }
+
+  /* 流式光标 */
+  .cursor-blink { display: inline-block; width: 2px; height: 16px; background: #409eff; animation: blink 1s infinite; vertical-align: middle; margin-left: 2px; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* 建议问题 */
+  .m-suggestions { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .m-suggest-btn { padding: 8px 14px; background: #ecf5ff; color: #409eff; border-radius: 20px; font-size: 13px; cursor: pointer; border: 1px solid #d9ecff; transition: all .15s; }
+  .m-suggest-btn:hover { background: #409eff; color: #fff; }
+
+  /* 消息中的表格 */
+  .msg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; border-radius: 6px; overflow: hidden; }
+  .msg-table th { background: #f5f7fa; padding: 8px 10px; text-align: left; font-weight: 600; white-space: nowrap; }
+  .msg-table td { padding: 8px 10px; border-top: 1px solid #ebeef5; white-space: nowrap; }
+  .table-scroll-hint { text-align: center; font-size: 11px; color: #c0c4cc; margin-top: 4px; }
+
+  /* 消息中的图片 */
+  .msg-image { width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+  .msg-image-name { font-size: 11px; color: #909399; margin-top: 4px; }
+
+  /* 消息中的图表 */
+  .msg-chart { background: #fafafa; border-radius: 8px; padding: 12px; margin-top: 8px; }
+  .msg-chart-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .msg-chart-placeholder { height: 160px; display: flex; align-items: center; justify-content: center; border: 1px dashed #dcdfe6; border-radius: 6px; color: #c0c4cc; font-size: 13px; background: #fff; }
+  .msg-chart-fullscreen { text-align: right; margin-top: 6px; }
+  .msg-chart-fullscreen span { font-size: 12px; color: #409eff; cursor: pointer; }
+
+  /* Markdown 样式 */
+  .msg-md h2 { font-size: 15px; margin-bottom: 8px; color: #1a1a1a; }
+  .msg-md h3 { font-size: 14px; margin: 8px 0 4px; color: #333; }
+  .msg-md strong { font-weight: 600; }
+  .msg-md ol, .msg-md ul { padding-left: 20px; margin: 4px 0; }
+  .msg-md blockquote { border-left: 3px solid #e6a23c; padding: 4px 0 4px 10px; margin: 8px 0; background: #fdf6ec; border-radius: 0 4px 4px 0; font-size: 13px; color: #e6a23c; }
+  .msg-md code { background: #f5f7fa; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .msg-md pre { background: #f5f7fa; padding: 8px 12px; border-radius: 6px; margin: 8px 0; overflow-x: auto; }
+  .msg-md pre code { background: none; padding: 0; }
+
+  /* 输入区域 */
+  .m-input-bar { background: #fff; padding: 10px 12px; border-top: 1px solid #ebeef5; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .m-input-bar .attach-btn { font-size: 22px; color: #909399; cursor: pointer; flex-shrink: 0; }
+  .m-input-bar .msg-input { flex: 1; padding: 10px 14px; background: #f0f1f3; border-radius: 20px; border: none; font-size: 14px; outline: none; }
+  .m-input-bar .send-btn { width: 36px; height: 36px; background: #409eff; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer; flex-shrink: 0; border: none; }
+  .m-input-bar .send-btn.stop { background: #f56c6c; }
+  .m-input-bar .typing-hint { flex: 1; font-size: 13px; color: #909399; text-align: center; }
+
+  /* 消息操作菜单 */
+  .msg-actions { display: flex; gap: 4px; margin-top: 6px; }
+  .msg-action-btn { font-size: 16px; cursor: pointer; padding: 2px 4px; border-radius: 4px; opacity: .5; transition: all .15s; }
+  .msg-action-btn:hover { opacity: 1; background: #f0f2f5; }
+
+  /* 文件上传预览 */
+  .m-file-preview { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f5f7fa; border-radius: 8px; margin: 0 12px 4px; }
+  .m-file-preview .file-icon { font-size: 24px; }
+  .m-file-preview .file-name { flex: 1; font-size: 13px; color: #606266; }
+  .m-file-preview .file-remove { font-size: 16px; color: #c0c4cc; cursor: pointer; }
+
+  /* 简易 ECharts 模拟 */
+  .chart-sim { height: 160px; position: relative; overflow: hidden; }
+  .chart-sim-bar { position: absolute; bottom: 24px; width: 30px; border-radius: 4px 4px 0 0; }
+  .chart-sim-label { position: absolute; bottom: 4px; font-size: 10px; color: #909399; text-align: center; }
+  .chart-sim-line { position: absolute; top: 0; left: 0; right: 0; bottom: 24px; }
+  .chart-sim svg { width: 100%; height: 100%; }
+
+  /* 饼图模拟 */
+  .pie-chart { width: 120px; height: 120px; border-radius: 50%; margin: 0 auto; position: relative; }
+  .pie-chart.doughnut { width: 120px; height: 120px; }
+  .pie-legend { display: flex; justify-content: center; gap: 12px; margin-top: 8px; font-size: 11px; }
+  .pie-legend-item { display: flex; align-items: center; gap: 4px; }
+  .pie-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* 雷达图模拟 */
+  .radar-sim { text-align: center; padding: 16px; }
+  .radar-sim svg { width: 140px; height: 140px; }
+
+  /* 操作提示弹框 */
+  .m-action-sheet { position: absolute; bottom: 56px; left: 0; right: 0; background: #fff; border-radius: 16px 16px 0 0; padding: 8px 0; box-shadow: 0 -4px 20px rgba(0,0,0,.1); z-index: 20; display: none; }
+  .m-action-sheet.show { display: block; }
+  .m-action-item { padding: 14px 20px; font-size: 15px; color: #333; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .m-action-item:hover { background: #f5f7fa; }
+  .m-action-item.danger { color: #f56c6c; }
+
+  /* 辅助说明 */
+  .annotation { position: absolute; font-size: 11px; color: #e6a23c; background: #fdf6ec; padding: 2px 8px; border-radius: 4px; white-space: nowrap; z-index: 15; pointer-events: none; }
+
+  /* 架构图 */
+  .arch-diagram { max-width: 900px; margin: 24px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  .arch-row { display: flex; justify-content: center; gap: 24px; margin-bottom: 20px; position: relative; }
+  .arch-box { padding: 16px 28px; border-radius: 10px; text-align: center; font-size: 14px; font-weight: 600; min-width: 160px; }
+  .arch-box.frontend { background: #ecf5ff; border: 2px solid #409eff; color: #409eff; }
+  .arch-box.backend { background: #fdf6ec; border: 2px solid #e6a23c; color: #e6a23c; }
+  .arch-box.dify { background: #f0f9eb; border: 2px solid #67c23a; color: #67c23a; }
+  .arch-box small { display: block; font-size: 11px; font-weight: 400; margin-top: 4px; color: #909399; }
+  .arch-arrow { text-align: center; font-size: 24px; color: #c0c4cc; margin: 8px 0; }
+  .arch-inner-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .arch-inner-box { padding: 8px 16px; background: #fff; border-radius: 6px; font-size: 12px; border: 1px solid #ebeef5; }
+
+  /* 权限流转图 */
+  .flow-diagram { max-width: 900px; margin: 24px auto; }
+  .flow-step { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 4px; }
+  .flow-num { width: 32px; height: 32px; background: #409eff; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; flex-shrink: 0; }
+  .flow-content { flex: 1; padding: 12px 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .flow-content .flow-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .flow-content .flow-desc { font-size: 13px; color: #909399; }
+  .flow-content .flow-actors { display: flex; gap: 8px; margin-top: 8px; }
+  .flow-actor { padding: 2px 10px; border-radius: 10px; font-size: 11px; }
+  .flow-actor.pc { background: #ecf5ff; color: #409eff; }
+  .flow-actor.api { background: #fdf6ec; color: #e6a23c; }
+  .flow-actor.h5 { background: #f4f4f5; color: #909399; }
+  .flow-actor.dify { background: #f0f9eb; color: #67c23a; }
+  .flow-connector { margin-left: 15px; width: 2px; height: 16px; background: #dcdfe6; }
+</style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<div class="top-nav">
+  <h1>AI小助手平台智能体应用集成 - 原型交互图</h1>
+  <span class="version">v1.0 · 2026-04-14</span>
+</div>
+
+<!-- Tab 切换 -->
+<div class="tab-bar">
+  <span class="tab-section-label">PC端</span>
+  <div class="tab-item active" onclick="switchTab('pc-ai-app')">AI应用管理</div>
+  <div class="tab-item" onclick="switchTab('pc-role-auth')">角色授权</div>
+  <span class="tab-section-label" style="margin-left:16px">手机端</span>
+  <div class="tab-item" onclick="switchTab('m-app-list')">应用列表</div>
+  <div class="tab-item" onclick="switchTab('m-conversations')">会话列表</div>
+  <div class="tab-item" onclick="switchTab('m-chat')">对话界面</div>
+  <div class="tab-item" onclick="switchTab('m-render')">渲染展示</div>
+  <span class="tab-section-label" style="margin-left:16px">设计</span>
+  <div class="tab-item" onclick="switchTab('arch')">架构图</div>
+  <div class="tab-item" onclick="switchTab('flow')">权限流转</div>
+</div>
+
+<div class="content">
+
+<!-- ==================== PC端：AI应用管理 ==================== -->
+<div class="page active" id="page-pc-ai-app">
+  <div class="pc-frame">
+    <div class="pc-header">
+      <span class="logo">OCP 协同平台</span>
+      <div class="menu-items">
+        <span>首页</span><span>订单管理</span><span>生产管理</span><span class="active">系统管理</span>
+      </div>
+      <span class="user-info">管理员 · admin</span>
+    </div>
+    <div class="pc-body">
+      <div class="pc-sidebar">
+        <div class="menu-group">
+          <div class="menu-group-title">系统管理</div>
+          <span class="menu-link">用户管理</span>
+          <span class="menu-link">角色管理</span>
+          <span class="menu-link">菜单管理</span>
+          <span class="menu-link active">AI 应用管理</span>
+          <span class="menu-link">系统配置</span>
+        </div>
+      </div>
+      <div class="pc-content">
+        <div class="pc-page-title">AI 应用管理 <span class="badge">AI小助手平台 智能体</span></div>
+        <div class="toolbar">
+          <button class="btn btn-success" onclick="showModal('modal-sync')">⟳ 从AI小助手平台同步</button>
+          <button class="btn btn-primary" onclick="showModal('modal-add')">+ 新增</button>
+          <button class="btn btn-danger">🗑 删除</button>
+          <div class="search-box">
+            <input class="input" placeholder="应用名称">
+            <button class="btn btn-primary">查询</button>
+          </div>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th width="40"><input type="checkbox" class="checkbox"></th>
+              <th>应用名称</th>
+              <th>应用类型</th>
+              <th>平台 AppID</th>
+              <th>图标</th>
+              <th>描述</th>
+              <th>状态</th>
+              <th width="140">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" class="checkbox"></td>
+              <td><strong>订单助手</strong></td>
+              <td>对话型 (Chat)</td>
+              <td><code style="font-size:12px;background:#f5f7fa;padding:2px 6px;border-radius:4px">abc-123-def</code></td>
+              <td class="icon-cell">🤖</td>
+              <td style="color:#909399;font-size:12px">智能订单查询与分析</td>
+              <td><span class="status-tag enabled">启用</span></td>
+              <td><span class="op-link" onclick="showModal('modal-add')">编辑</span><span class="op-link danger">删除</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" class="checkbox"></td>
+              <td><strong>数据分析</strong></td>
+              <td>对话型 (Chat)</td>
+              <td><code style="font-size:12px;background:#f5f7fa;padding:2px 6px;border-radius:4px">def-456-ghi</code></td>
+              <td class="icon-cell">📊</td>
+              <td style="color:#909399;font-size:12px">数据报表智能分析</td>
+              <td><span class="status-tag enabled">启用</span></td>
+              <td><span class="op-link" onclick="showModal('modal-add')">编辑</span><span class="op-link danger">删除</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" class="checkbox"></td>
+              <td><strong>生产排程</strong></td>
+              <td>Agent</td>
+              <td><code style="font-size:12px;background:#f5f7fa;padding:2px 6px;border-radius:4px">ghi-789-jkl</code></td>
+              <td class="icon-cell">🏭</td>
+              <td style="color:#909399;font-size:12px">智能排程计划助手</td>
+              <td><span class="status-tag disabled">停用</span></td>
+              <td><span class="op-link" onclick="showModal('modal-add')">编辑</span><span class="op-link danger">删除</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" class="checkbox"></td>
+              <td><strong>物料查询</strong></td>
+              <td>对话型 (Chat)</td>
+              <td><code style="font-size:12px;background:#f5f7fa;padding:2px 6px;border-radius:4px">mno-012-pqr</code></td>
+              <td class="icon-cell">📋</td>
+              <td style="color:#909399;font-size:12px">物料信息智能查询</td>
+              <td><span class="status-tag enabled">启用</span></td>
+              <td><span class="op-link" onclick="showModal('modal-add')">编辑</span><span class="op-link danger">删除</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" class="checkbox"></td>
+              <td><strong>智能客服</strong></td>
+              <td>Agent</td>
+              <td><code style="font-size:12px;background:#f5f7fa;padding:2px 6px;border-radius:4px">stu-345-vwx</code></td>
+              <td class="icon-cell">💬</td>
+              <td style="color:#909399;font-size:12px">客户服务智能助手</td>
+              <td><span class="status-tag enabled">启用</span></td>
+              <td><span class="op-link" onclick="showModal('modal-add')">编辑</span><span class="op-link danger">删除</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          共 5 条
+          <div class="page-btn">&lt;</div>
+          <div class="page-btn active">1</div>
+          <div class="page-btn">&gt;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PC端：角色授权 -->
+<div class="page" id="page-pc-role-auth">
+  <div class="pc-frame">
+    <div class="pc-header">
+      <span class="logo">OCP 协同平台</span>
+      <div class="menu-items">
+        <span>首页</span><span>订单管理</span><span>生产管理</span><span class="active">系统管理</span>
+      </div>
+      <span class="user-info">管理员 · admin</span>
+    </div>
+    <div class="pc-body">
+      <div class="pc-sidebar">
+        <div class="menu-group">
+          <div class="menu-group-title">系统管理</div>
+          <span class="menu-link">用户管理</span>
+          <span class="menu-link active">角色管理</span>
+          <span class="menu-link">菜单管理</span>
+          <span class="menu-link">AI 应用管理</span>
+        </div>
+      </div>
+      <div class="pc-content">
+        <div class="pc-page-title">编辑角色：生产主管</div>
+        <div class="inner-tabs">
+          <div class="inner-tab">基本信息</div>
+          <div class="inner-tab">菜单权限</div>
+          <div class="inner-tab">数据权限</div>
+          <div class="inner-tab active">AI 应用授权</div>
+        </div>
+        <div class="transfer">
+          <div class="transfer-panel">
+            <div class="transfer-panel-header">可用应用 (3)</div>
+            <div class="transfer-panel-body">
+              <div class="transfer-item"><input type="checkbox" class="checkbox"> 🏭 生产排程</div>
+              <div class="transfer-item"><input type="checkbox" class="checkbox"> 💬 智能客服</div>
+              <div class="transfer-item"><input type="checkbox" class="checkbox"> 📋 物料查询</div>
+            </div>
+          </div>
+          <div class="transfer-buttons">
+            <div class="transfer-btn">&gt;&gt;</div>
+            <div class="transfer-btn">&gt;</div>
+            <div class="transfer-btn">&lt;</div>
+            <div class="transfer-btn">&lt;&lt;</div>
+          </div>
+          <div class="transfer-panel">
+            <div class="transfer-panel-header">已授权应用 (2)</div>
+            <div class="transfer-panel-body">
+              <div class="transfer-item"><span class="check">✓</span> 🤖 订单助手</div>
+              <div class="transfer-item"><span class="check">✓</span> 📊 数据分析</div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:right;margin-top:20px">
+          <button class="btn">取消</button>
+          <button class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 手机端：应用列表 ==================== -->
+<div class="page" id="page-m-app-list">
+  <div class="mobile-container">
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back"></span>
+            <span class="title">AI 助手</span>
+            <span class="action"></span>
+          </div>
+          <div class="m-body">
+            <div class="m-search">
+              <div class="m-search-wrap">
+                <input class="m-search-input" placeholder="搜索应用..." readonly>
+              </div>
+            </div>
+            <div class="m-section-title">我的应用</div>
+            <div class="m-app-grid">
+              <div class="m-app-card">
+                <div class="app-icon">🤖</div>
+                <div class="app-name">订单助手</div>
+                <div class="app-desc">智能订单查询与分析</div>
+                <div class="app-status">在线</div>
+              </div>
+              <div class="m-app-card">
+                <div class="app-icon">📊</div>
+                <div class="app-name">数据分析</div>
+                <div class="app-desc">数据报表智能分析</div>
+                <div class="app-status">在线</div>
+              </div>
+              <div class="m-app-card">
+                <div class="app-icon">🏭</div>
+                <div class="app-name">生产排程</div>
+                <div class="app-desc">排程计划助手</div>
+                <div class="app-status">在线</div>
+              </div>
+              <div class="m-app-card">
+                <div class="app-icon">📋</div>
+                <div class="app-name">物料查询</div>
+                <div class="app-desc">物料信息智能查询</div>
+                <div class="app-status">在线</div>
+              </div>
+            </div>
+          </div>
+          <div class="m-tabbar">
+            <div class="m-tabbar-item"><span class="icon">☰</span><span>菜单</span></div>
+            <div class="m-tabbar-item"><span class="icon">📝</span><span>流程</span></div>
+            <div class="m-tabbar-item active"><span class="icon">🤖</span><span>AI</span></div>
+            <div class="m-tabbar-item"><span class="icon">📈</span><span>报表</span></div>
+            <div class="m-tabbar-item"><span class="icon">👤</span><span>我的</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">AI 应用列表页</div>
+    </div>
+  </div>
+</div>
+
+<!-- 手机端：会话列表 -->
+<div class="page" id="page-m-conversations">
+  <div class="mobile-container">
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back">‹</span>
+            <span class="title">订单助手</span>
+            <span class="action" style="width:28px;height:28px;border:2px solid #409eff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;color:#409eff;font-weight:600;cursor:pointer">+</span>
+          </div>
+          <div class="m-body" style="padding-top:12px">
+            <div class="m-session-item">
+              <div class="session-title">今天出货单查询</div>
+              <div class="session-preview">帮我查一下今天需要出货的订单...</div>
+              <div class="session-meta">
+                <span class="session-count">今天 10:30</span>
+                <span class="session-more" onclick="toggleActionSheet('as-session')">···</span>
+              </div>
+            </div>
+            <div class="m-session-item">
+              <div class="session-title">客户订单跟进</div>
+              <div class="session-preview">XX客户的订单进度怎么样了？</div>
+              <div class="session-meta">
+                <span class="session-count">昨天 16:20</span>
+                <span class="session-more">···</span>
+              </div>
+            </div>
+            <div class="m-session-item">
+              <div class="session-title">物料需求计算</div>
+              <div class="session-preview">根据BOM计算本周物料需求量</div>
+              <div class="session-meta">
+                <span class="session-count">04-12</span>
+                <span class="session-more">···</span>
+              </div>
+            </div>
+            <div class="m-session-item">
+              <div class="session-title">产能分析报告</div>
+              <div class="session-preview">帮我分析一下本月各产线的产能利用率...</div>
+              <div class="session-meta">
+                <span class="session-count">04-10</span>
+                <span class="session-more">···</span>
+              </div>
+            </div>
+            <div class="m-session-item" style="opacity:.6">
+              <div class="session-title">供应商评估对比</div>
+              <div class="session-preview">对比三家供应商的综合评分...</div>
+              <div class="session-meta">
+                <span class="session-count">04-08</span>
+                <span class="session-more">···</span>
+              </div>
+            </div>
+          </div>
+          <div class="m-tabbar">
+            <div class="m-tabbar-item"><span class="icon">☰</span><span>菜单</span></div>
+            <div class="m-tabbar-item"><span class="icon">📝</span><span>流程</span></div>
+            <div class="m-tabbar-item active"><span class="icon">🤖</span><span>AI</span></div>
+            <div class="m-tabbar-item"><span class="icon">📈</span><span>报表</span></div>
+            <div class="m-tabbar-item"><span class="icon">👤</span><span>我的</span></div>
+          </div>
+          <!-- 操作菜单 -->
+          <div class="m-action-sheet" id="as-session">
+            <div class="m-action-item">📝 重命名会话</div>
+            <div class="m-action-item danger">🗑 删除会话</div>
+            <div class="m-action-item" onclick="toggleActionSheet('as-session')" style="text-align:center;color:#909399">取消</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">会话列表页</div>
+    </div>
+  </div>
+</div>
+
+<!-- 手机端：对话界面 -->
+<div class="page" id="page-m-chat">
+  <div class="mobile-container">
+    <!-- 基础对话 -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back">‹</span>
+            <span class="title">订单助手</span>
+            <span class="action" onclick="toggleActionSheet('as-chat')" style="width:28px;height:28px;border:2px solid #409eff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;color:#409eff;font-weight:600;cursor:pointer">+</span>
+          </div>
+          <div class="m-chat-body">
+            <div class="m-msg ai">
+              <div class="avatar">🤖</div>
+              <div>
+                <div class="bubble">你好！我是订单助手，可以帮你查询订单信息、分析订单数据。请问有什么需要帮助的？</div>
+              </div>
+            </div>
+            <div class="m-msg user">
+              <div class="avatar">张</div>
+              <div class="bubble">帮我查一下今天需要出货的订单</div>
+            </div>
+            <div class="m-msg ai">
+              <div class="avatar">🤖</div>
+              <div>
+                <div class="bubble">
+                  好的，正在查询今日出货订单...<span class="cursor-blink"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="m-input-bar">
+            <span class="typing-hint">正在回复中...</span>
+            <button class="send-btn stop">⏹</button>
+          </div>
+          <!-- 会话管理菜单 -->
+          <div class="m-action-sheet" id="as-chat">
+            <div class="m-action-item">📝 重命名会话</div>
+            <div class="m-action-item">📋 新建对话</div>
+            <div class="m-action-item">📜 历史会话</div>
+            <div class="m-action-item danger">🗑 删除会话</div>
+            <div class="m-action-item" onclick="toggleActionSheet('as-chat')" style="text-align:center;color:#909399">取消</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">对话界面 - 流式输出中</div>
+    </div>
+
+    <!-- 完整对话 -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back">‹</span>
+            <span class="title">订单助手</span>
+            <span class="action" style="width:28px;height:28px;border:2px solid #409eff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;color:#409eff;font-weight:600;cursor:pointer">+</span>
+          </div>
+          <div class="m-chat-body">
+            <div class="m-msg ai">
+              <div class="avatar">🤖</div>
+              <div>
+                <div class="bubble msg-md">
+                  <h2>今日出货订单汇总</h2>
+                  <p><strong>总计：</strong>12 笔</p>
+                  <p><strong>总金额：</strong>¥156,800.00</p>
+                  <h3>订单明细</h3>
+                  <div style="overflow-x:auto">
+                    <table class="msg-table">
+                      <tr><th>订单号</th><th>客户</th><th>金额</th><th>状态</th></tr>
+                      <tr><td>SO-412</td><td>客户A</td><td>¥5,800</td><td style="color:#67c23a">已发</td></tr>
+                      <tr><td>SO-413</td><td>客户B</td><td>¥12,000</td><td style="color:#e6a23c">待发</td></tr>
+                      <tr><td>SO-414</td><td>客户C</td><td>¥8,500</td><td style="color:#67c23a">已发</td></tr>
+                    </table>
+                  </div>
+                  <blockquote>注意：3 笔订单需今日确认发货</blockquote>
+                </div>
+              </div>
+            </div>
+            <div class="m-suggestions">
+              <div class="m-suggest-btn">查看出货详情</div>
+              <div class="m-suggest-btn">导出出货清单</div>
+              <div class="m-suggest-btn">查看延期订单</div>
+            </div>
+          </div>
+          <div class="m-input-bar">
+            <input class="msg-input" placeholder="请输入消息..." readonly>
+            <button class="send-btn">▶</button>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">对话界面 - Markdown + 表格 + 建议问题</div>
+    </div>
+  </div>
+</div>
+
+<!-- 手机端：渲染展示 -->
+<div class="page" id="page-m-render">
+  <div class="mobile-container">
+    <!-- 图表渲染 -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back">‹</span>
+            <span class="title">数据分析</span>
+            <span class="action">···</span>
+          </div>
+          <div class="m-chat-body">
+            <div class="m-msg user">
+              <div class="avatar">张</div>
+              <div class="bubble">分析各产线近一周的产量趋势</div>
+            </div>
+            <div class="m-msg ai">
+              <div class="avatar">📊</div>
+              <div>
+                <div class="bubble">
+                  <div>以下是各产线近7日产量趋势：</div>
+                  <div class="msg-chart">
+                    <div class="msg-chart-title">近7日产量趋势（折线图）</div>
+                    <div class="chart-sim">
+                      <svg viewBox="0 0 280 120" style="width:100%;height:120px">
+                        <polyline points="10,80 50,60 90,70 130,40 170,50 210,20 250,30" fill="none" stroke="#409eff" stroke-width="2"/>
+                        <polyline points="10,90 50,70 90,60 130,55 170,30 210,40 250,25" fill="none" stroke="#67c23a" stroke-width="2"/>
+                        <circle cx="10" cy="80" r="3" fill="#409eff"/>
+                        <circle cx="50" cy="60" r="3" fill="#409eff"/>
+                        <circle cx="90" cy="70" r="3" fill="#409eff"/>
+                        <circle cx="130" cy="40" r="3" fill="#409eff"/>
+                        <circle cx="170" cy="50" r="3" fill="#409eff"/>
+                        <circle cx="210" cy="20" r="3" fill="#409eff"/>
+                        <circle cx="250" cy="30" r="3" fill="#409eff"/>
+                      </svg>
+                      <div style="display:flex;justify-content:space-between;font-size:10px;color:#909399;padding:0 6px">
+                        <span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span>
+                      </div>
+                    </div>
+                    <div class="pie-legend">
+                      <div class="pie-legend-item"><div class="pie-legend-dot" style="background:#409eff"></div>A线</div>
+                      <div class="pie-legend-item"><div class="pie-legend-dot" style="background:#67c23a"></div>B线</div>
+                    </div>
+                    <div class="msg-chart-fullscreen"><span>全屏查看 →</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="m-msg user">
+              <div class="avatar">张</div>
+              <div class="bubble">订单状态分布是什么样的？</div>
+            </div>
+            <div class="m-msg ai">
+              <div class="avatar">📊</div>
+              <div>
+                <div class="bubble">
+                  <div>当前订单状态分布如下：</div>
+                  <div class="msg-chart">
+                    <div class="msg-chart-title">订单状态分布（饼图）</div>
+                    <div style="text-align:center;padding:8px 0">
+                      <svg width="140" height="140" viewBox="0 0 140 140">
+                        <circle cx="70" cy="70" r="55" fill="none" stroke="#ebeef5" stroke-width="24"/>
+                        <circle cx="70" cy="70" r="55" fill="none" stroke="#409eff" stroke-width="24" stroke-dasharray="156 345.6" stroke-dashoffset="0" transform="rotate(-90 70 70)"/>
+                        <circle cx="70" cy="70" r="55" fill="none" stroke="#67c23a" stroke-width="24" stroke-dasharray="103.8 345.6" stroke-dashoffset="-156" transform="rotate(-90 70 70)"/>
+                        <circle cx="70" cy="70" r="55" fill="none" stroke="#e6a23c" stroke-width="24" stroke-dasharray="85.8 345.6" stroke-dashoffset="-259.8" transform="rotate(-90 70 70)"/>
+                        <text x="70" y="66" text-anchor="middle" font-size="18" font-weight="600" fill="#333">128</text>
+                        <text x="70" y="82" text-anchor="middle" font-size="10" fill="#909399">总订单</text>
+                      </svg>
+                    </div>
+                    <div class="pie-legend">
+                      <div class="pie-legend-item"><div class="pie-legend-dot" style="background:#409eff"></div>已完成 45%</div>
+                      <div class="pie-legend-item"><div class="pie-legend-dot" style="background:#67c23a"></div>进行中 30%</div>
+                      <div class="pie-legend-item"><div class="pie-legend-dot" style="background:#e6a23c"></div>待处理 25%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="m-input-bar">
+            <span class="attach-btn"></span>
+            <input class="msg-input" placeholder="请输入消息..." readonly>
+            <button class="send-btn">▶</button>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">图表渲染 - 折线图 & 环形图</div>
+    </div>
+
+    <!-- 柱状图 + 雷达图 + 图片 -->
+    <div>
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="m-navbar">
+            <span class="back">‹</span>
+            <span class="title">数据分析</span>
+            <span class="action">···</span>
+          </div>
+          <div class="m-chat-body">
+            <div class="m-msg user">
+              <div class="avatar">张</div>
+              <div class="bubble">各产线月度产量对比</div>
+            </div>
+            <div class="m-msg ai">
+              <div class="avatar">📊</div>
+              <div>
+                <div class="bubble">
+                  <div>各产线4月产量对比：</div>
+                  <div class="msg-chart">
+                    <div class="msg-chart-title">月度产量对比（柱状图）</div>
+                    <div style="display:flex;align-items:flex-end;justify-content:space-around;height:120px;padding:0 10px">
+                      <div style="text-align:center">
+                        <div style="font-size:10px;color:#909399;margin-bottom:4px">1,200</div>
+                        <div style="width:40px;height:96px;background:linear-gradient(180deg,#409eff,#66b1ff);border-radius:4px 4px 0 0"></div>
+                        <div style="font-size:10px;color:#909399;margin-top:4px">A线</div>
+                      </div>
+                      <div style="text-align:center">
+                        <div style="font-size:10px;color:#909399;margin-bottom:4px">980</div>
+                        <div style="width:40px;height:78px;background:linear-gradient(180deg,#67c23a,#85ce61);border-radius:4px 4px 0 0"></div>
+                        <div style="font-size:10px;color:#909399;margin-top:4px">B线</div>
+                      </div>
+                      <div style="text-align:center">
+                        <div style="font-size:10px;color:#909399;margin-bottom:4px">850</div>
+                        <div style="width:40px;height:68px;background:linear-gradient(180deg,#e6a23c,#ebb563);border-radius:4px 4px 0 0"></div>
+                        <div style="font-size:10px;color:#909399;margin-top:4px">C线</div>
+                      </div>
+                      <div style="text-align:center">
+                        <div style="font-size:10px;color:#909399;margin-bottom:4px">650</div>
+                        <div style="width:40px;height:52px;background:linear-gradient(180deg,#f56c6c,#f89898);border-radius:4px 4px 0 0"></div>
+                        <div style="font-size:10px;color:#909399;margin-top:4px">D线</div>
+                      </div>
+                    </div>
+                    <div class="msg-chart-fullscreen"><span>全屏查看 →</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="m-msg user">
+              <div class="avatar">张</div>
+              <div class="bubble">主要供应商综合评估雷达图</div>
+            </div>
+            <div class="m-msg ai">
+              <div class="avatar">📊</div>
+              <div>
+                <div class="bubble">
+                  <div>供应商A综合评估：</div>
+                  <div class="msg-chart">
+                    <div class="msg-chart-title">供应商综合评估（雷达图）</div>
+                    <div class="radar-sim">
+                      <svg viewBox="0 0 200 200" width="180" height="180">
+                        <!-- 背景网格 -->
+                        <polygon points="100,20 165,60 165,140 100,180 35,140 35,60" fill="none" stroke="#ebeef5" stroke-width="1"/>
+                        <polygon points="100,40 150,70 150,130 100,160 50,130 50,70" fill="none" stroke="#ebeef5" stroke-width="1"/>
+                        <polygon points="100,60 135,80 135,120 100,140 65,120 65,80" fill="none" stroke="#ebeef5" stroke-width="1"/>
+                        <!-- 轴线 -->
+                        <line x1="100" y1="100" x2="100" y2="20" stroke="#ebeef5" stroke-width="1"/>
+                        <line x1="100" y1="100" x2="165" y2="60" stroke="#ebeef5" stroke-width="1"/>
+                        <line x1="100" y1="100" x2="165" y2="140" stroke="#ebeef5" stroke-width="1"/>
+                        <line x1="100" y1="100" x2="35" y2="140" stroke="#ebeef5" stroke-width="1"/>
+                        <line x1="100" y1="100" x2="35" y2="60" stroke="#ebeef5" stroke-width="1"/>
+                        <!-- 数据 -->
+                        <polygon points="100,30 155,65 145,135 55,125 45,65" fill="rgba(64,158,255,.15)" stroke="#409eff" stroke-width="2"/>
+                        <circle cx="100" cy="30" r="3" fill="#409eff"/>
+                        <circle cx="155" cy="65" r="3" fill="#409eff"/>
+                        <circle cx="145" cy="135" r="3" fill="#409eff"/>
+                        <circle cx="55" cy="125" r="3" fill="#409eff"/>
+                        <circle cx="45" cy="65" r="3" fill="#409eff"/>
+                        <!-- 标签 -->
+                        <text x="100" y="14" text-anchor="middle" font-size="11" fill="#606266">质量</text>
+                        <text x="175" y="58" text-anchor="start" font-size="11" fill="#606266">交期</text>
+                        <text x="175" y="148" text-anchor="start" font-size="11" fill="#606266">价格</text>
+                        <text x="25" y="148" text-anchor="end" font-size="11" fill="#606266">服务</text>
+                        <text x="25" y="58" text-anchor="end" font-size="11" fill="#606266">技术</text>
+                      </svg>
+                    </div>
+                    <div class="msg-chart-fullscreen"><span>全屏查看 →</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="m-input-bar">
+            <span class="attach-btn"></span>
+            <input class="msg-input" placeholder="请输入消息..." readonly>
+            <button class="send-btn">▶</button>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">图表渲染 - 柱状图 & 雷达图</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 架构图 ==================== -->
+<div class="page" id="page-arch">
+  <div class="arch-diagram">
+    <h2 style="text-align:center;margin-bottom:24px;font-size:18px">系统整体架构</h2>
+    <div class="arch-row">
+      <div class="arch-box frontend">
+        PC 协同平台
+        <small>Vue 3 + Element Plus</small>
+        <small>管理 & 授权</small>
+      </div>
+      <div class="arch-box frontend">
+        手机端 H5
+        <small>uni-app + uview-plus</small>
+        <small>展示 & 对话</small>
+      </div>
+    </div>
+    <div class="arch-arrow">↓ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↓</div>
+    <div class="arch-row">
+      <div class="arch-box backend" style="min-width:460px">
+        OCP 后端 API（.NET 8）
+        <small>统一认证 · 权限校验 · AI小助手平台 转发</small>
+        <div class="arch-inner-row" style="margin-top:12px">
+          <div class="arch-inner-box">AI 应用管理</div>
+          <div class="arch-inner-box">角色授权</div>
+          <div class="arch-inner-box">API 转发</div>
+          <div class="arch-inner-box">SSE 流式</div>
+        </div>
+      </div>
+    </div>
+    <div class="arch-arrow">↓</div>
+    <div class="arch-row">
+      <div class="arch-box dify" style="min-width:460px">
+        AI小助手平台（自部署 10.11.10.101）
+        <small>智能体 · 对话 · 文件 · 工作流</small>
+        <div class="arch-inner-row" style="margin-top:12px">
+          <div class="arch-inner-box">Chat Messages</div>
+          <div class="arch-inner-box">Conversations</div>
+          <div class="arch-inner-box">Files</div>
+          <div class="arch-inner-box">App Meta</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:24px;padding:16px;background:#f5f7fa;border-radius:8px">
+      <h4 style="font-size:14px;margin-bottom:8px">关键设计原则</h4>
+      <ul style="font-size:13px;color:#606266;padding-left:20px;line-height:2">
+        <li>前端不直接调用 AI小助手平台 API，统一经后端转发（安全隔离 AppKey）</li>
+        <li>权限复用现有角色体系，通过「角色-AI应用」授权表控制可见范围</li>
+        <li>AI小助手平台 用户与 OCP 用户默认以员工号直接映射，无需额外映射表</li>
+        <li>SSE 流式输出通过后端透传，支持实时对话体验</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 权限流转 ==================== -->
+<div class="page" id="page-flow">
+  <div class="flow-diagram">
+    <h2 style="text-align:center;margin-bottom:24px;font-size:18px">权限流转时序</h2>
+    <div style="max-width:700px;margin:0 auto">
+      <div class="flow-step">
+        <div class="flow-num">1</div>
+        <div class="flow-content">
+          <div class="flow-title">管理员创建 AI 应用</div>
+          <div class="flow-desc">在 PC 端 AI 应用管理页面，从AI小助手平台同步或手动添加智能体应用（包含 AppKey）</div>
+          <div class="flow-actors"><span class="flow-actor pc">PC 端</span><span class="flow-actor api">后端</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">2</div>
+        <div class="flow-content">
+          <div class="flow-title">配置角色授权</div>
+          <div class="flow-desc">在角色管理页面，将 AI 应用分配给对应角色（穿梭框操作）</div>
+          <div class="flow-actors"><span class="flow-actor pc">PC 端</span><span class="flow-actor api">后端</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">3</div>
+        <div class="flow-content">
+          <div class="flow-title">用户登录手机端 H5</div>
+          <div class="flow-desc">用户使用 OCP 账号登录手机端，获取 JWT Token</div>
+          <div class="flow-actors"><span class="flow-actor h5">手机端</span><span class="flow-actor api">后端</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">4</div>
+        <div class="flow-content">
+          <div class="flow-title">按权限加载应用列表</div>
+          <div class="flow-desc">后端查询用户角色 → 获取角色已授权的 AI 应用 → 仅返回用户可见应用</div>
+          <div class="flow-actors"><span class="flow-actor h5">手机端</span><span class="flow-actor api">后端</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">5</div>
+        <div class="flow-content">
+          <div class="flow-title">员工号直接映射 AI小助手平台 用户</div>
+          <div class="flow-desc">OCP 与 AI小助手平台 统一使用员工号作为用户标识，后端直接以员工号作为 AI小助手平台 user 参数，无需额外映射</div>
+          <div class="flow-actors"><span class="flow-actor api">后端</span><span class="flow-actor dify">AI小助手平台</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">6</div>
+        <div class="flow-content">
+          <div class="flow-title">用户发起对话</div>
+          <div class="flow-desc">手机端发送消息 → 后端校验权限 → 查 AppKey → 注入员工号作为 user → 转发到 AI小助手平台</div>
+          <div class="flow-actors"><span class="flow-actor h5">手机端</span><span class="flow-actor api">后端</span><span class="flow-actor dify">AI小助手平台</span></div>
+        </div>
+      </div>
+      <div class="flow-connector"></div>
+      <div class="flow-step">
+        <div class="flow-num">7</div>
+        <div class="flow-content">
+          <div class="flow-title">SSE 流式响应</div>
+          <div class="flow-desc">AI小助手平台 返回 SSE 流 → 后端透传 → 手机端实时渲染文本/表格/图表</div>
+          <div class="flow-actors"><span class="flow-actor dify">AI小助手平台</span><span class="flow-actor api">后端</span><span class="flow-actor h5">手机端</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<!-- ==================== 弹窗 ==================== -->
+
+<!-- 新增/编辑应用弹窗 -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>新增 AI 应用</h3>
+      <div class="modal-close" onclick="hideModal('modal-add')">×</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-label">应用名称</div>
+        <div class="form-control"><input class="input" placeholder="请输入应用名称" value="订单助手"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">应用类型</div>
+        <div class="form-control">
+          <select><option>对话型 (Chat)</option><option>Agent</option><option>Workflow</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">平台 AppID</div>
+        <div class="form-control"><input class="input" placeholder="AI小助手平台应用ID" value="abc-123-def-456"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">AppKey</div>
+        <div class="form-control"><input class="input" type="password" placeholder="AI小助手平台 AppKey" value="app-xxxxxxxxxx"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">应用描述</div>
+        <div class="form-control"><textarea placeholder="请输入应用描述">智能订单查询与分析助手，支持订单查询、出货跟踪、数据统计等功能。</textarea></div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">应用图标</div>
+        <div class="form-control">
+          <span style="font-size:32px;cursor:pointer;margin-right:8px">🤖</span>
+          <span style="font-size:32px;cursor:pointer;margin-right:8px;opacity:.4">📊</span>
+          <span style="font-size:32px;cursor:pointer;margin-right:8px;opacity:.4">🏭</span>
+          <span style="font-size:32px;cursor:pointer;margin-right:8px;opacity:.4">📋</span>
+          <span style="font-size:32px;cursor:pointer;opacity:.4">💬</span>
+          <div style="margin-top:8px"><button class="btn" style="font-size:12px">上传自定义图标</button></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">排序号</div>
+        <div class="form-control"><input class="input" type="number" value="0" style="width:100px"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">状态</div>
+        <div class="form-control">
+          <div class="radio-group">
+            <label><input type="radio" name="status" checked> 启用</label>
+            <label><input type="radio" name="status"> 停用</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="hideModal('modal-add')">取消</button>
+      <button class="btn btn-primary" onclick="hideModal('modal-add')">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 从AI小助手平台同步弹窗 -->
+<div class="modal-overlay" id="modal-sync">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>从AI小助手平台同步应用</h3>
+      <div class="modal-close" onclick="hideModal('modal-sync')">×</div>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#606266;margin-bottom:12px">以下应用将从 AI小助手平台同步到本系统：</p>
+      <div style="border:1px solid #ebeef5;border-radius:8px;overflow:hidden">
+        <div class="sync-item">
+          <input type="checkbox" class="checkbox" checked>
+          <span>🤖</span>
+          <span style="flex:1"><strong>订单助手</strong> <span style="color:#909399">(chat)</span></span>
+          <span class="sync-tag exist">已存在</span>
+        </div>
+        <div class="sync-item">
+          <input type="checkbox" class="checkbox" checked>
+          <span>📊</span>
+          <span style="flex:1"><strong>数据分析</strong> <span style="color:#909399">(chat)</span></span>
+          <span class="sync-tag exist">已存在</span>
+        </div>
+        <div class="sync-item">
+          <input type="checkbox" class="checkbox" checked>
+          <span>🧠</span>
+          <span style="flex:1"><strong>智能客服</strong> <span style="color:#909399">(agent)</span></span>
+          <span class="sync-tag new">新增</span>
+        </div>
+        <div class="sync-item">
+          <input type="checkbox" class="checkbox">
+          <span>🧪</span>
+          <span style="flex:1"><strong>测试应用</strong> <span style="color:#909399">(chat)</span></span>
+          <span class="sync-tag new">新增</span>
+        </div>
+      </div>
+      <div class="sync-tip">提示：已存在的应用将更新基本信息（名称、类型、描述），AppKey 不会覆盖。</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="hideModal('modal-sync')">取消</button>
+      <button class="btn btn-success" onclick="hideModal('modal-sync')">确认同步</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function showModal(id) {
+  document.getElementById(id).classList.add('show');
+}
+function hideModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+function toggleActionSheet(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('show');
+}
+
+// 点击弹窗外部关闭
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
+</script>
+</body>
+</html>
