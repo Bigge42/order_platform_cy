@@ -66,6 +66,92 @@ namespace HDPro.Sys.Controllers
             return Json(await Service.SavePermission(userPermissions, roleId));
         }
 
+        [HttpGet, Route("getAIApps")]
+        [ApiActionPermission(ActionPermissionOptions.Search)]
+        public async Task<IActionResult> GetAIApps(int roleId)
+        {
+            var aiAppRepository = HDPro.CY.Order.Repositories.Sys_AIAppRepository.Instance;
+            var roleAIAppRepository = HDPro.CY.Order.Repositories.Sys_RoleAIAppRepository.Instance;
+
+            var apps = await aiAppRepository.FindAsIQueryable(x => x.Status == 1)
+                .OrderBy(x => x.SortNo)
+                .ThenBy(x => x.Id)
+                .Select(x => new
+                {
+                    key = x.Id,
+                    label = x.AppName,
+                    description = x.Description,
+                    appType = x.AppType,
+                    icon = x.Icon
+                })
+                .ToListAsync();
+
+            var selected = await roleAIAppRepository.FindAsIQueryable(x => x.Role_Id == roleId && x.Enable == 1)
+                .Select(x => x.AIAppId)
+                .ToListAsync();
+
+            return Json(WebResponseContent.Instance.OK(null, new { apps, selected }));
+        }
+
+        [HttpPost, Route("saveAIApps")]
+        [ApiActionPermission(ActionPermissionOptions.Update)]
+        public async Task<IActionResult> SaveAIApps([FromBody] long[] aiAppIds, int roleId)
+        {
+            var currentRoleIds = UserContext.Current.RoleIds ?? Array.Empty<int>();
+            var canManageRole = UserContext.Current.IsSuperAdmin
+                || currentRoleIds.Contains(roleId)
+                || RoleContext.GetAllChildrenIds(currentRoleIds).Contains(roleId);
+            if (!canManageRole)
+            {
+                return Json(WebResponseContent.Instance.Error("无权限操作该角色"));
+            }
+
+            aiAppIds = aiAppIds?.Where(x => x > 0).Distinct().ToArray() ?? Array.Empty<long>();
+            var aiAppRepository = HDPro.CY.Order.Repositories.Sys_AIAppRepository.Instance;
+            var roleAIAppRepository = HDPro.CY.Order.Repositories.Sys_RoleAIAppRepository.Instance;
+
+            var validAIAppIds = await aiAppRepository.FindAsIQueryable(x => aiAppIds.Contains(x.Id) && x.Status == 1)
+                .Select(x => x.Id)
+                .ToListAsync();
+
+            var exists = await roleAIAppRepository.FindAsIQueryable(x => x.Role_Id == roleId)
+                .Select(x => new { x.Id, x.AIAppId, x.Enable })
+                .ToListAsync();
+
+            var user = UserContext.Current.UserInfo;
+            var add = validAIAppIds
+                .Where(x => !exists.Any(e => e.AIAppId == x))
+                .Select(x => new Sys_RoleAIApp
+                {
+                    Role_Id = roleId,
+                    AIAppId = x,
+                    Enable = 1,
+                    CreateDate = DateTime.Now,
+                    Creator = user?.UserTrueName,
+                    CreateID = user?.User_Id
+                })
+                .ToList();
+
+            var update = exists
+                .Where(x => (validAIAppIds.Contains(x.AIAppId) && x.Enable != 1)
+                    || (!validAIAppIds.Contains(x.AIAppId) && x.Enable == 1))
+                .Select(x => new Sys_RoleAIApp
+                {
+                    Id = x.Id,
+                    Enable = validAIAppIds.Contains(x.AIAppId) ? 1 : 0,
+                    ModifyDate = DateTime.Now,
+                    Modifier = user?.UserTrueName,
+                    ModifyID = user?.User_Id
+                })
+                .ToList();
+
+            roleAIAppRepository.AddRange(add);
+            roleAIAppRepository.UpdateRange(update, x => new { x.Enable, x.ModifyDate, x.Modifier, x.ModifyID });
+            roleAIAppRepository.SaveChanges();
+
+            return Json(WebResponseContent.Instance.OK("AI应用授权保存成功"));
+        }
+
         /// <summary>
         /// 获取当前角色下的所有角色 
         /// </summary>

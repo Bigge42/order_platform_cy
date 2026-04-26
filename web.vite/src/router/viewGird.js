@@ -712,6 +712,14 @@ let viewgird = [
         path: '/V_XhckkbRecord_Material',
         name: 'V_XhckkbRecord_Material',
         component: () => import('@/views/order/v_xhckkbrecord_material/V_XhckkbRecord_Material.vue')
+    }    ,{
+        path: '/Sys_AIApp',
+        name: 'Sys_AIApp',
+        component: () => import('@/views/order/order/Sys_AIApp.vue')
+    }    ,{
+        path: '/Sys_RoleAIApp',
+        name: 'Sys_RoleAIApp',
+        component: () => import('@/views/order/order/Sys_RoleAIApp.vue')
     }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除

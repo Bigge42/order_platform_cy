@@ -22,8 +22,19 @@
             </div>
           </template>
         </el-tab-pane>
+        <el-tab-pane name="ai">
+          <template #label>
+            <div class="custom-tabs-label">
+              <el-icon>
+                <document :size="20" />
+              </el-icon>
+              <span>{{ $ts("AI应用授权") }}</span>
+            </div>
+          </template>
+        </el-tab-pane>
       </el-tabs>
       <el-tree
+        v-show="activeName !== 'ai'"
         @check-change="leftCheckChange"
         @check="nodeCheck"
         :data="roleTree"
@@ -79,6 +90,14 @@
           </div>
         </template>
       </el-tree>
+      <div v-show="activeName === 'ai'" v-loading="aiAppLoading" class="ai-app-auth">
+        <el-transfer
+          v-model="aiAppSelected"
+          filterable
+          :data="aiApps"
+          :titles="[$ts('可用应用'), $ts('已授权应用')]"
+        />
+      </div>
       <template #footer>
         <div style="text-align: center">
           <el-button size="small" @click="model = false">{{ $ts("关闭") }}</el-button>
@@ -144,10 +163,17 @@ export default defineComponent({
       roleTree: [],
       roles: [],
       menuId: 0,
+      aiApps: [],
+      aiAppSelected: [],
+      aiAppLoading: false,
     };
   },
   methods: {
-    handleClick() {},
+    handleClick() {
+      if (this.activeName === "ai" && this.model) {
+        this.loadAIApps();
+      }
+    },
     async open(row) {
       this.row = row;
       if (!this.isInit) {
@@ -159,9 +185,14 @@ export default defineComponent({
       });
 
       this.getUserRole();
+      this.loadAIApps();
       this.model = true;
     },
     save() {
+      if (this.activeName === "ai") {
+        this.saveAIApps();
+        return;
+      }
       let userPermissions = [];
       this.roleList.forEach((x) => {
         let checkedPermission = x.actions.filter((f) => {
@@ -180,6 +211,40 @@ export default defineComponent({
       });
       let url = `api/role/SavePermission?roleId=${this.row.Role_Id}`;
       this.http.post(url, userPermissions, true).then((result) => {
+        this.$message[result.status ? "success" : "error"](result.message);
+      });
+    },
+    loadAIApps() {
+      if (!this.row || !this.row.Role_Id) {
+        return;
+      }
+      this.aiAppLoading = true;
+      const url = `/api/role/getAIApps?roleId=${this.row.Role_Id}`;
+      this.http
+        .get(url, {}, true)
+        .then((result) => {
+          if (!result.status) {
+            this.$message.error(result.message);
+            return;
+          }
+          const data = result.data || {};
+          this.aiApps = (data.apps || []).map((x) => {
+            const type = x.appType ? ` (${x.appType})` : "";
+            return {
+              key: x.key,
+              label: `${x.label}${type}`,
+              disabled: false,
+            };
+          });
+          this.aiAppSelected = data.selected || [];
+        })
+        .finally(() => {
+          this.aiAppLoading = false;
+        });
+    },
+    saveAIApps() {
+      const url = `/api/role/saveAIApps?roleId=${this.row.Role_Id}`;
+      this.http.post(url, this.aiAppSelected, true).then((result) => {
         this.$message[result.status ? "success" : "error"](result.message);
       });
     },
@@ -448,5 +513,19 @@ export default defineComponent({
 
 .role-tree {
   padding: 50px 10px 10px 10px;
+}
+
+.ai-app-auth {
+  padding: 58px 24px 16px;
+
+  ::v-deep(.el-transfer) {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  ::v-deep(.el-transfer-panel) {
+    width: 360px;
+  }
 }
 </style>

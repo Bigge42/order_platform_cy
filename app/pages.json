@@ -49,6 +49,27 @@
 			}
 		},
 		{
+			"path": "pages/ai/index",
+			"style": {
+				"navigationBarTitleText": "AI助手",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/ai/conversations",
+			"style": {
+				"navigationBarTitleText": "AI会话",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/ai/chat",
+			"style": {
+				"navigationBarTitleText": "AI对话",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
 			"path": "pages/flow/flow",
 			"style": {
 				"navigationBarTitleText": "审批流程"
@@ -426,11 +447,10 @@
 				"visible": false
 			},
 			{
-				"pagePath": "pages/report/index",
-				"iconPath": "static/tabbar/report.png",
-				"selectedIconPath": "static/tabbar/report_active.png",
-				"text": "报表",
-				"visible": false
+				"pagePath": "pages/ai/index",
+				"iconPath": "static/tabbar/message.png",
+				"selectedIconPath": "static/tabbar/message_active.png",
+				"text": "AI"
 			},
 			{
 				"pagePath": "pages/user/user",
