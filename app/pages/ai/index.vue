@@ -19,6 +19,35 @@
 			></u-search>
 		</view>
 
+		<view v-if="showRecentSection" class="recent-panel">
+			<view class="section-head">
+				<view class="section-title">最近对话</view>
+				<view class="section-subtitle">快速回到最近使用的智能体</view>
+			</view>
+
+			<view v-if="recentLoading" class="recent-state">正在获取最近会话...</view>
+			<view v-else-if="recentConversations.length === 0" class="recent-state muted">暂无最近对话</view>
+			<view v-else class="recent-list">
+				<view
+					class="recent-card"
+					v-for="item in recentConversations"
+					:key="`${item.appId}-${item.id}`"
+					@click="openRecentConversation(item)"
+				>
+					<view class="recent-main">
+						<view class="recent-title">{{ item.name || '未命名会话' }}</view>
+						<view class="recent-desc">{{ item.appName }}</view>
+					</view>
+					<view class="recent-time">{{ formatTime(item.updated_at || item.created_at) }}</view>
+				</view>
+			</view>
+		</view>
+
+		<view class="section-head app-section">
+			<view class="section-title">应用列表</view>
+			<view class="section-subtitle">按角色授权展示可用智能体</view>
+		</view>
+
 		<view v-if="loading" class="state">加载中...</view>
 		<view v-else-if="filteredApps.length === 0" class="state">暂无可用AI应用</view>
 		<view v-else class="app-list">
@@ -45,8 +74,10 @@
 
 	const { proxy } = getCurrentInstance()
 	const apps = ref([])
+	const recentConversations = ref([])
 	const keyword = ref('')
 	const loading = ref(false)
+	const recentLoading = ref(false)
 	let loaded = false
 
 	const filteredApps = computed(() => {
@@ -62,6 +93,60 @@
 		})
 	})
 
+	const showRecentSection = computed(() => {
+		return !keyword.value.trim()
+	})
+
+	const formatTime = (timestamp) => {
+		if (!timestamp) {
+			return ''
+		}
+		const date = new Date(Number(timestamp) * 1000)
+		const month = `${date.getMonth() + 1}`.padStart(2, '0')
+		const day = `${date.getDate()}`.padStart(2, '0')
+		const hour = `${date.getHours()}`.padStart(2, '0')
+		const minute = `${date.getMinutes()}`.padStart(2, '0')
+		return `${month}-${day} ${hour}:${minute}`
+	}
+
+	const loadRecentConversations = async (appList) => {
+		const targetApps = (appList || []).slice(0, 8)
+		if (!targetApps.length) {
+			recentConversations.value = []
+			return
+		}
+
+		recentLoading.value = true
+		try {
+			const groups = await Promise.all(targetApps.map((item) => {
+				return proxy.http
+					.get('api/AI/Conversations', {
+						appId: item.id,
+						limit: 2
+					}, false)
+					.then((result) => {
+						if (!result.status) {
+							return []
+						}
+
+						return ((result.data || {}).data || []).map((conversation) => ({
+							...conversation,
+							appId: item.id,
+							appName: item.appName
+						}))
+					})
+					.catch(() => [])
+			}))
+
+			recentConversations.value = groups
+				.flat()
+				.sort((a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0))
+				.slice(0, 6)
+		} finally {
+			recentLoading.value = false
+		}
+	}
+
 	const loadApps = () => {
 		loading.value = true
 		proxy.http
@@ -71,8 +156,12 @@
 					proxy.$toast(result.message || '加载失败')
 					return
 				}
-				apps.value = result.data || []
+				const appList = result.data || []
+				apps.value = appList
 				loaded = true
+				if (!keyword.value.trim()) {
+					loadRecentConversations(appList)
+				}
 			})
 			.finally(() => {
 				loading.value = false
@@ -108,6 +197,12 @@
 	const openApp = (item) => {
 		uni.navigateTo({
 			url: `/pages/ai/conversations?appId=${item.id}&appName=${encodeURIComponent(item.appName || '')}`
+		})
+	}
+
+	const openRecentConversation = (item) => {
+		uni.navigateTo({
+			url: `/pages/ai/chat?appId=${item.appId}&appName=${encodeURIComponent(item.appName || '')}&conversationId=${encodeURIComponent(item.id || '')}&conversationName=${encodeURIComponent(item.name || '')}`
 		})
 	}
 
@@ -161,6 +256,83 @@
 
 	.search-wrap {
 		margin-bottom: 22rpx;
+	}
+
+	.section-head {
+		padding: 4rpx 2rpx 18rpx;
+	}
+
+	.section-title {
+		font-size: 30rpx;
+		font-weight: 700;
+		color: #17233d;
+	}
+
+	.section-subtitle {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #7a8799;
+	}
+
+	.recent-panel {
+		margin-bottom: 16rpx;
+	}
+
+	.recent-list {
+		display: flex;
+		flex-direction: column;
+		gap: 14rpx;
+	}
+
+	.recent-card {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16rpx;
+		background: #fff;
+		border-radius: 8px;
+		padding: 22rpx 24rpx;
+		box-shadow: 0 4rpx 18rpx rgba(30, 48, 78, 0.06);
+	}
+
+	.recent-main {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.recent-title {
+		font-size: 28rpx;
+		font-weight: 650;
+		color: #17233d;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.recent-desc {
+		margin-top: 8rpx;
+		color: #7a8799;
+		font-size: 24rpx;
+	}
+
+	.recent-time {
+		color: #a6afbd;
+		font-size: 22rpx;
+		flex-shrink: 0;
+	}
+
+	.recent-state {
+		padding: 18rpx 6rpx 24rpx;
+		color: #7a8799;
+		font-size: 24rpx;
+	}
+
+	.recent-state.muted {
+		color: #b8c7da;
+	}
+
+	.app-section {
+		margin-top: 10rpx;
 	}
 
 	.app-list {

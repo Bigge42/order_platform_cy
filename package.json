@@ -1,0 +1,15 @@
+{
+  "name": "order_platform",
+  "version": "1.0.0",
+  "main": ".tmp_ai_h5_probe.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

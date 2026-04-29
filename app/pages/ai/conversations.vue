@@ -14,7 +14,7 @@
 			<view class="app-icon">{{ getInitial(appName) }}</view>
 			<view class="app-info">
 				<view class="app-name">{{ appName || 'AI助手' }}</view>
-				<view class="app-desc">已授权应用，可继续历史会话或发起新对话</view>
+				<view class="app-desc">已授权应用，可继续历史会话或发起新对话。</view>
 			</view>
 		</view>
 
@@ -24,7 +24,7 @@
 			<view class="empty-desc">新建一个对话，开始向该智能体提问。</view>
 			<view class="empty-action" @click="openNewChat">新建对话</view>
 		</view>
-		<scroll-view v-else class="conversation-list" scroll-y lower-threshold="80" @scrolltolower="loadMore">
+		<view v-else class="conversation-list">
 			<view
 				class="conversation-card"
 				v-for="item in conversations"
@@ -37,18 +37,32 @@
 				</view>
 				<view class="conversation-meta">
 					<view class="time">{{ formatTime(item.updated_at || item.created_at) }}</view>
-					<u-icon name="arrow-right" size="14" color="#a6afbd"></u-icon>
+					<view class="conversation-action" @click.stop="openConversationActions(item)">···</view>
 				</view>
 			</view>
 			<view v-if="loadingMore" class="load-more">加载更多...</view>
 			<view v-else-if="!hasMore && conversations.length > 0" class="load-more muted">没有更多了</view>
-		</scroll-view>
+		</view>
+
+		<uni-popup ref="renamePopup" type="dialog">
+			<uni-popup-dialog
+				v-model="renameValue"
+				mode="input"
+				title="重命名会话"
+				placeholder="请输入会话名称"
+				:beforeClose="true"
+				confirmText="保存"
+				cancelText="取消"
+				@close="closeRenameDialog"
+				@confirm="submitRename"
+			></uni-popup-dialog>
+		</uni-popup>
 	</view>
 </template>
 
 <script setup>
 	import { getCurrentInstance, ref } from 'vue'
-	import { onLoad, onShow } from '@dcloudio/uni-app'
+	import { onLoad, onReachBottom, onShow } from '@dcloudio/uni-app'
 
 	const { proxy } = getCurrentInstance()
 	const appId = ref(0)
@@ -57,6 +71,9 @@
 	const loading = ref(false)
 	const loadingMore = ref(false)
 	const hasMore = ref(false)
+	const renamePopup = ref(null)
+	const renameValue = ref('')
+	const selectedConversation = ref(null)
 	let loaded = false
 	let lastId = ''
 
@@ -80,12 +97,15 @@
 		return `${month}-${day} ${hour}:${minute}`
 	}
 
-	const loadConversations = (reset = true) => {
+	const loadConversations = (options = {}) => {
+		const { reset = true, silent = false } = options
 		if (!appId.value) {
 			return
 		}
 		if (reset) {
-			loading.value = true
+			if (!silent) {
+				loading.value = true
+			}
 			lastId = ''
 		} else {
 			if (!hasMore.value || loadingMore.value) {
@@ -121,7 +141,9 @@
 	}
 
 	const loadMore = () => {
-		loadConversations(false)
+		loadConversations({
+			reset: false
+		})
 	}
 
 	const openNewChat = () => {
@@ -136,6 +158,88 @@
 		})
 	}
 
+	const openRenameDialog = (item) => {
+		selectedConversation.value = item
+		renameValue.value = item.name || ''
+		renamePopup.value?.open()
+	}
+
+	const closeRenameDialog = () => {
+		renamePopup.value?.close()
+	}
+
+	const submitRename = (name) => {
+		if (!selectedConversation.value) {
+			return
+		}
+
+		const value = (name || '').trim()
+		if (!value) {
+			proxy.$toast('请输入会话名称')
+			return
+		}
+
+		proxy.http
+			.post('api/AI/RenameConversation', {
+				appId: appId.value,
+				conversationId: selectedConversation.value.id,
+				name: value,
+				autoGenerate: false
+			}, false)
+			.then((result) => {
+				if (!result.status) {
+					proxy.$toast(result.message || '重命名失败')
+					return
+				}
+
+				selectedConversation.value.name = value
+				closeRenameDialog()
+				proxy.$toast('已保存')
+			})
+	}
+
+	const deleteConversation = (item) => {
+		uni.showModal({
+			title: '删除会话',
+			content: '删除后将无法继续该历史会话，是否确认删除？',
+			success: ({ confirm }) => {
+				if (!confirm) {
+					return
+				}
+
+				proxy.http
+					.post('api/AI/DeleteConversation', {
+						appId: appId.value,
+						conversationId: item.id
+					}, false)
+					.then((result) => {
+						if (!result.status) {
+							proxy.$toast(result.message || '删除失败')
+							return
+						}
+
+						conversations.value = conversations.value.filter(x => x.id !== item.id)
+						proxy.$toast('已删除')
+					})
+			}
+		})
+	}
+
+	const openConversationActions = (item) => {
+		uni.showActionSheet({
+			itemList: ['重命名', '删除会话'],
+			success: ({ tapIndex }) => {
+				if (tapIndex === 0) {
+					openRenameDialog(item)
+					return
+				}
+				if (tapIndex === 1) {
+					deleteConversation(item)
+				}
+			}
+		})
+	}
+
 	onLoad((options) => {
 		appId.value = Number(options.appId || 0)
 		appName.value = decodeURIComponent(options.appName || '')
@@ -144,8 +248,14 @@
 
 	onShow(() => {
 		if (loaded) {
-			loadConversations()
+			loadConversations({
+				silent: true
+			})
 		}
+	})
+
+	onReachBottom(() => {
+		loadMore()
 	})
 </script>
 
@@ -234,8 +344,8 @@
 	}
 
 	.conversation-list {
-		height: calc(100vh - 230rpx);
 		margin-top: 20rpx;
+		padding-bottom: 32rpx;
 	}
 
 	.conversation-card {
@@ -274,17 +384,29 @@
 	}
 
 	.conversation-meta {
-		width: 130rpx;
+		width: 144rpx;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		gap: 8rpx;
+		gap: 12rpx;
 		flex-shrink: 0;
 	}
 
 	.time {
 		color: #a6afbd;
 		font-size: 22rpx;
+	}
+
+	.conversation-action {
+		min-width: 52rpx;
+		height: 52rpx;
+		border-radius: 50%;
+		background: #f5f7fb;
+		color: #7a8799;
+		font-size: 28rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.state,
@@ -318,21 +440,16 @@
 		color: #fff;
 		background: #1677ff;
 		font-size: 28rpx;
-		font-weight: 650;
-	}
-
-	.state,
-	.load-more {
-		color: #8c96a6;
-		font-size: 26rpx;
 	}
 
 	.load-more {
-		padding: 20rpx 0 32rpx;
+		padding: 12rpx 0 24rpx;
 		text-align: center;
+		font-size: 24rpx;
+		color: #7a8799;
 	}
 
 	.load-more.muted {
-		color: #b6bfcc;
+		color: #b8c7da;
 	}
 </style>
