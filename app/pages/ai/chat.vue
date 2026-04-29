@@ -13,7 +13,10 @@
     <scroll-view class="message-list" scroll-y :scroll-into-view="scrollIntoView">
       <view v-if="loadingMessages" class="state">加载中...</view>
       <view v-else-if="messages.length === 0" class="welcome">
-        <view class="welcome-icon">{{ getInitial(appName) }}</view>
+        <view class="welcome-icon">
+          <image v-if="appIconSrc" :src="appIconSrc" mode="aspectFill"></image>
+          <text v-else>{{ appGlyphIcon || getInitial(displayAppName) }}</text>
+        </view>
         <view class="welcome-title">{{ appName || 'AI助手' }}</view>
         <view class="welcome-desc">{{ openingStatement || '输入问题开始对话。' }}</view>
         <view v-if="starterQuestions.length" class="starter-list">
@@ -33,9 +36,12 @@
         :id="`msg-${message.localId}`"
         :key="message.localId"
         :class="['message-row', message.role]"
-        @longpress="copyMessage(message.content)"
+        @longpress="copyMessageItem(message)"
       >
-        <view v-if="message.role === 'assistant'" class="avatar">{{ getInitial(appName) }}</view>
+        <view v-if="message.role === 'assistant'" class="avatar">
+          <image v-if="appIconSrc" :src="appIconSrc" mode="aspectFill"></image>
+          <text v-else>{{ appGlyphIcon || getInitial(displayAppName) }}</text>
+        </view>
         <view class="bubble" @click.stop>
           <view
             v-if="message.role === 'assistant' && message.streaming && !message.content && !message.blocks.length"
@@ -48,10 +54,14 @@
 
           <template v-else-if="message.role === 'assistant'">
             <ai-message-renderer
+              :busy="sending"
               :message="message"
               @preview-resource="openResourcePopup"
               @preview-file="previewAssistantFile"
               @toggle-usage="toggleUsage"
+              @feedback-message="submitMessageFeedback"
+              @regenerate-message="regenerateAssistantMessage"
+              @copy-message="copyAssistantMessage"
             />
           </template>
 
@@ -136,6 +146,41 @@
       </view>
     </view>
 
+    <uni-popup ref="feedbackPopup" type="bottom">
+      <view class="feedback-popup">
+        <view class="feedback-popup-title">反馈</view>
+        <view class="feedback-option-list">
+          <view
+            v-for="option in feedbackReasonOptions"
+            :key="option"
+            :class="['feedback-option', { active: feedbackSelectedReason === option }]"
+            @click="toggleFeedbackReason(option)"
+          >
+            {{ option }}
+          </view>
+        </view>
+        <textarea
+          v-model="feedbackContent"
+          class="feedback-input"
+          :maxlength="-1"
+          :auto-height="true"
+          :show-confirm-bar="false"
+          cursor-spacing="24"
+          placeholder="我们想知道你对此回答不满意的原因，你认为更好的回答是什么？"
+          placeholder-style="color: #9aa6b8;"
+        ></textarea>
+        <view class="feedback-popup-actions">
+          <view class="feedback-btn secondary" @click="closeFeedbackPopup">取消</view>
+          <view
+            :class="['feedback-btn', 'primary', { disabled: !canSubmitDislikeFeedback || feedbackSubmitting }]"
+            @click="submitDislikeFeedbackDetail"
+          >
+            {{ feedbackSubmitting ? '提交中' : '提交' }}
+          </view>
+        </view>
+      </view>
+    </uni-popup>
+
     <uni-popup ref="resourcePopup" type="bottom">
       <view class="resource-popup">
         <view class="resource-popup-head">
@@ -161,15 +206,29 @@ import {
   buildAssistantBlocks,
   buildPreviewFileUrl,
   buildUsageSummary,
+  extractCopyableAssistantText,
+  findAssistantRegenerateSource,
   formatScore,
+  isSyntheticMarkdownImageId,
+  normalizeMessageFeedback,
   normalizeMessageFiles,
-  normalizeRetrieverResources
+  normalizeRetrieverResources,
+  shouldCollectFeedbackContent,
+  resolveNextMessageFeedback,
+  resolveAiMessageAssetUrl
 } from '@/util/ai-message.js'
+import {
+  getAiAppInitial,
+  normalizeAiApp,
+  resolveAiAppGlyphIcon,
+  resolveAiAppImageSrc
+} from '@/util/ai-app.js'
 import { isStreamSupported, readEventStream } from '@/util/http-stream.js'
 
 const { proxy } = getCurrentInstance()
 const appId = ref(0)
 const appName = ref('')
+const appInfo = ref(normalizeAiApp())
 const conversationId = ref('')
 const conversationName = ref('')
 const inputText = ref('')
@@ -183,11 +242,17 @@ const suggestedQuestionsEnabled = ref(false)
 const currentTaskId = ref('')
 const pendingFiles = ref([])
 const fileUploadConfig = ref(null)
+const feedbackPopup = ref(null)
+const feedbackTargetId = ref('')
+const feedbackSelectedReason = ref('')
+const feedbackContent = ref('')
+const feedbackSubmitting = ref(false)
 const resourcePopup = ref(null)
 const activeResource = ref({})
 
 let requestController = null
 let stoppedManually = false
+const feedbackReasonOptions = ['有害/不安全', '虚假信息', '没有帮助', '其他']
 
 const readyPendingFiles = computed(() => {
   return pendingFiles.value.filter(item => item.uploadFileId && !item.uploading && !item.error)
@@ -204,6 +269,22 @@ const canSend = computed(() => {
 
 const allowAttach = computed(() => {
   return uploadCapabilities.value.imageEnabled || uploadCapabilities.value.documentEnabled
+})
+
+const displayAppName = computed(() => {
+  return appInfo.value.appName || appName.value || 'AI助手'
+})
+
+const appIconSrc = computed(() => {
+  return resolveAiAppImageSrc(appInfo.value.icon, proxy.http.ipAddress)
+})
+
+const appGlyphIcon = computed(() => {
+  return resolveAiAppGlyphIcon(appInfo.value.icon)
+})
+
+const canSubmitDislikeFeedback = computed(() => {
+  return !!feedbackSelectedReason.value || !!feedbackContent.value.trim()
 })
 
 const uploadCapabilities = computed(() => {
@@ -232,7 +313,7 @@ const goBack = () => {
 }
 
 const getInitial = (name) => {
-  return (name || 'AI').substring(0, 1)
+  return getAiAppInitial(name)
 }
 
 const createLocalId = () => {
@@ -253,6 +334,14 @@ const closeUsagePanels = () => {
   })
 }
 
+function getAssistantBlockRenderOptions() {
+  return {
+    resolveAssetUrl(url) {
+      return resolveAiMessageAssetUrl(url, proxy.http.resolveUrl, appId.value)
+    }
+  }
+}
+
 const createMessage = (role, content = '', extra = {}) => {
   return {
     localId: createLocalId(),
@@ -261,12 +350,16 @@ const createMessage = (role, content = '', extra = {}) => {
     messageId: '',
     streaming: false,
     suggestions: [],
-    blocks: role === 'assistant' ? buildAssistantBlocks(content) : [],
+    blocks: role === 'assistant' ? buildAssistantBlocks(content, [], getAssistantBlockRenderOptions()) : [],
     retrieverResources: [],
     usage: null,
     messageFiles: [],
     files: [],
     agentThoughts: [],
+    feedback: null,
+    feedbackLoading: false,
+    thinkStartedAt: 0,
+    thinkDurationMs: null,
     showUsage: false,
     ...extra
   }
@@ -278,11 +371,57 @@ const appendMessage = (message) => {
   return messages.value[messages.value.length - 1]
 }
 
+const syncAssistantThinkingState = (message) => {
+  if (!message || message.role !== 'assistant') {
+    return
+  }
+
+  const thinkBlocks = Array.isArray(message.blocks)
+    ? message.blocks.filter(block => block?.type === 'think')
+    : []
+
+  if (!thinkBlocks.length) {
+    message.thinkStartedAt = 0
+    message.thinkDurationMs = null
+    return
+  }
+
+  const hasPendingThink = thinkBlocks.some(block => block?.pending)
+  if (hasPendingThink) {
+    if (!message.thinkStartedAt) {
+      message.thinkStartedAt = Date.now()
+    }
+
+    if (!message.streaming && message.thinkDurationMs === null) {
+      message.thinkDurationMs = Math.max(0, Date.now() - message.thinkStartedAt)
+    }
+    return
+  }
+
+  if (message.thinkDurationMs !== null) {
+    return
+  }
+
+  if (message.thinkStartedAt) {
+    message.thinkDurationMs = Math.max(0, Date.now() - message.thinkStartedAt)
+    return
+  }
+
+  const fallbackSeconds = Number(message.usage?.timeToFirstToken || 0)
+  message.thinkDurationMs = fallbackSeconds > 0 ? Math.round(fallbackSeconds * 1000) : null
+}
+
 const rebuildAssistantMessage = (message) => {
   if (!message) {
     return
   }
-  message.blocks = buildAssistantBlocks(message.content || '', message.agentThoughts || [])
+  message.blocks = buildAssistantBlocks(
+    message.content || '',
+    message.agentThoughts || [],
+    getAssistantBlockRenderOptions()
+  )
+  syncAssistantThinkingState(message)
+  void hydrateAssistantBlockImages(message.blocks)
 }
 
 const splitMessageFiles = (files, fallbackOwner = 'assistant') => {
@@ -307,13 +446,19 @@ const splitMessageFiles = (files, fallbackOwner = 'assistant') => {
 
 const toChatFile = (file, extra = {}) => {
   return {
+    id: extra.id || file.id || file.uploadFileId || '',
     localId: extra.localId || file.localId || file.id || createLocalId(),
     name: file.name || '附件',
     type: file.type || 'document',
     size: file.size || 0,
     localPath: file.localPath || '',
     previewUrl: file.previewUrl || file.url || '',
+    url: file.url || '',
+    previewRequestUrl: extra.previewRequestUrl || file.previewRequestUrl || getPreviewUrl(file),
+    localPreviewPath: file.localPreviewPath || '',
     uploadFileId: file.uploadFileId || file.id || '',
+    previewLoading: !!file.previewLoading,
+    objectUrl: file.objectUrl || '',
     error: file.error || '',
     uploading: !!file.uploading
   }
@@ -334,7 +479,9 @@ const applyAssistantMeta = (message, options = {}) => {
 
   if (Array.isArray(options.messageFiles)) {
     const { assistantFiles } = splitMessageFiles(options.messageFiles, 'assistant')
-    message.messageFiles = assistantFiles
+    releaseMessageFilePreviews(message.messageFiles || [])
+    message.messageFiles = assistantFiles.map(file => toChatFile(file))
+    void hydrateAssistantImageFiles(message.messageFiles)
   }
 
   const usage = buildUsageSummary(options.usage)
@@ -356,6 +503,7 @@ const normalizeHistory = (rows) => {
       result.push(
         createMessage('user', row.query || '', {
           localId: `${row.id || createLocalId()}-query`,
+          requestQuery: row.query || '',
           files: userFiles.map(file => toChatFile(file))
         })
       )
@@ -364,7 +512,8 @@ const normalizeHistory = (rows) => {
     if (row.answer || assistantFiles.length || (row.retriever_resources || []).length || (row.agent_thoughts || []).length) {
       const assistantMessage = createMessage('assistant', row.answer || '', {
         localId: row.id || createLocalId(),
-        messageId: row.id || ''
+        messageId: row.id || '',
+        feedback: normalizeMessageFeedback(row.feedback)
       })
 
       applyAssistantMeta(assistantMessage, {
@@ -378,8 +527,36 @@ const normalizeHistory = (rows) => {
     }
   })
 
+  releaseAllMessagePreviews()
   messages.value = result
   scrollToBottom()
+}
+
+const loadAppInfo = () => {
+  if (!appId.value) {
+    return
+  }
+
+  proxy.http
+    .get(
+      'api/AI/AppInfo',
+      {
+        appId: appId.value
+      },
+      false
+    )
+    .then((result) => {
+      const isSuccess = result?.status === true || result?.status === 0
+      if (!isSuccess) {
+        return
+      }
+
+      const normalized = normalizeAiApp(result.data || result.rows || {})
+      appInfo.value = normalized
+      if (normalized.appName) {
+        appName.value = normalized.appName
+      }
+    })
 }
 
 const loadMessages = () => {
@@ -717,16 +894,87 @@ const getPreviewUrl = (file) => {
     return ''
   }
 
-  if (file.uploadFileId || file.id) {
+  if (file.uploadFileId) {
     return buildPreviewFileUrl(proxy.http.resolveUrl, appId.value, file.uploadFileId || file.id)
+  }
+
+  if (file.id && !isSyntheticMarkdownImageId(file.id)) {
+    return buildPreviewFileUrl(proxy.http.resolveUrl, appId.value, file.id)
   }
 
   return file.previewUrl || file.localPath || file.url || ''
 }
 
+const canUseObjectUrlPreview = () => {
+  return (
+    typeof window !== 'undefined' &&
+    typeof fetch === 'function' &&
+    typeof URL !== 'undefined' &&
+    typeof URL.createObjectURL === 'function'
+  )
+}
+
+const revokeObjectUrl = (file) => {
+  if (
+    !file ||
+    !file.objectUrl ||
+    typeof URL === 'undefined' ||
+    typeof URL.revokeObjectURL !== 'function'
+  ) {
+    return
+  }
+
+  URL.revokeObjectURL(file.objectUrl)
+  if (file.localPreviewPath === file.objectUrl) {
+    file.localPreviewPath = ''
+  }
+  file.objectUrl = ''
+}
+
+const releaseMessageFilePreviews = (files = []) => {
+  files.forEach((file) => {
+    revokeObjectUrl(file)
+  })
+}
+
+const releaseAllMessagePreviews = () => {
+  messages.value.forEach((message) => {
+    releaseMessageFilePreviews(message.files || [])
+    releaseMessageFilePreviews(message.messageFiles || [])
+    ;(message.blocks || []).forEach((block) => {
+      releaseMessageFilePreviews(block.images || [])
+    })
+  })
+}
+
+const fetchProtectedFileAsObjectUrl = async (url) => {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: proxy.http.buildHeaders(),
+    credentials: 'same-origin'
+  })
+
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  if (contentType.includes('application/json')) {
+    const result = await response.json().catch(() => null)
+    throw new Error(result?.message || `Preview failed (${response.status})`)
+  }
+
+  if (!response.ok) {
+    throw new Error(`Preview failed (${response.status})`)
+  }
+
+  const blob = await response.blob()
+  if (!blob || !blob.size) {
+    throw new Error('Preview file is empty')
+  }
+
+  return URL.createObjectURL(blob)
+}
+
 const previewImageList = (current, files = []) => {
   const urls = files
-    .map(item => item.localPath || item.previewUrl || item.url || getPreviewUrl(item))
+    .map(item => item.localPreviewPath || item.localPath || item.previewUrl || item.url || getPreviewUrl(item))
     .filter(Boolean)
 
   if (!urls.length) {
@@ -763,6 +1011,20 @@ const downloadProtectedFile = (file) => {
       return
     }
 
+    if (canUseObjectUrlPreview()) {
+      fetchProtectedFileAsObjectUrl(url)
+        .then((objectUrl) => {
+          revokeObjectUrl(file)
+          file.objectUrl = objectUrl
+          file.localPreviewPath = objectUrl
+          resolve(objectUrl)
+        })
+        .catch((error) => {
+          reject(error)
+        })
+      return
+    }
+
     uni.downloadFile({
       url,
       header: proxy.http.buildHeaders(),
@@ -786,6 +1048,49 @@ const downloadProtectedFile = (file) => {
       }
     })
   })
+}
+
+const hydrateAssistantImageFile = async (file) => {
+  if (!file || String(file.type || '').toLowerCase() !== 'image') {
+    return
+  }
+
+  if (file.localPreviewPath || file.localPath || file.previewLoading) {
+    return
+  }
+
+  file.previewLoading = true
+  try {
+    await downloadProtectedFile(file)
+  } catch (error) {
+    console.warn('hydrate assistant image failed', error)
+  } finally {
+    file.previewLoading = false
+  }
+}
+
+const hydrateAssistantImageFiles = async (files = []) => {
+  await Promise.all((files || []).map(file => hydrateAssistantImageFile(file)))
+}
+
+const hydrateAssistantBlockImage = async (image) => {
+  if (!image || !getPreviewUrl(image) || image.localPreviewPath || image.previewLoading) {
+    return
+  }
+
+  image.previewLoading = true
+  try {
+    await downloadProtectedFile(image)
+  } catch (error) {
+    console.warn('hydrate assistant block image failed', error)
+  } finally {
+    image.previewLoading = false
+  }
+}
+
+const hydrateAssistantBlockImages = async (blocks = []) => {
+  const images = (blocks || []).flatMap(block => (Array.isArray(block?.images) ? block.images : []))
+  await Promise.all(images.map(image => hydrateAssistantBlockImage(image)))
 }
 
 const previewPendingFile = async(file) => {
@@ -835,7 +1140,7 @@ const previewAssistantFile = async(file) => {
   }
 
   try {
-    const previewPath = await downloadProtectedFile(file)
+    const previewPath = file.localPreviewPath || file.localPath || (await downloadProtectedFile(file))
     if (file.type === 'image') {
       previewImageList(previewPath, [{ ...file, localPath: previewPath }])
       return
@@ -854,6 +1159,231 @@ const toggleUsage = (localId) => {
     }
     item.showUsage = item.localId === localId ? !item.showUsage : false
   })
+}
+
+const promptDislikeFeedbackContent = () => {
+  return new Promise((resolve, reject) => {
+    uni.showModal({
+      title: '不喜欢',
+      editable: true,
+      placeholderText: '请输入不喜欢的原因',
+      confirmText: '提交',
+      cancelText: '取消',
+      confirmColor: '#cf1322',
+      success: (res) => {
+        if (!res.confirm) {
+          resolve(null)
+          return
+        }
+
+        const content = String(res.content || '').trim()
+        if (!content) {
+          proxy.$toast('请输入反馈内容')
+          resolve(null)
+          return
+        }
+
+        resolve(content)
+      },
+      fail: (error) => {
+        reject(error)
+      }
+    })
+  })
+}
+
+const resetFeedbackDraft = () => {
+  feedbackTargetId.value = ''
+  feedbackSelectedReason.value = ''
+  feedbackContent.value = ''
+  feedbackSubmitting.value = false
+}
+
+const openDislikeFeedbackPopup = (localId) => {
+  resetFeedbackDraft()
+  feedbackTargetId.value = localId
+  feedbackPopup.value?.open()
+}
+
+const closeFeedbackPopup = () => {
+  feedbackPopup.value?.close()
+  resetFeedbackDraft()
+}
+
+const toggleFeedbackReason = (option) => {
+  feedbackSelectedReason.value = feedbackSelectedReason.value === option ? '' : option
+}
+
+const buildDislikeFeedbackContent = () => {
+  const parts = []
+  if (feedbackSelectedReason.value) {
+    parts.push('原因：' + feedbackSelectedReason.value)
+  }
+
+  const content = feedbackContent.value.trim()
+  if (content) {
+    parts.push(content)
+  }
+
+  return parts.join('\n')
+}
+
+const requestMessageFeedback = async(target, rating, content = '') => {
+  target.feedbackLoading = true
+
+  try {
+    const payload = {
+      appId: appId.value,
+      messageId: target.messageId,
+      rating
+    }
+
+    if (content) {
+      payload.content = content
+    }
+
+    const result = await proxy.http.post(
+      'api/AI/MessageFeedback',
+      payload,
+      false
+    )
+
+    if (!result.status) {
+      throw new Error(result.message || '反馈提交失败')
+    }
+
+    target.feedback = normalizeMessageFeedback(rating)
+  } finally {
+    target.feedbackLoading = false
+  }
+}
+
+const submitDislikeFeedbackDetail = async() => {
+  if (!canSubmitDislikeFeedback.value || feedbackSubmitting.value) {
+    return
+  }
+
+  const target = findMessage(feedbackTargetId.value)
+  if (!target || target.role !== 'assistant' || !target.messageId) {
+    closeFeedbackPopup()
+    return
+  }
+
+  feedbackSubmitting.value = true
+  try {
+    await requestMessageFeedback(target, 'dislike', buildDislikeFeedbackContent())
+    closeFeedbackPopup()
+  } catch (error) {
+    proxy.$toast(error?.message || '反馈提交失败')
+    feedbackSubmitting.value = false
+  }
+}
+
+const submitMessageFeedback = async({ localId, rating }) => {
+  const target = findMessage(localId)
+  if (!target || target.role !== 'assistant' || !target.messageId || target.feedbackLoading) {
+    return
+  }
+
+  const nextRating = resolveNextMessageFeedback(target.feedback, rating)
+  if (shouldCollectFeedbackContent(target.feedback, rating)) {
+    openDislikeFeedbackPopup(localId)
+    return
+  }
+
+  try {
+    await requestMessageFeedback(target, nextRating)
+    return
+  } catch (error) {
+    proxy.$toast(error?.message || '反馈提交失败')
+    return
+  }
+
+  let content = ''
+
+  if (shouldCollectFeedbackContent(target.feedback, rating)) {
+    try {
+      const inputContent = await promptDislikeFeedbackContent()
+      if (!inputContent) {
+        return
+      }
+      content = inputContent
+    } catch (error) {
+      proxy.$toast(error?.message || '打开反馈输入失败')
+      return
+    }
+  }
+
+  target.feedbackLoading = true
+
+  try {
+    const payload = {
+      appId: appId.value,
+      messageId: target.messageId,
+      rating: nextRating
+    }
+
+    if (content) {
+      payload.content = content
+    }
+
+    const result = await proxy.http.post(
+      'api/AI/MessageFeedback',
+      payload,
+      false
+    )
+
+    if (!result.status) {
+      throw new Error(result.message || '反馈提交失败')
+    }
+
+    target.feedback = normalizeMessageFeedback(nextRating)
+  } catch (error) {
+    proxy.$toast(error?.message || '反馈提交失败')
+  } finally {
+    target.feedbackLoading = false
+  }
+}
+
+const copyAssistantMessage = (localId) => {
+  const target = findMessage(localId)
+  if (!target) {
+    return
+  }
+
+  copyMessage(extractCopyableAssistantText(target.content))
+}
+
+const regenerateAssistantMessage = (localId) => {
+  if (sending.value) {
+    return
+  }
+
+  const source = findAssistantRegenerateSource(messages.value, localId)
+  if (!source?.query) {
+    proxy.$toast('\u672a\u627e\u5230\u53ef\u91cd\u65b0\u751f\u6210\u7684\u95ee\u9898')
+    return
+  }
+
+  void sendMessage(source.query, {
+    displayQuery: source.displayQuery,
+    files: source.files,
+    clearComposer: false,
+    consumePendingFiles: false
+  })
+}
+
+const copyMessageItem = (message) => {
+  if (!message) {
+    return
+  }
+
+  if (message.role === 'assistant') {
+    copyMessage(extractCopyableAssistantText(message.content))
+    return
+  }
+
+  copyMessage(message.content)
 }
 
 const openResourcePopup = (resource) => {
@@ -1019,8 +1549,9 @@ const removePendingFile = (localId) => {
   pendingFiles.value = pendingFiles.value.filter(item => item.localId !== localId)
 }
 
-const sendMessage = async (presetQuery = '') => {
-  const readyFiles = readyPendingFiles.value.map(file => ({ ...file }))
+const sendMessage = async (presetQuery = '', options = {}) => {
+  const customFiles = Array.isArray(options.files) ? options.files : null
+  const readyFiles = (customFiles || readyPendingFiles.value).map(file => ({ ...file }))
   const inputQuery = inputText.value.trim()
   const query = typeof presetQuery === 'string' && presetQuery.trim()
     ? presetQuery.trim()
@@ -1029,22 +1560,30 @@ const sendMessage = async (presetQuery = '') => {
   const displayQuery = typeof presetQuery === 'string' && presetQuery.trim()
     ? presetQuery.trim()
     : inputQuery
+  const resolvedDisplayQuery = typeof options.displayQuery === 'string' ? options.displayQuery : displayQuery
+  const clearComposer = options.clearComposer !== false
+  const consumePendingFiles = options.consumePendingFiles !== false
 
   if (!query || sending.value || !appId.value) {
     return
   }
 
   stoppedManually = false
-  inputText.value = ''
+  if (clearComposer) {
+    inputText.value = ''
+  }
 
   const userMessageFiles = readyFiles.map(file => toChatFile(file))
   appendMessage(
-    createMessage('user', displayQuery, {
+    createMessage('user', resolvedDisplayQuery, {
+      requestQuery: query,
       files: userMessageFiles
     })
   )
 
-  pendingFiles.value = pendingFiles.value.filter(item => item.error)
+  if (consumePendingFiles) {
+    pendingFiles.value = pendingFiles.value.filter(item => item.error)
+  }
 
   if (!conversationName.value) {
     conversationName.value = displayQuery || readyFiles[0]?.name || '新对话'
@@ -1100,6 +1639,7 @@ const newChat = () => {
   stoppedManually = false
   conversationId.value = ''
   conversationName.value = ''
+  releaseAllMessagePreviews()
   messages.value = []
   inputText.value = ''
   pendingFiles.value = []
@@ -1124,12 +1664,14 @@ onLoad((options) => {
   appName.value = decodeURIComponent(options.appName || '')
   conversationId.value = decodeURIComponent(options.conversationId || '')
   conversationName.value = decodeURIComponent(options.conversationName || '')
+  loadAppInfo()
   loadAppParameters()
   loadMessages()
 })
 
 onUnload(() => {
   abortActiveStream()
+  releaseAllMessagePreviews()
 })
 </script>
 
@@ -1203,6 +1745,12 @@ onUnload(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.welcome-icon image {
+  width: 100%;
+  height: 100%;
 }
 
 .welcome-title {
@@ -1269,6 +1817,12 @@ onUnload(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatar image {
+  width: 100%;
+  height: 100%;
 }
 
 .bubble {
@@ -1510,6 +2064,99 @@ onUnload(() => {
   color: #d03050;
   font-size: 26rpx;
   font-weight: 600;
+}
+
+.feedback-popup {
+  padding: 34rpx 32rpx calc(34rpx + env(safe-area-inset-bottom));
+  border-radius: 32rpx 32rpx 0 0;
+  background: #f8fbff;
+  border-top: 1px solid #e3edf9;
+  box-shadow: 0 -16rpx 44rpx rgba(30, 48, 78, 0.12);
+}
+
+.feedback-popup-title {
+  color: #17233d;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.feedback-option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 28rpx;
+}
+
+.feedback-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 66rpx;
+  padding: 0 26rpx;
+  border-radius: 999px;
+  border: 1px solid #d7e6fb;
+  background: #fff;
+  color: #52627a;
+  font-size: 26rpx;
+  transition: all 0.18s ease;
+}
+
+.feedback-option.active {
+  border-color: #8bb8ff;
+  background: #edf5ff;
+  color: #1677ff;
+}
+
+.feedback-input {
+  width: 100%;
+  min-height: 228rpx;
+  margin-top: 26rpx;
+  padding: 24rpx 22rpx;
+  border-radius: 26rpx;
+  border: 1px solid #dbe7f5;
+  background: #fff;
+  box-sizing: border-box;
+  color: #17233d;
+  font-size: 30rpx;
+  line-height: 1.6;
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.65);
+}
+
+.feedback-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18rpx;
+  margin-top: 32rpx;
+}
+
+.feedback-btn {
+  min-width: 144rpx;
+  height: 74rpx;
+  padding: 0 34rpx;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.feedback-btn.secondary {
+  border: 1px solid #d7e3f3;
+  background: #fff;
+  color: #52627a;
+}
+
+.feedback-btn.primary {
+  background: #1677ff;
+  color: #fff;
+  box-shadow: 0 10rpx 24rpx rgba(22, 119, 255, 0.22);
+}
+
+.feedback-btn.disabled {
+  opacity: 0.42;
+  pointer-events: none;
 }
 
 .resource-popup {

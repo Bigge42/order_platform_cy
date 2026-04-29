@@ -53,8 +53,8 @@
 		<view v-else class="app-list">
 			<view class="app-card" v-for="item in filteredApps" :key="item.id" @click="openApp(item)">
 				<view class="app-icon">
-					<image v-if="item.icon" :src="getIcon(item.icon)" mode="aspectFill"></image>
-					<text v-else>{{ getInitial(item.appName) }}</text>
+					<image v-if="getDisplayIcon(item)" :src="getDisplayIcon(item)" mode="aspectFill"></image>
+					<text v-else>{{ getDisplayGlyph(item) || getInitial(item.appName) }}</text>
 				</view>
 				<view class="app-content">
 					<view class="app-row">
@@ -71,6 +71,12 @@
 <script setup>
 	import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 	import { onShow } from '@dcloudio/uni-app'
+	import {
+		resolveAiAppGlyphIcon,
+		resolveAiAppImageSrc,
+		getAiAppInitial,
+		normalizeAiAppList
+	} from '@/util/ai-app.js'
 
 	const { proxy } = getCurrentInstance()
 	const apps = ref([])
@@ -152,11 +158,12 @@
 		proxy.http
 			.get('api/AI/Apps', { keyword: keyword.value }, false)
 			.then((result) => {
-				if (!result.status) {
+				const isSuccess = result?.status === true || result?.status === 0
+				if (!isSuccess) {
 					proxy.$toast(result.message || '加载失败')
 					return
 				}
-				const appList = result.data || []
+				const appList = normalizeAiAppList(result.data || result.rows || [])
 				apps.value = appList
 				loaded = true
 				if (!keyword.value.trim()) {
@@ -168,22 +175,15 @@
 			})
 	}
 
-	const getIcon = (icon) => {
-		if (!icon) {
-			return ''
-		}
-		if (icon.startsWith('http') || icon.startsWith('/static')) {
-			return icon
-		}
-		if (icon.startsWith('/')) {
-			return proxy.http.ipAddress + icon.substring(1)
-		}
-		return proxy.http.ipAddress + icon
+	const getDisplayIcon = (item) => {
+		return resolveAiAppImageSrc(item?.icon, proxy.http.ipAddress)
 	}
 
-	const getInitial = (name) => {
-		return (name || 'AI').substring(0, 1)
+	const getDisplayGlyph = (item) => {
+		return resolveAiAppGlyphIcon(item?.icon)
 	}
+
+	const getInitial = getAiAppInitial
 
 	const getTypeText = (type) => {
 		const map = {
@@ -220,6 +220,8 @@
 		background: #f5f7fb;
 		padding: 28rpx;
 		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.ai-header {
@@ -256,6 +258,7 @@
 
 	.search-wrap {
 		margin-bottom: 22rpx;
+		order: 1;
 	}
 
 	.section-head {
@@ -276,6 +279,7 @@
 
 	.recent-panel {
 		margin-bottom: 16rpx;
+		order: 4;
 	}
 
 	.recent-list {
@@ -333,6 +337,7 @@
 
 	.app-section {
 		margin-top: 10rpx;
+		order: 2;
 	}
 
 	.app-list {
@@ -340,6 +345,7 @@
 		flex-direction: column;
 		gap: 18rpx;
 		padding-bottom: 110rpx;
+		order: 3;
 	}
 
 	.app-card {
@@ -417,5 +423,6 @@
 		text-align: center;
 		color: #8c96a6;
 		font-size: 28rpx;
+		order: 3;
 	}
 </style>

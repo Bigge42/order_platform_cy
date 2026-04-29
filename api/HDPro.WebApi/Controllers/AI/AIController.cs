@@ -301,6 +301,97 @@ namespace HDPro.WebApi.Controllers.AI
             }
         }
 
+        [AllowAnonymous]
+        [HttpGet("PreviewAsset")]
+        public async Task<IActionResult> PreviewAsset(long appId, string assetUrl)
+        {
+            if (string.IsNullOrWhiteSpace(assetUrl))
+            {
+                return Json(WebResponseContent.Instance.Error("Asset url is required"));
+            }
+
+            if (!IsSupportedPreviewAssetUrl(assetUrl))
+            {
+                return Json(WebResponseContent.Instance.Error("Unsupported asset url"));
+            }
+
+            var app = await GetEnabledAppAsync(appId);
+            var error = ValidatePreviewAssetApp(appId, app);
+            if (error != null)
+            {
+                return Json(error);
+            }
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(GetDifyTimeoutSeconds());
+
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, BuildDifyAssetUrl(assetUrl));
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", app.PlatformAppKey.Trim());
+
+            try
+            {
+                using var response = await client.SendAsync(
+                    httpRequest,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    HttpContext.RequestAborted);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning(
+                        "Dify preview asset failed. AIAppId:{AIAppId}, AssetUrl:{AssetUrl}, Status:{Status}, Body:{Body}",
+                        app.Id,
+                        TruncateForLog(assetUrl),
+                        (int)response.StatusCode,
+                        TruncateForLog(responseBody));
+
+                    return Json(WebResponseContent.Instance.Error(GetDifyErrorMessage(response.StatusCode, responseBody)));
+                }
+
+                Response.StatusCode = 200;
+                Response.ContentType = response.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+                if (response.Content.Headers.ContentLength.HasValue)
+                {
+                    Response.ContentLength = response.Content.Headers.ContentLength.Value;
+                }
+                if (response.Content.Headers.ContentDisposition != null)
+                {
+                    Response.Headers["Content-Disposition"] = response.Content.Headers.ContentDisposition.ToString();
+                }
+
+                await using var stream = await response.Content.ReadAsStreamAsync(HttpContext.RequestAborted);
+                await stream.CopyToAsync(Response.Body, 81920, HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+                return new EmptyResult();
+            }
+            catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                _logger.LogInformation(
+                    "AI preview asset disconnected by client. AIAppId:{AIAppId}, AssetUrl:{AssetUrl}",
+                    app.Id,
+                    TruncateForLog(assetUrl));
+                return new EmptyResult();
+            }
+            catch (TaskCanceledException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Dify preview asset timeout. AIAppId:{AIAppId}, AssetUrl:{AssetUrl}",
+                    app.Id,
+                    TruncateForLog(assetUrl));
+                return Json(WebResponseContent.Instance.Error("AI preview asset timeout"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Dify preview asset exception. AIAppId:{AIAppId}, AssetUrl:{AssetUrl}",
+                    app.Id,
+                    TruncateForLog(assetUrl));
+                return Json(WebResponseContent.Instance.Error("AI preview asset exception"));
+            }
+        }
+
         [HttpPost("SendMessage")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest request)
         {
@@ -415,6 +506,47 @@ namespace HDPro.WebApi.Controllers.AI
             return await SendDifyAsync(app, HttpMethod.Get, path, query);
         }
 
+        [HttpPost("MessageFeedback")]
+        public async Task<IActionResult> MessageFeedback([FromBody] MessageFeedbackRequest request)
+        {
+            if (request == null)
+            {
+                return Json(WebResponseContent.Instance.Error("璇锋眰鍙傛暟涓嶈兘涓虹┖"));
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MessageId))
+            {
+                return Json(WebResponseContent.Instance.Error("娑堟伅ID涓嶈兘涓虹┖"));
+            }
+
+            var normalizedRating = NormalizeFeedbackRating(request.Rating);
+            if (request.Rating != null && normalizedRating == null)
+            {
+                return Json(WebResponseContent.Instance.Error("娑堟伅鍙嶉绫诲瀷鏃犳晥"));
+            }
+
+            var app = await GetAuthorizedAppAsync(request.AppId);
+            var error = ValidateProxyApp(request.AppId, app);
+            if (error != null)
+            {
+                return Json(error);
+            }
+
+            var payload = new JObject
+            {
+                ["user"] = GetDifyUserId(),
+                ["rating"] = normalizedRating == null ? JValue.CreateNull() : normalizedRating
+            };
+
+            if (!string.IsNullOrWhiteSpace(request.Content))
+            {
+                payload["content"] = request.Content.Trim();
+            }
+
+            var path = $"messages/{EncodePath(request.MessageId)}/feedbacks";
+            return await SendDifyAsync(app, HttpMethod.Post, path, body: payload);
+        }
+
         [HttpPost("RenameConversation")]
         public async Task<IActionResult> RenameConversation([FromBody] RenameConversationRequest request)
         {
@@ -494,6 +626,18 @@ namespace HDPro.WebApi.Controllers.AI
             return await GetAuthorizedAppQuery().FirstOrDefaultAsync(x => x.Id == appId);
         }
 
+        private async Task<Sys_AIApp> GetEnabledAppAsync(long appId)
+        {
+            if (appId <= 0)
+            {
+                return null;
+            }
+
+            return await Sys_AIAppRepository.Instance
+                .FindAsIQueryable(x => x.Status == 1 && x.Id == appId)
+                .FirstOrDefaultAsync();
+        }
+
         private IQueryable<Sys_AIApp> GetAuthorizedAppQuery()
         {
             var appRepository = Sys_AIAppRepository.Instance;
@@ -528,6 +672,26 @@ namespace HDPro.WebApi.Controllers.AI
             if (string.IsNullOrWhiteSpace(app.PlatformAppKey))
             {
                 return WebResponseContent.Instance.Error("AI应用未配置AppKey");
+            }
+
+            return null;
+        }
+
+        private static WebResponseContent ValidatePreviewAssetApp(long appId, Sys_AIApp app)
+        {
+            if (appId <= 0)
+            {
+                return WebResponseContent.Instance.Error("Invalid appId");
+            }
+
+            if (app == null)
+            {
+                return WebResponseContent.Instance.Error("AI app not found");
+            }
+
+            if (string.IsNullOrWhiteSpace(app.PlatformAppKey))
+            {
+                return WebResponseContent.Instance.Error("AI app AppKey is not configured");
             }
 
             return null;
@@ -697,6 +861,40 @@ namespace HDPro.WebApi.Controllers.AI
             return string.IsNullOrWhiteSpace(queryString) ? url : $"{url}?{queryString}";
         }
 
+        private static bool IsSupportedPreviewAssetUrl(string assetUrl)
+        {
+            if (string.IsNullOrWhiteSpace(assetUrl))
+            {
+                return false;
+            }
+
+            var value = assetUrl.Trim();
+            if (!value.StartsWith("/", StringComparison.Ordinal) || value.StartsWith("//", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!Uri.TryCreate($"http://localhost{value}", UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+
+            return uri.AbsolutePath.StartsWith("/files/", StringComparison.OrdinalIgnoreCase)
+                && uri.AbsolutePath.EndsWith("/file-preview", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BuildDifyAssetUrl(string assetUrl)
+        {
+            var value = (assetUrl ?? string.Empty).Trim();
+            if (!value.StartsWith("/", StringComparison.Ordinal))
+            {
+                value = $"/{value.TrimStart('/')}";
+            }
+
+            var difyBaseUri = new Uri(GetDifyBaseUrl(), UriKind.Absolute);
+            return new Uri(difyBaseUri, value).ToString();
+        }
+
         private static string EncodePath(string value)
         {
             return Uri.EscapeDataString((value ?? string.Empty).Trim());
@@ -774,6 +972,17 @@ namespace HDPro.WebApi.Controllers.AI
                 : $"AI平台请求失败({(int)statusCode})：{message}";
         }
 
+        private static string NormalizeFeedbackRating(string rating)
+        {
+            var value = string.IsNullOrWhiteSpace(rating) ? null : rating.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(value) || value == "null")
+            {
+                return null;
+            }
+
+            return value == "like" || value == "dislike" ? value : null;
+        }
+
         private static string TruncateForLog(string text, int maxLength = 300)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -799,6 +1008,14 @@ namespace HDPro.WebApi.Controllers.AI
     {
         public long AppId { get; set; }
         public string TaskId { get; set; }
+    }
+
+    public class MessageFeedbackRequest
+    {
+        public long AppId { get; set; }
+        public string MessageId { get; set; }
+        public string Rating { get; set; }
+        public string Content { get; set; }
     }
 
     public class ConversationActionRequest

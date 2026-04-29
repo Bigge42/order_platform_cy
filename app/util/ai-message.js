@@ -13,7 +13,23 @@ const defaultLinkOpen =
     return self.renderToken(tokens, idx, options)
   }
 
+function resolveTokenUrlAttr(tokens, idx, attrName, env) {
+  const attrIndex = tokens[idx].attrIndex(attrName)
+  if (attrIndex < 0) {
+    return ''
+  }
+
+  const originalUrl = tokens[idx].attrs[attrIndex][1] || ''
+  const resolvedUrl =
+    env && typeof env.resolveAssetUrl === 'function' ? env.resolveAssetUrl(originalUrl) || originalUrl : originalUrl
+
+  tokens[idx].attrs[attrIndex][1] = resolvedUrl
+  return resolvedUrl
+}
+
 markdown.renderer.rules.link_open = function linkOpenWithTarget(tokens, idx, options, env, self) {
+  resolveTokenUrlAttr(tokens, idx, 'href', env)
+
   const targetIndex = tokens[idx].attrIndex('target')
   if (targetIndex < 0) {
     tokens[idx].attrPush(['target', '_blank'])
@@ -29,6 +45,21 @@ markdown.renderer.rules.link_open = function linkOpenWithTarget(tokens, idx, opt
   }
 
   return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
+markdown.renderer.rules.image = function imageWithResolvedUrl(tokens, idx, options, env, self) {
+  const resolvedSrc = resolveTokenUrlAttr(tokens, idx, 'src', env)
+  const token = tokens[idx]
+  const altText = markdown.utils.escapeHtml(self.renderInlineAsText(token.children, options, env))
+  const attrs = self.renderAttrs(token)
+  const imageHtml = `<img${attrs} alt="${altText}${options.xhtmlOut ? '" />' : '">'}` 
+
+  if (!env || !env.includeImageDebugUrl || !resolvedSrc) {
+    return imageHtml
+  }
+
+  const escapedUrl = markdown.utils.escapeHtml(resolvedSrc)
+  return `${imageHtml}<br><span class="ai-image-url">${escapedUrl}</span>`
 }
 
 const chartFenceLanguages = new Set(['echarts', 'chart'])
@@ -66,13 +97,54 @@ function isEchartsOption(value) {
   )
 }
 
-function renderMarkdown(text) {
+function renderMarkdown(text, env = {}) {
   const content = (text || '').trim()
   if (!content) {
     return ''
   }
 
-  return markdown.render(content)
+  return markdown.render(content, env)
+}
+
+function extractMarkdownImages(text = '', env = {}) {
+  const images = []
+  const source = text || ''
+  const imagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+
+  const contentWithoutImages = source.replace(imagePattern, (fullMatch, altText, rawUrl) => {
+    const originalUrl = rawUrl || ''
+    const previewUrl =
+      env && typeof env.resolveAssetUrl === 'function' ? env.resolveAssetUrl(originalUrl) || originalUrl : originalUrl
+
+    images.push({
+      id: `md-image-${images.length}-${hashText(`${altText || ''}|${originalUrl}`)}`,
+      alt: altText || '',
+      originalUrl,
+      previewUrl,
+      url: previewUrl,
+      localPreviewPath: '',
+      objectUrl: '',
+      type: 'image'
+    })
+
+    return ''
+  })
+
+  return {
+    contentWithoutImages,
+    images
+  }
+}
+
+function createMarkdownPayload(text, env = {}) {
+  const { contentWithoutImages, images } = extractMarkdownImages(text, env)
+  const html = renderMarkdown(contentWithoutImages, env)
+
+  return {
+    raw: text,
+    html,
+    images
+  }
 }
 
 function createBlock(type, payload = {}) {
@@ -93,15 +165,21 @@ function hashText(text = '') {
 
 function withStableBlockIds(blocks = []) {
   return blocks.map((block, index) => {
-    const seed = [
-      block.type,
-      block.title,
-      block.raw,
-      block.description,
-      JSON.stringify(block.option || {})
-    ]
-      .filter(Boolean)
-      .join('|')
+    let seed = `${block.type || 'block'}|${index}`
+
+    if (block.type === 'think') {
+      seed = [block.type, index, block.title || 'think'].join('|')
+    } else if (block.type === 'chart') {
+      seed = [
+        block.type,
+        index,
+        block.title || '',
+        block.description || '',
+        JSON.stringify(block.option || {})
+      ]
+        .filter(Boolean)
+        .join('|')
+    }
 
     return {
       ...block,
@@ -142,21 +220,20 @@ function parseChartBlock(language, code) {
   })
 }
 
-function pushMarkdownBlock(blocks, text) {
-  const html = renderMarkdown(text)
-  if (!html) {
+function pushMarkdownBlock(blocks, text, env = {}) {
+  const payload = createMarkdownPayload(text, env)
+  if (!payload.html && !payload.images.length) {
     return
   }
 
   blocks.push(
     createBlock('markdown', {
-      raw: text,
-      html
+      ...payload
     })
   )
 }
 
-function splitMarkdownAndCharts(text) {
+function splitMarkdownAndCharts(text, env = {}) {
   const blocks = []
   const source = text || ''
   const fencePattern = /```([a-zA-Z0-9_-]+)?\s*\r?\n([\s\S]*?)```/g
@@ -166,23 +243,23 @@ function splitMarkdownAndCharts(text) {
   while ((match = fencePattern.exec(source)) !== null) {
     const [fullMatch, language, code] = match
     const before = source.slice(cursor, match.index)
-    pushMarkdownBlock(blocks, before)
+    pushMarkdownBlock(blocks, before, env)
 
     const chartBlock = parseChartBlock(language, code)
     if (chartBlock) {
       blocks.push(chartBlock)
     } else {
-      pushMarkdownBlock(blocks, fullMatch)
+      pushMarkdownBlock(blocks, fullMatch, env)
     }
 
     cursor = match.index + fullMatch.length
   }
 
-  pushMarkdownBlock(blocks, source.slice(cursor))
+  pushMarkdownBlock(blocks, source.slice(cursor), env)
   return blocks
 }
 
-function normalizeAgentThoughts(agentThoughts = []) {
+function normalizeAgentThoughts(agentThoughts = [], env = {}) {
   if (!Array.isArray(agentThoughts)) {
     return []
   }
@@ -211,14 +288,14 @@ function normalizeAgentThoughts(agentThoughts = []) {
 
       return createBlock('think', {
         title,
-        raw: lines.join('\n\n'),
-        html: renderMarkdown(lines.join('\n\n'))
+        pending: false,
+        ...createMarkdownPayload(lines.join('\n\n'), env)
       })
     })
     .filter(Boolean)
 }
 
-function splitThinkBlocks(content) {
+function splitThinkBlocks(content, env = {}) {
   const blocks = []
   const source = content || ''
   const thinkPattern = /<think>([\s\S]*?)<\/think>/gi
@@ -227,15 +304,15 @@ function splitThinkBlocks(content) {
 
   while ((match = thinkPattern.exec(source)) !== null) {
     const before = source.slice(cursor, match.index)
-    blocks.push(...splitMarkdownAndCharts(before))
+    blocks.push(...splitMarkdownAndCharts(before, env))
 
     const thinkText = (match[1] || '').trim()
     if (thinkText) {
       blocks.push(
         createBlock('think', {
           title: '思考过程',
-          raw: thinkText,
-          html: renderMarkdown(thinkText)
+          pending: false,
+          ...createMarkdownPayload(thinkText, env)
         })
       )
     }
@@ -243,19 +320,89 @@ function splitThinkBlocks(content) {
     cursor = match.index + match[0].length
   }
 
-  blocks.push(...splitMarkdownAndCharts(source.slice(cursor)))
+  blocks.push(...splitMarkdownAndCharts(source.slice(cursor), env))
   return blocks
 }
 
-export function buildAssistantBlocks(content = '', agentThoughts = []) {
-  const blocks = normalizeAgentThoughts(agentThoughts)
-  const contentBlocks = splitThinkBlocks(content)
+function splitThinkBlocksStreaming(content, env = {}) {
+  const blocks = []
+  const source = String(content || '')
+  const lowerSource = source.toLowerCase()
+  const openTag = '<think>'
+  const closeTag = '</think>'
+  let cursor = 0
+  let mode = 'markdown'
+  let buffer = ''
+
+  const flushBuffer = (pendingThink = false) => {
+    if (!buffer) {
+      return
+    }
+
+    if (mode === 'think') {
+      const thinkText = buffer.trim()
+      if (thinkText) {
+        blocks.push(
+          createBlock('think', {
+            title: '思考过程',
+            pending: pendingThink,
+            ...createMarkdownPayload(thinkText, env)
+          })
+        )
+      }
+    } else {
+      blocks.push(...splitMarkdownAndCharts(buffer, env))
+    }
+
+    buffer = ''
+  }
+
+  while (cursor < source.length) {
+    const remainingLower = lowerSource.slice(cursor)
+
+    if (remainingLower.startsWith(openTag)) {
+      flushBuffer(false)
+      mode = 'think'
+      cursor += openTag.length
+      continue
+    }
+
+    if (remainingLower.startsWith(closeTag)) {
+      flushBuffer(false)
+      mode = 'markdown'
+      cursor += closeTag.length
+      continue
+    }
+
+    if (openTag.startsWith(remainingLower) || closeTag.startsWith(remainingLower)) {
+      break
+    }
+
+    buffer += source[cursor]
+    cursor += 1
+  }
+
+  flushBuffer(mode === 'think')
+  return blocks
+}
+
+export function buildAssistantBlocks(content = '', agentThoughts = [], renderEnv = {}) {
+  const blocks = normalizeAgentThoughts(agentThoughts, renderEnv)
+  const contentBlocks = splitThinkBlocksStreaming(content, renderEnv)
 
   if (!blocks.length && !contentBlocks.length && content) {
-    pushMarkdownBlock(contentBlocks, content)
+    pushMarkdownBlock(contentBlocks, content, renderEnv)
   }
 
   return withStableBlockIds([...blocks, ...contentBlocks])
+}
+
+export function extractCopyableAssistantText(content = '') {
+  return String(content || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function normalizeRetrieverResources(resources = []) {
@@ -321,6 +468,139 @@ export function normalizeMessageFiles(files = []) {
       }
     })
     .filter(item => item.id || item.url || item.name)
+}
+
+export function getMessageFileRenderSrc(file = {}) {
+  if (!file || typeof file !== 'object') {
+    return ''
+  }
+
+  return file.localPreviewPath || file.localPath || file.previewUrl || file.url || ''
+}
+
+export function getMessageFileImageDisplaySrc(file = {}) {
+  if (!file || typeof file !== 'object') {
+    return ''
+  }
+
+  if (file.localPreviewPath || file.localPath) {
+    return file.localPreviewPath || file.localPath || ''
+  }
+
+  const remoteUrl = file.previewUrl || file.url || ''
+  if (/\/api\/AI\/PreviewFile\?/i.test(remoteUrl)) {
+    return ''
+  }
+
+  return remoteUrl
+}
+
+export function getMessageFileDebugUrl(file = {}, fallbackUrl = '') {
+  if (!file || typeof file !== 'object') {
+    return fallbackUrl || ''
+  }
+
+  return file.previewRequestUrl || file.previewUrl || file.url || fallbackUrl || ''
+}
+
+function isDifyPreviewAssetPath(url = '') {
+  return /\/files\/[^/?#]+\/file-preview(?:[/?#]|$)/i.test(String(url || '').trim())
+}
+
+export function buildPreviewAssetUrl(resolveUrl, appId, assetUrl) {
+  if (!appId || !assetUrl || typeof resolveUrl !== 'function') {
+    return ''
+  }
+
+  return resolveUrl(
+    `api/AI/PreviewAsset?appId=${encodeURIComponent(appId)}&assetUrl=${encodeURIComponent(assetUrl)}`
+  )
+}
+
+export function resolveAiMessageAssetUrl(url = '', resolveUrl, appId) {
+  const value = String(url || '').trim()
+  if (!value) {
+    return ''
+  }
+
+  if (isDifyPreviewAssetPath(value) && typeof resolveUrl === 'function' && appId) {
+    return buildPreviewAssetUrl(resolveUrl, appId, value)
+  }
+
+  if (value.startsWith('/') && typeof resolveUrl === 'function') {
+    return resolveUrl(value)
+  }
+
+  return value
+}
+
+export function isSyntheticMarkdownImageId(value = '') {
+  return /^md-image-\d+-/i.test(String(value || '').trim())
+}
+
+export function normalizeMessageFeedback(feedback) {
+  const rating =
+    typeof feedback === 'string'
+      ? feedback
+      : feedback && typeof feedback === 'object'
+        ? feedback.rating
+        : null
+
+  const normalized = String(rating || '').trim().toLowerCase()
+  if (normalized === 'like' || normalized === 'dislike') {
+    return normalized
+  }
+
+  return null
+}
+
+export function resolveNextMessageFeedback(currentFeedback, nextFeedback) {
+  const current = normalizeMessageFeedback(currentFeedback)
+  const next = normalizeMessageFeedback(nextFeedback)
+  if (!next) {
+    return null
+  }
+
+  return current === next ? null : next
+}
+
+export function shouldCollectFeedbackContent(currentFeedback, nextFeedback) {
+  return resolveNextMessageFeedback(currentFeedback, nextFeedback) === 'dislike'
+}
+
+export function findAssistantRegenerateSource(messages = [], assistantLocalId = '') {
+  if (!Array.isArray(messages) || !assistantLocalId) {
+    return null
+  }
+
+  const assistantIndex = messages.findIndex(
+    item => item?.role === 'assistant' && item?.localId === assistantLocalId
+  )
+
+  if (assistantIndex <= 0) {
+    return null
+  }
+
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'user') {
+      continue
+    }
+
+    const files = Array.isArray(message.files) ? message.files : []
+    const query = String(message.requestQuery || message.query || message.content || '').trim()
+
+    if (query || files.length) {
+      return {
+        localId: message.localId || '',
+        query,
+        displayQuery: typeof message.content === 'string' ? message.content : '',
+        files
+      }
+    }
+  }
+
+  return null
 }
 
 export function buildUsageSummary(usage) {
