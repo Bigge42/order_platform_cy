@@ -366,3 +366,4 @@ error/*
 /api/HDPro.WebApi/quartz
 /app/unpackage
 /app/unpackage
+/AGENTS.md
