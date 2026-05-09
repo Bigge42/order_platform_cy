@@ -154,6 +154,7 @@ namespace HDPro.WebApi.Controllers.Order
                 FirstRequiredDeliveryDate = request.OrderData.DeliveryDate?.ToString("yyyy-MM-dd"), // 第一次要求交期（变更前交期）
                 ExecutiveOrganization = request.OrderData.ExecutiveOrganization ?? "1", // 执行机构
                 ChangedDeliveryDate = request.OrderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 变更的交期
+                FinalDeliveryDate = request.OrderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 最终交期（取值等于变更的交期）
                 SupplierExceptionReply = request.OrderData.SupplierExceptionReply
             };
             
@@ -659,4 +660,4 @@ namespace HDPro.WebApi.Controllers.Order
         /// </summary>
         public string Token { get; set; }
     }
-} 
+}

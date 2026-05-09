@@ -63,6 +63,7 @@ namespace HDPro.CY.Order.Services.OA
                     FirstRequiredDeliveryDate = orderData.DeliveryDate?.ToString("yyyy-MM-dd"), // 第一次要求交期（变更前交期）
                     ExecutiveOrganization = orderData.ExecutiveOrganization ?? "1", // 执行机构
                     ChangedDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 变更的交期
+                    FinalDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 最终交期（取值等于变更的交期）
                     SupplierExceptionReply = orderData.SupplierExceptionReply
                 };
 
@@ -128,6 +129,7 @@ namespace HDPro.CY.Order.Services.OA
                     FirstRequiredDeliveryDate = orderData.DeliveryDate?.ToString("yyyy-MM-dd"), // 第一次要求交期（变更前交期）
                     ExecutiveOrganization = orderData.ExecutiveOrganization ?? "1", // 执行机构
                     ChangedDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 变更的交期
+                    FinalDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"), // 最终交期（取值等于变更的交期）
                     SupplierExceptionReply = orderData.SupplierExceptionReply
                 };
 
@@ -268,4 +270,4 @@ namespace HDPro.CY.Order.Services.OA
         /// </summary>
         public string SupplierExceptionReply { get; set; }
     }
-} 
+}

@@ -17,8 +17,9 @@ namespace HDPro.CY.Order.IServices
         /// </summary>
         /// <param name="pageSize">每页数量，默认1000</param>
         /// <param name="customFilter">自定义过滤条件</param>
+        /// <param name="useIncrementalSync">是否使用增量同步</param>
         /// <returns>同步结果</returns>
-        Task<WebResponseContent> SyncSuppliersFromK3CloudAsync(int pageSize = 1000, string customFilter = null);
+        Task<WebResponseContent> SyncSuppliersFromK3CloudAsync(int pageSize = 1000, string customFilter = null, bool useIncrementalSync = true);
 
         /// <summary>
         /// 获取K3Cloud供应商数据（不保存到数据库）

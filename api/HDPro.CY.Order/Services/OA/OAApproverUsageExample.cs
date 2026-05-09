@@ -67,6 +67,7 @@ namespace HDPro.CY.Order.Services.OA
                     FirstRequiredDeliveryDate = orderData.FirstRequiredDeliveryDate?.ToString("yyyy-MM-dd"),
                     ExecutiveOrganization = orderData.ExecutiveOrganization ?? "1",
                     ChangedDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"),
+                    FinalDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"),
                     OrderEntryLineNo = orderData.OrderEntryLineNo,
                     SupplierExceptionReply = orderData.SupplierExceptionReply,
                     AssignedResponsiblePerson = assignedPersonCode // 设置指定负责人工号
@@ -131,6 +132,7 @@ namespace HDPro.CY.Order.Services.OA
                     PlanTrackingNo = negotiationData.PlanTrackingNo,
                     FirstRequiredDeliveryDate = negotiationData.OriginalDeliveryDate?.ToString("yyyy-MM-dd"),
                     ChangedDeliveryDate = negotiationData.ProposedDeliveryDate?.ToString("yyyy-MM-dd"),
+                    FinalDeliveryDate = negotiationData.ProposedDeliveryDate?.ToString("yyyy-MM-dd"),
                     ExecutiveOrganization = negotiationData.ExecutiveOrganization ?? "1",
                     SupplierExceptionReply = negotiationData.NegotiationContent,
                     AssignedResponsiblePerson = negotiationData.AssignedResponsiblePerson // 设置指定负责人工号
@@ -218,6 +220,7 @@ namespace HDPro.CY.Order.Services.OA
                         FirstRequiredDeliveryDate = formData.FirstRequiredDeliveryDate,
                         ExecutiveOrganization = formData.ExecutiveOrganization,
                         ChangedDeliveryDate = formData.ChangedDeliveryDate,
+                        FinalDeliveryDate = formData.ChangedDeliveryDate,
                         OrderEntryLineNo = formData.OrderEntryLineNo,
                         SupplierExceptionReply = formData.SupplierExceptionReply,
                         ApproverUserId = approverUserId ?? "", // 设置审批人ID
@@ -263,6 +266,7 @@ namespace HDPro.CY.Order.Services.OA
                         FirstRequiredDeliveryDate = formData.FirstRequiredDeliveryDate,
                         ExecutiveOrganization = formData.ExecutiveOrganization,
                         ChangedDeliveryDate = formData.ChangedDeliveryDate,
+                        FinalDeliveryDate = formData.ChangedDeliveryDate,
                         SupplierExceptionReply = formData.SupplierExceptionReply,
                         ApproverUserId = approverUserId ?? "" // 设置审批人ID
                     };
@@ -514,6 +518,7 @@ namespace HDPro.CY.Order.Services.OA
                     FirstRequiredDeliveryDate = orderData.FirstRequiredDeliveryDate?.ToString("yyyy-MM-dd"),
                     ExecutiveOrganization = orderData.ExecutiveOrganization ?? "1",
                     ChangedDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"),
+                    FinalDeliveryDate = orderData.ChangedDeliveryDate?.ToString("yyyy-MM-dd"),
                     OrderEntryLineNo = orderData.OrderEntryLineNo,
                     SupplierExceptionReply = orderData.SupplierExceptionReply,
                     AssignedResponsiblePerson = assignedPersonCode // 设置指定负责人工号
@@ -692,4 +697,4 @@ namespace HDPro.CY.Order.Services.OA
         public int? OrderEntryLineNo { get; set; }
         public string SupplierExceptionReply { get; set; }
     }
-} 
+}

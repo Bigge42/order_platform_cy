@@ -85,13 +85,17 @@ namespace HDPro.CY.Order.Controllers
         /// <returns>同步结果</returns>
         [ApiTask]
         [HttpGet, HttpPost, Route("Task/SupplierSync")]
-        public async Task<IActionResult> SupplierSyncTask()
+        public async Task<IActionResult> SupplierSyncTask([FromBody] SupplierSyncTaskRequest request = null)
         {
             try
             {
                 _logger.LogInformation("定时任务：开始K3Cloud供应商数据同步");
                 
-                var result = await _supplierService.SyncSuppliersFromK3CloudAsync();
+                var syncPageSize = request?.PageSize > 0 ? request.PageSize : 1000;
+                var syncCustomFilter = request?.CustomFilter;
+                var useIncrementalSync = request?.IsIncrementalSync ?? true;
+
+                var result = await _supplierService.SyncSuppliersFromK3CloudAsync(syncPageSize, syncCustomFilter, useIncrementalSync);
                 
                 _logger.LogInformation($"定时任务：K3Cloud供应商数据同步完成，结果：{result.Status}");
                 
@@ -449,5 +453,14 @@ namespace HDPro.CY.Order.Controllers
         /// 每页数量，默认1000
         /// </summary>
         public int PageSize { get; set; } = 1000;
+    }
+
+    public class SupplierSyncTaskRequest
+    {
+        public bool IsIncrementalSync { get; set; } = false;
+
+        public int PageSize { get; set; } = 1000;
+
+        public string CustomFilter { get; set; }
     }
 }

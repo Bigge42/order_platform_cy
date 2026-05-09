@@ -1098,6 +1098,7 @@ namespace HDPro.CY.Order.Services.OA
                         PlanTrackingNo = processData.PlanTrackingNo ?? "",
                         FirstRequiredDeliveryDate = processData.FirstRequiredDeliveryDate ?? "",
                         ChangedDeliveryDate = processData.ChangedDeliveryDate ?? "",
+                        FinalDeliveryDate = processData.ChangedDeliveryDate ?? "",
                         ExecutiveOrganization = processData.ExecutiveOrganization ?? "",
                         OrderEntryLineNo = processData.OrderEntryLineNo,
                         SupplierExceptionReply = processData.SupplierExceptionReply ?? "",
@@ -1167,6 +1168,7 @@ namespace HDPro.CY.Order.Services.OA
                         FirstRequiredDeliveryDate = processData.FirstRequiredDeliveryDate ?? "",
                         ExecutiveOrganization = processData.ExecutiveOrganization ?? "",
                         ChangedDeliveryDate = processData.ChangedDeliveryDate ?? "",
+                        FinalDeliveryDate = processData.ChangedDeliveryDate ?? "",
                         SupplierExceptionReply = processData.SupplierExceptionReply ?? "",
                         ApproverUserId = processData.ApproverUserId ?? ""
                     };
@@ -2096,6 +2098,12 @@ namespace HDPro.CY.Order.Services.OA
         public string ChangedDeliveryDate { get; set; }
 
         /// <summary>
+        /// 最终交期
+        /// </summary>
+        [JsonProperty("最终交期")]
+        public string FinalDeliveryDate { get; set; }
+
+        /// <summary>
         /// 供方异常回复
         /// </summary>
         [JsonProperty("供方异常回复")]
@@ -2238,6 +2246,12 @@ namespace HDPro.CY.Order.Services.OA
         /// </summary>
         [JsonProperty("变更的交期")]
         public string ChangedDeliveryDate { get; set; }
+
+        /// <summary>
+        /// 最终交期
+        /// </summary>
+        [JsonProperty("最终交期")]
+        public string FinalDeliveryDate { get; set; }
 
         /// <summary>
         /// 执行机构
@@ -2445,6 +2459,11 @@ namespace HDPro.CY.Order.Services.OA
         /// 变更的交期
         /// </summary>
         public string ChangedDeliveryDate { get; set; }
+
+        /// <summary>
+        /// 最终交期
+        /// </summary>
+        public string FinalDeliveryDate { get; set; }
 
         /// <summary>
         /// 订单分录行号
@@ -2967,4 +2986,4 @@ namespace HDPro.CY.Order.Services.OA
         [JsonProperty("idnum")]
         public string IdNum { get; set; }
     }
-} 
+}

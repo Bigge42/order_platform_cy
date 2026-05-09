@@ -153,15 +153,17 @@ namespace HDPro.CY.Order.Services
         /// </summary>
         /// <param name="pageSize">每页数量，默认1000</param>
         /// <param name="customFilter">自定义过滤条件</param>
+        /// <param name="useIncrementalSync">是否使用增量同步</param>
         /// <returns>同步结果</returns>
-        public async Task<WebResponseContent> SyncSuppliersFromK3CloudAsync(int pageSize = 1000, string customFilter = null)
+        public async Task<WebResponseContent> SyncSuppliersFromK3CloudAsync(int pageSize = 1000, string customFilter = null, bool useIncrementalSync = true)
         {
             try
             {
-                _logger.LogInformation("开始从K3Cloud增量同步供应商数据");
+                var syncType = useIncrementalSync ? "增量" : "全量";
+                _logger.LogInformation($"开始从K3Cloud{syncType}同步供应商数据");
 
                 // 1. 构建包含增量同步条件的过滤字符串
-                var filterString = await BuildK3CloudFilterStringAsync(customFilter, true);
+                var filterString = await BuildK3CloudFilterStringAsync(customFilter, useIncrementalSync);
 
                 // 2. 获取供应商总数
                 var totalCount = await _k3CloudService.GetSupplierCountAsync(filterString);
