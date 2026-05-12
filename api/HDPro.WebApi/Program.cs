@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -26,7 +27,9 @@ using HDPro.Core.Quartz;
 using HDPro.Core.Extensions;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using HDPro.Core.Controllers.Basic;
+using HDPro.Core.EFDbContext;
 using HDPro.Core.Language;
 using HDPro.WebApi.Controllers.Hubs;
 using System.Net;
@@ -42,6 +45,7 @@ using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.Repositories;
 using HDPro.CY.Order.IRepositories.MaterialCallBoard;
 using HDPro.CY.Order.Repositories.MaterialCallBoard;
+using HDPro.Entity.DomainModels;
 
 
 
@@ -227,6 +231,51 @@ builder.Services.AddScoped<IMaterialCallWmsSyncService, MaterialCallWmsSyncServi
 builder.Services.AddHttpClient(nameof(MaterialCallWmsSyncService));
 
 var app = builder.Build();
+
+void EnsureWzProductionOutputDailyRefreshTask()
+{
+    try
+    {
+        using var dbContext = new SysDbContext();
+        var taskId = Guid.Parse("2f5a4c46-9a37-4c7f-8a20-dfd5a4e16f52");
+        var now = DateTime.Now;
+        var tasks = dbContext.Set<Sys_QuartzOptions>();
+        var task = tasks.AsTracking()
+            .FirstOrDefault(x => x.Id == taskId
+                || x.TaskName == "WZ产能每日同步"
+                || x.TaskName == "WZ产能每日增量同步");
+
+        if (task == null)
+        {
+            task = new Sys_QuartzOptions
+            {
+                Id = taskId,
+                CreateDate = now,
+                Creator = "system"
+            };
+            tasks.Add(task);
+        }
+
+        task.TaskName = "WZ产能每日增量同步";
+        task.GroupName = "group";
+        task.Method = "post";
+        task.TimeOut = 1800;
+        task.CronExpression = "0 0 15 * * ?";
+        task.ApiUrl = "http://127.0.0.1:9200/api/WZ/ProductionOutput/refresh/daily-increment-task";
+        task.PostData = "{}";
+        task.Describe = "每天下午15:00同步当天新增WZ产能数据并累加";
+        task.Status = 0;
+        task.Modifier = "system";
+        task.ModifyDate = now;
+
+        dbContext.SaveChanges();
+    }
+    catch (Exception ex)
+    {
+        logger.Error(ex, "WZ产能每日同步定时任务初始化失败");
+    }
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -236,6 +285,7 @@ if (app.Environment.IsDevelopment())
 //else
 //{
     // 定时任务，如果不需要定时执行定时任务，请将此处放到else里面
+    EnsureWzProductionOutputDailyRefreshTask();
     app.UseQuartz(app.Environment);
 //}
 app.UseLanguagePack().UseMiddleware<LanguageMiddleWare>();

@@ -56,7 +56,7 @@
         <el-input v-model="valveCategory" placeholder="阀体类别(可空)" size="small" style="width:140px" clearable />
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
-        <el-button type="primary" size="small" :loading="syncLoading" @click="syncData">同步数据</el-button>
+        <el-button v-if="canSyncData" type="primary" size="small" :loading="syncLoading" @click="syncData">同步数据</el-button>
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
         <el-button size="small" :type="buttonType('preproduction')" @click="loadPreProduction">展示预排产</el-button>
         <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
@@ -125,6 +125,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, getCurrentInstance } from 'vue'
 import { ElMessage } from 'element-plus'
+import store from '@/store/index'
 
 /* ===== 尺寸参数 ===== */
 const SIZE = { small: 12, big: 20 }
@@ -201,6 +202,18 @@ const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const viewMode = ref('actual')
 const syncLoading = ref(false)
+const canSyncData = computed(() => {
+  const userInfo = store.getters.getUserInfo?.() || {}
+  const names = [
+    userInfo.userName,
+    userInfo.UserName,
+    userInfo.loginName,
+    userInfo.LoginName,
+    store.getters.getUserName?.(),
+    store.getters.getLoginName?.()
+  ]
+  return names.some(name => String(name || '').trim().toLowerCase() === 'cyadmin')
+})
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
@@ -533,11 +546,18 @@ async function loadData(){
 
 async function syncData(){
   if (syncLoading.value) return
+  if (!canSyncData.value) {
+    ElMessage.warning('只有 cyadmin 可以同步数据')
+    return
+  }
   syncLoading.value = true
   try{
+    const endDate = new Date()
+    const startDate = new Date(endDate)
+    startDate.setFullYear(startDate.getFullYear() - 1)
     const payload = {
-      start: '2025-01-01',
-      end: '2026-12-31'
+      start: fmtYMD(startDate),
+      end: fmtYMD(endDate)
     }
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
     const inserted = res?.inserted ?? res?.data?.inserted ?? res?.Data?.inserted

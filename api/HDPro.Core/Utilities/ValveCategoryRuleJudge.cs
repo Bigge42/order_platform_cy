@@ -31,6 +31,7 @@ namespace HDPro.Core.Utilities
                 { "R1/4闸阀（小球阀）", (SoftSealBallValve, "SPECIAL_R1/4闸阀（小球阀）") },
                 { "RC1/4小球阀", (SoftSealBallValve, "SPECIAL_RC1/4小球阀") },
                 { "REM", (SoftSealBallValve, "SPECIAL_REM") },
+                { "VFR", (HardSealBallValve, "SPECIAL_VFR") },
                 { "JVBJG", (ButterflyValve, "SPECIAL_JVBJG") }
             };
 
@@ -57,7 +58,7 @@ namespace HDPro.Core.Utilities
                 return null;
             }
 
-            if (SpecialCases.TryGetValue(trimmed, out var specialCase))
+            if (TryGetSpecialCase(trimmed, out var specialCase))
             {
                 return specialCase;
             }
@@ -113,6 +114,39 @@ namespace HDPro.Core.Utilities
             }
 
             return null;
+        }
+
+        public static (string Category, string RuleCode)? TryJudgeBySpecOrProduct(string specModel, string productName)
+        {
+            if (TryGetSpecialCase(specModel, out var specCase))
+            {
+                return specCase;
+            }
+
+            return TryJudge(productName);
+        }
+
+        private static bool TryGetSpecialCase(string value, out (string Category, string RuleCode) specialCase)
+        {
+            specialCase = default;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var trimmed = value.Trim();
+            if (SpecialCases.TryGetValue(trimmed, out specialCase))
+            {
+                return true;
+            }
+
+            if (trimmed.StartsWith("VFR", StringComparison.OrdinalIgnoreCase))
+            {
+                specialCase = (HardSealBallValve, "PREFIX_VFR");
+                return true;
+            }
+
+            return false;
         }
 
         private static (string Category, string RuleCode)? TryJudgeZjh(string upper)

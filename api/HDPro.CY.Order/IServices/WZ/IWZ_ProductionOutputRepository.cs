@@ -18,6 +18,12 @@ namespace HDPro.CY.Order.IServices.WZ
         Task<int> RefreshAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default);
 
         /// <summary>
+        /// 增量刷新：按时间范围从 ESB 获取新增产量，按日期/阀体/产线累加到现有缓存
+        /// </summary>
+        /// <returns>参与增量累加的聚合键数量</returns>
+        Task<int> RefreshIncrementalAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default);
+
+        /// <summary>
         /// 查询：按阀体、产线、时间范围获取每日产量
         /// </summary>
         Task<List<WZ_ProductionOutput>> GetAsync(
@@ -28,7 +34,7 @@ namespace HDPro.CY.Order.IServices.WZ
             CancellationToken ct = default);
 
         /// <summary>
-        /// 批量更新阈值：按阀体与产线写入 CurrentThreshold
+        /// 批量更新阈值：按阀体与产线持久化阈值，并同步回当前产量缓存
         /// </summary>
         Task<int> UpdateThresholdsAsync(
             IReadOnlyCollection<(string ValveCategory, string ProductionLine, decimal Threshold)> thresholds,

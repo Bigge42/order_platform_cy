@@ -220,6 +220,46 @@ const resetProgressSummary = () => {
   progressSummary.logFiles = [];
 };
 
+const pickValue = (source, ...keys) => {
+  if (!source) {
+    return undefined;
+  }
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null) {
+      return source[key];
+    }
+  }
+  return undefined;
+};
+
+const toNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+
+const normalizeOptimizeData = (response) => {
+  const data = response?.data ?? response?.Data ?? response;
+  return {
+    total: toNumber(pickValue(data, 'total', 'Total')),
+    succeeded: toNumber(pickValue(data, 'succeeded', 'Succeeded')),
+    failed: toNumber(pickValue(data, 'failed', 'Failed')),
+    updated: toNumber(pickValue(data, 'updated', 'Updated')),
+    batchCount: toNumber(pickValue(data, 'batchCount', 'BatchCount')),
+    logFiles: pickValue(data, 'logFiles', 'LogFiles') || []
+  };
+};
+
+const updateProgressSummary = (summary) => {
+  progressSummary.total = summary.total;
+  progressSummary.succeeded = summary.succeeded;
+  progressSummary.failed = summary.failed;
+  progressSummary.updated = summary.updated;
+  progressSummary.batchCount = summary.batchCount;
+  progressSummary.logFiles = Array.isArray(summary.logFiles)
+    ? summary.logFiles
+    : [summary.logFiles].filter(Boolean);
+};
+
 const refreshGrid = () => {
   if (gridRef && gridRef.search) {
     gridRef.search();
@@ -298,22 +338,20 @@ const handleOptimize = async () => {
 
   try {
     const response = await proxy.http.post('/api/WZ_OrderCycleBase/batch-call-valve-rule-service');
-    if (response.status && response.data) {
-      progressSummary.total = response.data.total || 0;
-      progressSummary.succeeded = response.data.succeeded || 0;
-      progressSummary.failed = response.data.failed || 0;
-      progressSummary.updated = response.data.updated || 0;
-      progressSummary.batchCount = response.data.batchCount || 0;
-      progressSummary.logFiles = response.data.logFiles || [];
-
+    const status = response?.status ?? response?.Status;
+    if (status === false) {
+      ElMessage.error(response?.message || response?.Message || '智能体优化失败');
       refreshGrid();
-
-      const successMsg = `优化完成，成功 ${progressSummary.succeeded} 条，更新 ${progressSummary.updated} 条`;
-      ElMessage.success(response.message || successMsg);
-    } else {
-      refreshGrid();
+      return;
     }
+
+    updateProgressSummary(normalizeOptimizeData(response));
+    refreshGrid();
+
+    const successMsg = `优化完成，成功 ${progressSummary.succeeded} 条，更新 ${progressSummary.updated} 条`;
+    ElMessage.success(response?.message || response?.Message || successMsg);
   } catch (error) {
+    ElMessage.error('智能体优化异常');
     refreshGrid();
   } finally {
     ruleLoading.value = false;
