@@ -1,0 +1,2 @@
+tools/ocp_bom_creator_sync/*.sh text eol=lf
+tools/ocp_bom_creator_sync/systemd/* text eol=lf

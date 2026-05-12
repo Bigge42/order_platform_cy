@@ -40,5 +40,13 @@ namespace HDPro.CY.Order.Controllers
             var result = await _service.SyncOrderDatesAsync();
             return Json(result);
         }
+
+        [HttpPost]
+        [Route("enqueue-missing-bom-creators")]
+        public async Task<IActionResult> EnqueueMissingBomCreatorsAsync()
+        {
+            var result = await _service.EnqueueMissingBomCreatorsAsync();
+            return Json(result);
+        }
     }
 }

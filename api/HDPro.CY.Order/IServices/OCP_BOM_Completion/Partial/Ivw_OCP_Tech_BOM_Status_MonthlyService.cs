@@ -11,5 +11,6 @@ namespace HDPro.CY.Order.IServices
     public partial interface Ivw_OCP_Tech_BOM_Status_MonthlyService
     {
         Task<WebResponseContent> SyncOrderDatesAsync();
+        Task<WebResponseContent> EnqueueMissingBomCreatorsAsync();
     }
  }

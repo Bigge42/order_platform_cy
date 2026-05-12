@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OCP missing Teamcenter BOM creator sync every night
+
+[Timer]
+OnCalendar=*-*-* 23:30:00
+Persistent=true
+Unit=ocp-bom-creator-sync.service
+
+[Install]
+WantedBy=timers.target

@@ -362,3 +362,12 @@ MigrationBackup/
 FodyWeavers.xsd
 
 error/*
+
+# Local IDE metadata
+.idea/
+**/.idea/
+
+# Runtime/export/cache artifacts
+api/HDPro.WebApi/quartz/error/
+api/HDPro.WebApi/Download/ExcelExport/
+api/HDPro.WebApi/wwwroot/cache/
