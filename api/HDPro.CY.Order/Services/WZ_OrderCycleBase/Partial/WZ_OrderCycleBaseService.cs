@@ -302,6 +302,7 @@ namespace HDPro.CY.Order.Services
                     Id = p.Id,
                     ScheduleDate = p.ScheduleDate,
                     OrderQty = p.OrderQty,
+                    ValveCategory = p.ValveCategory,
                     AssignedProductionLine = p.AssignedProductionLine
                 })
                 .ToListAsync(cancellationToken);
@@ -320,8 +321,8 @@ namespace HDPro.CY.Order.Services
                 .AsNoTracking()
                 .ToListAsync(cancellationToken);
 
-            var capacityMap = new Dictionary<(string Line, DateTime Date), CapacityBucket>();
-            var lineDates = new Dictionary<string, HashSet<DateTime>>(StringComparer.OrdinalIgnoreCase);
+            var capacityMap = new Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket>();
+            var categoryLineDates = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
 
             foreach (var output in outputs)
             {
@@ -330,14 +331,15 @@ namespace HDPro.CY.Order.Services
                     continue;
                 }
 
-                var line = NormalizeLine(output.ProductionLine);
-                if (string.IsNullOrWhiteSpace(line))
+                var cat = NormalizeCapacityText(output.ValveCategory);
+                var line = NormalizeCapacityText(output.ProductionLine);
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
                 var date = output.ProductionDate.Date;
-                var key = (line, date);
+                var key = (cat, line, date);
 
                 if (!capacityMap.TryGetValue(key, out var bucket))
                 {
@@ -354,21 +356,22 @@ namespace HDPro.CY.Order.Services
                     bucket.Threshold = MergeThreshold(bucket.Threshold, output.CurrentThreshold);
                 }
 
-                if (!lineDates.TryGetValue(line, out var dates))
+                var dateKey = (cat, line);
+                if (!categoryLineDates.TryGetValue(dateKey, out var dates))
                 {
                     dates = new HashSet<DateTime>();
-                    lineDates[line] = dates;
+                    categoryLineDates[dateKey] = dates;
                 }
 
                 dates.Add(date);
             }
 
-            var lineDateList = new Dictionary<string, List<DateTime>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in lineDates)
+            var capacityDateList = new Dictionary<(string Cat, string Line), List<DateTime>>();
+            foreach (var item in categoryLineDates)
             {
                 var dates = item.Value.ToList();
                 dates.Sort();
-                lineDateList[item.Key] = dates;
+                capacityDateList[item.Key] = dates;
             }
 
             var updates = new List<WZ_OrderCycleBase>();
@@ -383,8 +386,11 @@ namespace HDPro.CY.Order.Services
                     continue;
                 }
 
-                var line = NormalizeLine(order.AssignedProductionLine);
-                if (string.IsNullOrWhiteSpace(line) || !lineDateList.TryGetValue(line, out var dates))
+                var cat = NormalizeCapacityText(order.ValveCategory);
+                var line = NormalizeCapacityText(order.AssignedProductionLine);
+                if (string.IsNullOrWhiteSpace(cat)
+                    || string.IsNullOrWhiteSpace(line)
+                    || !capacityDateList.TryGetValue((cat, line), out var dates))
                 {
                     summary.MissingProductionOutput++;
                     summary.Failed++;
@@ -407,7 +413,7 @@ namespace HDPro.CY.Order.Services
                 while (remaining > 0 && dateIndex < dates.Count)
                 {
                     var currentDate = dates[dateIndex];
-                    if (!capacityMap.TryGetValue((line, currentDate), out var bucket))
+                    if (!capacityMap.TryGetValue((cat, line, currentDate), out var bucket))
                     {
                         summary.MissingProductionOutput++;
                         break;
@@ -663,13 +669,16 @@ namespace HDPro.CY.Order.Services
                 var batch = await context.Set<WZ_OrderCycleBase>()
                     .AsNoTracking()
                     .Where(p => p.Id > lastId
-                        && (p.ValveCategory == null || p.ValveCategory == string.Empty)
-                        && p.ProductName != null
-                        && p.ProductName != string.Empty)
+                        && (((p.ValveCategory == null || p.ValveCategory == string.Empty)
+                                && ((p.ProductName != null && p.ProductName != string.Empty)
+                                    || (p.GUI_GE_XING_HAO != null && p.GUI_GE_XING_HAO != string.Empty)))
+                            || (p.GUI_GE_XING_HAO != null && p.GUI_GE_XING_HAO.Trim().ToUpper().StartsWith("VFR"))
+                            || (p.ProductName != null && p.ProductName.Trim().ToUpper().StartsWith("VFR"))))
                     .OrderBy(p => p.Id)
                     .Select(p => new
                     {
                         p.Id,
+                        p.GUI_GE_XING_HAO,
                         p.ProductName,
                         p.ValveCategory
                     })
@@ -684,8 +693,13 @@ namespace HDPro.CY.Order.Services
                 var entitiesToUpdate = new List<WZ_OrderCycleBase>();
                 foreach (var item in batch)
                 {
-                    var result = ValveCategoryRuleJudge.TryJudge(item.ProductName);
+                    var result = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(item.GUI_GE_XING_HAO, item.ProductName);
                     if (!result.HasValue)
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(item.ValveCategory, result.Value.Category, StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -934,7 +948,12 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
         private static string NormalizeLine(string value)
         {
-            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+            return NormalizeCapacityText(value);
+        }
+
+        private static string NormalizeCapacityText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().Normalize(NormalizationForm.FormKC);
         }
 
         private static decimal? MergeThreshold(decimal? current, decimal? incoming)
@@ -976,6 +995,8 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public DateTime? ScheduleDate { get; set; }
 
             public decimal? OrderQty { get; set; }
+
+            public string ValveCategory { get; set; }
 
             public string AssignedProductionLine { get; set; }
         }
