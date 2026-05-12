@@ -129,7 +129,20 @@ namespace HDPro.CY.Order.Controllers
             try
             {
                 var result = await Service.BatchCallValveRuleServiceAsync();
-                return JsonNormal(result);
+                return JsonNormal(new
+                {
+                    status = true,
+                    message = $"智能体优化完成，成功 {result.Succeeded} 条，更新 {result.Updated} 条",
+                    data = new
+                    {
+                        total = result.Total,
+                        succeeded = result.Succeeded,
+                        failed = result.Failed,
+                        updated = result.Updated,
+                        batchCount = result.BatchCount,
+                        logFiles = result.LogFiles
+                    }
+                });
             }
             catch (Exception ex)
             {

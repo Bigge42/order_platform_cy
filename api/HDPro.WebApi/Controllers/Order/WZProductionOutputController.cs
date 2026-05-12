@@ -3,6 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
+using HDPro.Core.Filters;
+using HDPro.Core.ManageUser;
 using HDPro.CY.Order.IServices.WZ;
 using HDPro.Entity.DomainModels.OrderCollaboration;
 // 如果你们项目使用权限标记/基类控制器，请按需引入：
@@ -82,8 +84,27 @@ namespace HDPro.CY.Order.Controllers.WZ
         [HttpPost("refresh")]
         public async Task<ActionResult<object>> Refresh([FromBody] DateRangeDto dto, CancellationToken ct = default)
         {
+            var userName = UserContext.Current?.UserName;
+            if (!string.Equals(userName, "cyadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(403, new { message = "只有 cyadmin 可以同步数据", status = false, code = 403 });
+            }
+
             var count = await _service.RefreshAsync(dto.Start, dto.End, ct);
             return Ok(new { inserted = count, range = $"{dto.Start:yyyy-MM-dd}~{dto.End:yyyy-MM-dd}" });
+        }
+
+        /// <summary>
+        /// Quartz task: append today's incremental production output.
+        /// POST /api/WZ/ProductionOutput/refresh/daily-increment-task
+        /// </summary>
+        [ApiTask]
+        [HttpPost("refresh/daily-increment-task")]
+        public async Task<ActionResult<object>> RefreshDailyIncrementTask(CancellationToken ct = default)
+        {
+            var syncDate = DateTime.Today;
+            var count = await _service.RefreshIncrementalAsync(syncDate, syncDate, ct);
+            return Ok(new { updated = count, range = $"{syncDate:yyyy-MM-dd}~{syncDate:yyyy-MM-dd}", mode = "incremental" });
         }
 
         /// <summary>

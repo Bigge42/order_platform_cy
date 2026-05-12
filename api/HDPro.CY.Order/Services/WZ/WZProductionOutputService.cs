@@ -35,6 +35,7 @@ namespace HDPro.CY.Order.Services.WZ
         private static readonly SemaphoreSlim _preProductionOptimizeGate = new(1, 1); // 防并发汇总排产优化
         private const string EsbUrl = "http://10.11.0.101:8003/gateway/DataCenter/CXCNSJ";
         private const int ChunkDays = 7;  // 修改日窗口切片长度（可按 ESB 性能调整）
+        private const int MaxEsbConcurrentRequests = 4; // 分片请求并发上限，避免全年同步串行等待
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
         private const int MaxEsbRetryCount = 3; // 单个时间片最大重试次数
         private const int EsbRetryDelayMilliseconds = 1500; // 失败重试基础等待时长
@@ -85,6 +86,94 @@ namespace HDPro.CY.Order.Services.WZ
         /// <summary>字符串规整：Trim + 全/半角等标准化，避免“看起来一样但字符串不同”</summary>
         private static string NormalizeStr(string s)
             => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().Normalize(NormalizationForm.FormKC);
+
+        private static (string Cat, string Line) BuildThresholdKey(string valveCategory, string productionLine)
+            => (NormalizeStr(valveCategory), NormalizeStr(productionLine));
+
+        private static decimal? ResolveThreshold(
+            IReadOnlyDictionary<(string Cat, string Line), decimal> thresholds,
+            string valveCategory,
+            string productionLine,
+            decimal? fallback = null)
+        {
+            var key = BuildThresholdKey(valveCategory, productionLine);
+            return thresholds != null && thresholds.TryGetValue(key, out var threshold)
+                ? threshold
+                : fallback;
+        }
+
+        private async Task EnsureThresholdTableAsync(CancellationToken ct)
+        {
+            await _db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'[dbo].[WZ_ProductionOutputThreshold]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WZ_ProductionOutputThreshold](
+        [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WZ_ProductionOutputThreshold] PRIMARY KEY,
+        [ValveCategory] NVARCHAR(50) NOT NULL,
+        [ProductionLine] NVARCHAR(50) NOT NULL,
+        [CurrentThreshold] DECIMAL(18,6) NOT NULL,
+        [CreateDate] DATETIME NULL,
+        [ModifyDate] DATETIME NULL
+    );
+
+    CREATE UNIQUE INDEX [IX_WZ_ProductionOutputThreshold_ValveLine]
+        ON [dbo].[WZ_ProductionOutputThreshold]([ValveCategory], [ProductionLine]);
+END
+", ct);
+        }
+
+        private async Task<Dictionary<(string Cat, string Line), decimal>> LoadThresholdMapAsync(CancellationToken ct)
+        {
+            await EnsureThresholdTableAsync(ct);
+
+            var rows = await _db.Set<WZ_ProductionOutputThreshold>()
+                .AsNoTracking()
+                .Select(x => new
+                {
+                    x.ValveCategory,
+                    x.ProductionLine,
+                    x.CurrentThreshold
+                })
+                .ToListAsync(ct);
+
+            var result = new Dictionary<(string Cat, string Line), decimal>();
+            foreach (var row in rows)
+            {
+                var key = BuildThresholdKey(row.ValveCategory, row.ProductionLine);
+                if (key.Cat.Length == 0 || key.Line.Length == 0)
+                {
+                    continue;
+                }
+
+                result[key] = row.CurrentThreshold;
+            }
+
+            return result;
+        }
+
+        private static void ApplyThresholds(
+            IEnumerable<WZ_ProductionOutput> rows,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> thresholds)
+        {
+            if (rows == null || thresholds == null || thresholds.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var row in rows)
+            {
+                if (row == null)
+                {
+                    continue;
+                }
+
+                row.CurrentThreshold = ResolveThreshold(
+                    thresholds,
+                    row.ValveCategory,
+                    row.ProductionLine,
+                    row.CurrentThreshold);
+            }
+        }
 
         /// <summary>
         /// 选择用于 ProductionDate 的日期（优先排产日 F_ORA_DATE1 ；否则回落到订单日/要货日）
@@ -231,31 +320,50 @@ namespace HDPro.CY.Order.Services.WZ
                 // —— 全局聚合桶：跨分段累加（键 = 排产日×阀体×产线）
                 var buckets = new Dictionary<(DateTime Date, string Cat, string Line), decimal>();
 
-                // —— 分段按“修改日窗口”拉取
-                foreach (var (S, E) in ChunkDates(startDate, endDate, ChunkDays))
+                var chunks = ChunkDates(startDate, endDate, ChunkDays).ToList();
+                using var esbGate = new SemaphoreSlim(MaxEsbConcurrentRequests, MaxEsbConcurrentRequests);
+                var chunkTasks = chunks.Select(async chunk =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var rows = await RequestEsbRowsAdaptiveAsync(client, S, E, ct);
+                    await esbGate.WaitAsync(ct);
+                    try
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var rows = await RequestEsbRowsAdaptiveAsync(client, chunk.S, chunk.E, ct);
 
-                    // —— 本段内先做一次分组（按键求和），再汇入全局桶
-                    var aggregates = rows
-                        .Select(r => new
-                        {
-                            Date = PickDate(r), // 排产日（或回落日期）
-                            Cat = NormalizeStr(r.ValveCategory),
-                            Line = NormalizeStr(r.ProductionLine),
-                            Qty = r.Qty ?? 0m
-                        })
-                        .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
-                        .GroupBy(x => new { x.Date, x.Cat, x.Line })
-                        .Select(g => new
-                        {
-                            Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
-                            Sum = g.Sum(z => z.Qty)
-                        })
-                        .ToList();
+                        // —— 本段内先做一次分组（按键求和），再汇入全局桶
+                        var aggregates = rows
+                            .Select(r => new
+                            {
+                                Date = PickDate(r), // 排产日（或回落日期）
+                                Cat = NormalizeStr(r.ValveCategory),
+                                Line = NormalizeStr(r.ProductionLine),
+                                Qty = r.Qty ?? 0m
+                            })
+                            .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
+                            .GroupBy(x => new { x.Date, x.Cat, x.Line })
+                            .Select(g => new
+                            {
+                                Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
+                                Sum = g.Sum(z => z.Qty)
+                            })
+                            .ToList();
 
-                    foreach (var a in aggregates)
+                        _logger.LogInformation("  ├─ 段 {S}~{E}：ESB行 {Raw}，聚合键 {Keys}",
+                            chunk.S.ToString("yyyy-MM-dd"), chunk.E.ToString("yyyy-MM-dd"),
+                            rows.Count, aggregates.Count);
+
+                        return (chunk.S, chunk.E, RawCount: rows.Count, Aggregates: aggregates);
+                    }
+                    finally
+                    {
+                        esbGate.Release();
+                    }
+                }).ToList();
+
+                var chunkResults = await Task.WhenAll(chunkTasks);
+                foreach (var result in chunkResults.OrderBy(x => x.S))
+                {
+                    foreach (var a in result.Aggregates)
                     {
                         if (buckets.TryGetValue(a.Key, out var cur))
                             buckets[a.Key] = cur + a.Sum;
@@ -263,10 +371,11 @@ namespace HDPro.CY.Order.Services.WZ
                             buckets[a.Key] = a.Sum;
                     }
 
-                    _logger.LogInformation("  ├─ 段 {S}~{E}：ESB行 {Raw}，聚合键 {Keys}，累计键 {Total}",
-                        S.ToString("yyyy-MM-dd"), E.ToString("yyyy-MM-dd"),
-                        rows.Count, aggregates.Count, buckets.Count);
+                    _logger.LogInformation("  ├─ 段 {S}~{E} 汇总完成：累计键 {Total}",
+                        result.S.ToString("yyyy-MM-dd"), result.E.ToString("yyyy-MM-dd"), buckets.Count);
                 }
+
+                var thresholdMap = await LoadThresholdMapAsync(ct);
 
                 // —— 开启事务：清空 + 分批插入
                 using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -296,7 +405,8 @@ namespace HDPro.CY.Order.Services.WZ
                                 ProductionDate = kv.Key.Date,
                                 ValveCategory = kv.Key.Cat,
                                 ProductionLine = kv.Key.Line,
-                                Quantity = kv.Value
+                                Quantity = kv.Value,
+                                CurrentThreshold = ResolveThreshold(thresholdMap, kv.Key.Cat, kv.Key.Line)
                             });
 
                             if (batch.Count >= InsertBatchSize)
@@ -335,10 +445,96 @@ namespace HDPro.CY.Order.Services.WZ
         }
 
         /// <summary>
+        /// 增量刷新：按“修改日期窗口”拉取 ESB 增量数据，按“排产日×阀体×产线”聚合后累加到本地缓存。
+        /// </summary>
+        public async Task<int> RefreshIncrementalAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default)
+        {
+            await _refreshGate.WaitAsync(ct);
+            try
+            {
+                if (endDate < startDate)
+                    throw new ArgumentException("endDate 不能早于 startDate");
+
+                var client = _httpClientFactory.CreateClient("WZ");
+                _logger.LogInformation("【WZ 刷新-增量累加】修改日窗口：{S} ~ {E}", startDate, endDate);
+
+                var rows = await RequestEsbRowsAdaptiveAsync(client, startDate.Date, endDate.Date, ct);
+                var buckets = rows
+                    .Select(r => new
+                    {
+                        Date = PickDate(r),
+                        Cat = NormalizeStr(r.ValveCategory),
+                        Line = NormalizeStr(r.ProductionLine),
+                        Qty = r.Qty ?? 0m
+                    })
+                    .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
+                    .GroupBy(x => new { x.Date, x.Cat, x.Line })
+                    .Select(g => new
+                    {
+                        Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
+                        Sum = g.Sum(z => z.Qty)
+                    })
+                    .ToList();
+
+                _logger.LogInformation("【WZ 刷新-增量累加】ESB行 {Raw}，聚合键 {Keys}", rows.Count, buckets.Count);
+
+                if (buckets.Count == 0)
+                {
+                    return 0;
+                }
+
+                var thresholdMap = await LoadThresholdMapAsync(ct);
+
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
+                try
+                {
+                    foreach (var item in buckets)
+                    {
+                        var threshold = ResolveThreshold(thresholdMap, item.Key.Cat, item.Key.Line);
+                        await _db.Database.ExecuteSqlRawAsync(@"
+MERGE [dbo].[WZ_ProductionOutput] WITH (HOLDLOCK) AS target
+USING (
+    SELECT
+        CAST({0} AS datetime) AS [ProductionDate],
+        CAST({1} AS nvarchar(50)) AS [ValveCategory],
+        CAST({2} AS nvarchar(50)) AS [ProductionLine],
+        CAST({3} AS decimal(18,6)) AS [Quantity],
+        CAST({4} AS decimal(18,6)) AS [CurrentThreshold]
+) AS source
+ON target.[ProductionDate] = source.[ProductionDate]
+   AND target.[ValveCategory] = source.[ValveCategory]
+   AND target.[ProductionLine] = source.[ProductionLine]
+WHEN MATCHED THEN
+    UPDATE SET
+        [Quantity] = ISNULL(target.[Quantity], 0) + source.[Quantity],
+        [CurrentThreshold] = source.[CurrentThreshold]
+WHEN NOT MATCHED THEN
+    INSERT ([ProductionDate], [ValveCategory], [ProductionLine], [Quantity], [CurrentThreshold])
+    VALUES (source.[ProductionDate], source.[ValveCategory], source.[ProductionLine], source.[Quantity], source.[CurrentThreshold]);
+", item.Key.Date, item.Key.Cat, item.Key.Line, item.Sum, threshold);
+                    }
+
+                    await tx.CommitAsync(ct);
+                    _logger.LogInformation("【WZ 刷新-增量完成】已累加聚合键数：{N}", buckets.Count);
+                    return buckets.Count;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
+        }
+
+        /// <summary>
         /// 查询：按阀体、产线、日期范围返回每日产量（从本地缓存表直接读取）
         /// 说明：这里的日期范围是针对 ProductionDate（排产日）的业务查询窗口。
         /// </summary>
-        public Task<List<WZ_ProductionOutput>> GetAsync(
+        public async Task<List<WZ_ProductionOutput>> GetAsync(
             string valveCategory,
             string productionLine,
             DateTime startDate,
@@ -362,7 +558,11 @@ namespace HDPro.CY.Order.Services.WZ
                          .ThenBy(x => x.ValveCategory)
                          .ThenBy(x => x.ProductionLine);
 
-            return query.ToListAsync(ct);
+            var rows = await query.ToListAsync(ct);
+            var thresholdMap = await LoadThresholdMapAsync(ct);
+            ApplyThresholds(rows, thresholdMap);
+
+            return rows;
         }
 
         /// <summary>
@@ -374,6 +574,8 @@ namespace HDPro.CY.Order.Services.WZ
         {
             if (thresholds == null || thresholds.Count == 0) return 0;
 
+            await EnsureThresholdTableAsync(ct);
+
             var affected = 0;
             using var tx = await _db.Database.BeginTransactionAsync(ct);
             try
@@ -384,7 +586,19 @@ namespace HDPro.CY.Order.Services.WZ
                     var line = NormalizeStr(item.ProductionLine);
                     if (valve.Length == 0 || line.Length == 0) continue;
 
-                    affected += await _db.Database.ExecuteSqlRawAsync(
+                    affected += await _db.Database.ExecuteSqlRawAsync(@"
+MERGE [dbo].[WZ_ProductionOutputThreshold] WITH (HOLDLOCK) AS target
+USING (SELECT {0} AS [ValveCategory], {1} AS [ProductionLine], {2} AS [CurrentThreshold]) AS source
+ON target.[ValveCategory] = source.[ValveCategory]
+   AND target.[ProductionLine] = source.[ProductionLine]
+WHEN MATCHED THEN
+    UPDATE SET [CurrentThreshold] = source.[CurrentThreshold], [ModifyDate] = GETDATE()
+WHEN NOT MATCHED THEN
+    INSERT ([ValveCategory], [ProductionLine], [CurrentThreshold], [CreateDate], [ModifyDate])
+    VALUES (source.[ValveCategory], source.[ProductionLine], source.[CurrentThreshold], GETDATE(), GETDATE());
+", valve, line, item.Threshold);
+
+                    await _db.Database.ExecuteSqlRawAsync(
                         "UPDATE [WZ_ProductionOutput] SET [CurrentThreshold] = {0} WHERE [ValveCategory] = {1} AND [ProductionLine] = {2};",
                         item.Threshold, valve, line);
                 }
@@ -624,6 +838,7 @@ namespace HDPro.CY.Order.Services.WZ
 
             var actualRows = await actualQuery.ToListAsync(ct);
             var preRows = await preQuery.ToListAsync(ct);
+            var thresholdMap = await LoadThresholdMapAsync(ct);
 
             var merged = new Dictionary<(DateTime Date, string Cat, string Line), WZ_ProductionOutput>();
 
@@ -636,7 +851,7 @@ namespace HDPro.CY.Order.Services.WZ
                     ValveCategory = key.Item2,
                     ProductionLine = key.Item3,
                     Quantity = row.Quantity,
-                    CurrentThreshold = row.CurrentThreshold
+                    CurrentThreshold = ResolveThreshold(thresholdMap, key.Item2, key.Item3, row.CurrentThreshold)
                 };
             }
 
@@ -646,6 +861,7 @@ namespace HDPro.CY.Order.Services.WZ
                 if (merged.TryGetValue(key, out var existing))
                 {
                     existing.Quantity += row.Quantity;
+                    existing.CurrentThreshold ??= ResolveThreshold(thresholdMap, key.Item2, key.Item3);
                 }
                 else
                 {
@@ -654,7 +870,8 @@ namespace HDPro.CY.Order.Services.WZ
                         ProductionDate = row.ProductionDate.Date,
                         ValveCategory = key.Item2,
                         ProductionLine = key.Item3,
-                        Quantity = row.Quantity
+                        Quantity = row.Quantity,
+                        CurrentThreshold = ResolveThreshold(thresholdMap, key.Item2, key.Item3)
                     };
                 }
             }
@@ -703,6 +920,7 @@ namespace HDPro.CY.Order.Services.WZ
 
             var actualRows = await actualQuery.ToListAsync(ct);
             var preRows = await preQuery.ToListAsync(ct);
+            var thresholdMap = await LoadThresholdMapAsync(ct);
 
             var merged = new Dictionary<(DateTime Date, string Cat, string Line), WZ_ProductionOutput>();
 
@@ -715,7 +933,7 @@ namespace HDPro.CY.Order.Services.WZ
                     ValveCategory = key.Item2,
                     ProductionLine = key.Item3,
                     Quantity = row.Quantity,
-                    CurrentThreshold = row.CurrentThreshold
+                    CurrentThreshold = ResolveThreshold(thresholdMap, key.Item2, key.Item3, row.CurrentThreshold)
                 };
             }
 
@@ -725,6 +943,7 @@ namespace HDPro.CY.Order.Services.WZ
                 if (merged.TryGetValue(key, out var existing))
                 {
                     existing.Quantity += row.Quantity;
+                    existing.CurrentThreshold ??= ResolveThreshold(thresholdMap, key.Item2, key.Item3);
                 }
                 else
                 {
@@ -733,7 +952,8 @@ namespace HDPro.CY.Order.Services.WZ
                         ProductionDate = row.ProductionDate.Date,
                         ValveCategory = key.Item2,
                         ProductionLine = key.Item3,
-                        Quantity = row.Quantity
+                        Quantity = row.Quantity,
+                        CurrentThreshold = ResolveThreshold(thresholdMap, key.Item2, key.Item3)
                     };
                 }
             }
