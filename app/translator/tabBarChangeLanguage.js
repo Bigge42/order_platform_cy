@@ -17,7 +17,7 @@ export default function() {
 	})
 	uni.setTabBarItem({
 		index: 3,
-		text: this.$ts("AI")
+		text: this.$ts("AI助手")
 	})
 	uni.setTabBarItem({
 		index: 4,
