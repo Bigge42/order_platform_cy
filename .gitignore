@@ -371,3 +371,10 @@ error/*
 api/HDPro.WebApi/quartz/error/
 api/HDPro.WebApi/Download/ExcelExport/
 api/HDPro.WebApi/wwwroot/cache/
+
+# Local analysis artifacts
+exports/*
+!exports/
+!exports/*.md
+order_cycle_platform/
+valve_rule_service_prod/

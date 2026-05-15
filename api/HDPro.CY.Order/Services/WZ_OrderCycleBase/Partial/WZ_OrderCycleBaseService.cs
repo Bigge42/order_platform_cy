@@ -250,12 +250,20 @@ namespace HDPro.CY.Order.Services
 
                 var outputs = await context.Set<WZ_OrderCycleBase>()
                     .AsNoTracking()
+                    .Where(p => p.ScheduleDate.HasValue
+                        && p.OrderQty.HasValue
+                        && p.ValveCategory != null
+                        && p.ValveCategory != string.Empty
+                        && ((p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty)
+                            || (p.ProductionLine != null && p.ProductionLine != string.Empty)))
                     .Select(p => new WZ_PreProductionOutput
                     {
                         ProductionDate = p.ScheduleDate,
                         CapacityScheduleDate = p.CapacityScheduleDate,
                         ValveCategory = p.ValveCategory,
-                        ProductionLine = p.AssignedProductionLine,
+                        ProductionLine = p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty
+                            ? p.AssignedProductionLine
+                            : p.ProductionLine,
                         Quantity = p.OrderQty ?? 0M
                     })
                     .ToListAsync(cancellationToken);
@@ -293,8 +301,8 @@ namespace HDPro.CY.Order.Services
                 .AsNoTracking()
                 .Where(p => p.ScheduleDate.HasValue
                     && p.OrderQty.HasValue
-                    && p.AssignedProductionLine != null
-                    && p.AssignedProductionLine != string.Empty)
+                    && ((p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty)
+                        || (p.ProductionLine != null && p.ProductionLine != string.Empty)))
                 .OrderBy(p => p.ScheduleDate)
                 .ThenBy(p => p.Id)
                 .Select(p => new OrderCapacityCandidate
@@ -303,7 +311,12 @@ namespace HDPro.CY.Order.Services
                     ScheduleDate = p.ScheduleDate,
                     OrderQty = p.OrderQty,
                     ValveCategory = p.ValveCategory,
-                    AssignedProductionLine = p.AssignedProductionLine
+                    AssignedProductionLine = p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty
+                        ? p.AssignedProductionLine
+                        : p.ProductionLine,
+                    StandardDeliveryDate = p.StandardDeliveryDate,
+                    ReplyDeliveryDate = p.ReplyDeliveryDate,
+                    RequestedDeliveryDate = p.RequestedDeliveryDate
                 })
                 .ToListAsync(cancellationToken);
 
@@ -317,12 +330,14 @@ namespace HDPro.CY.Order.Services
                 return summary;
             }
 
+            var thresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken);
             var outputs = await context.Set<WZ_ProductionOutput>()
                 .AsNoTracking()
                 .ToListAsync(cancellationToken);
 
             var capacityMap = new Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket>();
             var categoryLineDates = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
+            var outputThresholdMap = new Dictionary<(string Cat, string Line), decimal>();
 
             foreach (var output in outputs)
             {
@@ -338,6 +353,14 @@ namespace HDPro.CY.Order.Services
                     continue;
                 }
 
+                var lineKey = (cat, line);
+                if (output.CurrentThreshold.HasValue && output.CurrentThreshold.Value > 0)
+                {
+                    outputThresholdMap[lineKey] = outputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
+                        ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
+                        : output.CurrentThreshold.Value;
+                }
+
                 var date = output.ProductionDate.Date;
                 var key = (cat, line, date);
 
@@ -346,21 +369,22 @@ namespace HDPro.CY.Order.Services
                     bucket = new CapacityBucket
                     {
                         Quantity = output.Quantity,
-                        Threshold = output.CurrentThreshold
+                        Threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold)
                     };
                     capacityMap[key] = bucket;
                 }
                 else
                 {
                     bucket.Quantity += output.Quantity;
-                    bucket.Threshold = MergeThreshold(bucket.Threshold, output.CurrentThreshold);
+                    bucket.Threshold = MergeThreshold(
+                        bucket.Threshold,
+                        ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold));
                 }
 
-                var dateKey = (cat, line);
-                if (!categoryLineDates.TryGetValue(dateKey, out var dates))
+                if (!categoryLineDates.TryGetValue(lineKey, out var dates))
                 {
                     dates = new HashSet<DateTime>();
-                    categoryLineDates[dateKey] = dates;
+                    categoryLineDates[lineKey] = dates;
                 }
 
                 dates.Add(date);
@@ -388,66 +412,32 @@ namespace HDPro.CY.Order.Services
 
                 var cat = NormalizeCapacityText(order.ValveCategory);
                 var line = NormalizeCapacityText(order.AssignedProductionLine);
-                if (string.IsNullOrWhiteSpace(cat)
-                    || string.IsNullOrWhiteSpace(line)
-                    || !capacityDateList.TryGetValue((cat, line), out var dates))
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
                 {
                     summary.MissingProductionOutput++;
                     summary.Failed++;
                     continue;
+                }
+
+                if (!capacityDateList.TryGetValue((cat, line), out var dates))
+                {
+                    dates = new List<DateTime>();
+                    capacityDateList[(cat, line)] = dates;
                 }
 
                 var targetDate = order.ScheduleDate.Value.Date;
-                var dateIndex = FindFirstDateIndex(dates, targetDate);
-                if (dateIndex < 0)
+                var decision = ResolveCapacityScheduleDate(order, dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
+                if (!decision.CapacityDate.HasValue)
                 {
-                    summary.MissingProductionOutput++;
-                    summary.Failed++;
-                    continue;
-                }
-
-                var remaining = order.OrderQty.GetValueOrDefault();
-                DateTime? capacityDate = null;
-                var isSplit = false;
-
-                while (remaining > 0 && dateIndex < dates.Count)
-                {
-                    var currentDate = dates[dateIndex];
-                    if (!capacityMap.TryGetValue((cat, line, currentDate), out var bucket))
-                    {
-                        summary.MissingProductionOutput++;
-                        break;
-                    }
-
-                    if (!bucket.Threshold.HasValue)
+                    if (string.Equals(decision.FailureReason, CapacityFailureReasons.MissingThreshold, StringComparison.Ordinal))
                     {
                         summary.MissingThreshold++;
-                        break;
                     }
-
-                    var available = bucket.Threshold.Value - bucket.Quantity;
-                    if (available <= 0)
+                    else
                     {
-                        dateIndex++;
-                        continue;
+                        summary.MissingProductionOutput++;
                     }
 
-                    if (remaining <= available)
-                    {
-                        bucket.Quantity += remaining;
-                        capacityDate = currentDate;
-                        remaining = 0;
-                        break;
-                    }
-
-                    bucket.Quantity = bucket.Threshold.Value;
-                    remaining -= available;
-                    isSplit = true;
-                    dateIndex++;
-                }
-
-                if (!capacityDate.HasValue || remaining > 0)
-                {
                     summary.Failed++;
                     continue;
                 }
@@ -455,13 +445,27 @@ namespace HDPro.CY.Order.Services
                 updates.Add(new WZ_OrderCycleBase
                 {
                     Id = order.Id,
-                    CapacityScheduleDate = capacityDate
+                    CapacityScheduleDate = decision.CapacityDate
                 });
 
                 summary.Updated++;
-                if (isSplit)
+                switch (decision.Mode)
                 {
-                    summary.SplitCount++;
+                    case CapacityScheduleMode.NormalCapacity:
+                        summary.NormalCapacityCount++;
+                        break;
+                    case CapacityScheduleMode.DeliveryAdjusted:
+                        summary.DeliveryAdjustedCount++;
+                        break;
+                    case CapacityScheduleMode.DailyReserve:
+                        summary.DailyReserveCount++;
+                        break;
+                    case CapacityScheduleMode.SaturdayReserve:
+                        summary.SaturdayReserveCount++;
+                        break;
+                    case CapacityScheduleMode.BalancedOverflow:
+                        summary.BalancedOverflowCount++;
+                        break;
                 }
             }
 
@@ -509,7 +513,7 @@ namespace HDPro.CY.Order.Services
 
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromMinutes(5);
-            const string url = "http://10.11.10.101:8000/batch_infer";
+            const string url = "http://10.11.10.101:8000/batch_infer?debug_trace=false";
 
             const int batchSize = 200;
             var summary = new ValveRuleBatchSummary
@@ -529,83 +533,93 @@ namespace HDPro.CY.Order.Services
 
                 summary.BatchCount++;
 
-                var requestPayload = BuildValveRuleRequests(batchEntities);
-                var json = JsonConvert.SerializeObject(requestPayload);
+                var entityMap = batchEntities.ToDictionary(p => p.Id, p => p);
+                var updatedEntities = new List<WZ_OrderCycleBase>();
+                var successIds = new HashSet<int>();
 
-                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                async Task SendValveRuleBatchAsync(List<WZ_OrderCycleBase> requestEntities, ValveRuleProductTextMode productTextMode)
                 {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
-                };
+                    if (requestEntities == null || requestEntities.Count == 0)
+                    {
+                        return;
+                    }
 
-                using var response = await client.SendAsync(request, cancellationToken);
-                response.EnsureSuccessStatusCode();
+                    var requestPayload = BuildValveRuleRequests(requestEntities, productTextMode);
+                    var json = JsonConvert.SerializeObject(requestPayload);
 
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
+                    using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                    {
+                        Content = new StringContent(json, Encoding.UTF8, "application/json")
+                    };
 
-                if (batchResponse.Results == null || batchResponse.Results.Count == 0)
-                {
+                    using var response = await client.SendAsync(request, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var batchResponse = JsonConvert.DeserializeObject<ValveRuleBatchResponse>(body) ?? new ValveRuleBatchResponse();
+
                     if (!string.IsNullOrWhiteSpace(batchResponse.LogFile))
                     {
                         summary.LogFiles.Add(batchResponse.LogFile);
                     }
-                    continue;
+
+                    if (batchResponse.Results == null || batchResponse.Results.Count == 0)
+                    {
+                        return;
+                    }
+
+                    foreach (var item in batchResponse.Results)
+                    {
+                        var matchedId = TryParseId(item?.Id) ?? TryParseId(item?.Result?.Id);
+                        if (!matchedId.HasValue)
+                        {
+                            continue;
+                        }
+
+                        if (!entityMap.TryGetValue(matchedId.Value, out var entity))
+                        {
+                            continue;
+                        }
+
+                        if (item.Success != true || item.Result == null)
+                        {
+                            continue;
+                        }
+
+                        entity.FixedCycleDays = item.Result.FixedCycleDays;
+                        entity.ProductionLine = item.Result.ProductionLine;
+                        entity.StandardDeliveryDate = TryParseDate(item.Result.StandardDeliveryDate);
+                        entity.ScheduleDate = TryParseDate(item.Result.ScheduleDate);
+
+                        if (successIds.Add(entity.Id))
+                        {
+                            updatedEntities.Add(entity);
+                        }
+                    }
                 }
 
-                var entityMap = batchEntities.ToDictionary(p => p.Id, p => p);
-                var updatedEntities = new List<WZ_OrderCycleBase>();
-                var updated = 0;
-                var batchSuccess = 0;
-                var batchFailed = 0;
-                var processedIds = new HashSet<int>();
-
-                foreach (var item in batchResponse.Results)
+                await SendValveRuleBatchAsync(batchEntities, ValveRuleProductTextMode.SpecModelFirst);
+                var fallbackEntities = batchEntities
+                    .Where(p => !successIds.Contains(p.Id)
+                        && !string.IsNullOrWhiteSpace(p.ProductName)
+                        && !string.Equals(
+                            ResolveValveRuleProductText(p, ValveRuleProductTextMode.SpecModelFirst),
+                            ResolveValveRuleProductText(p, ValveRuleProductTextMode.ProductNameFallback),
+                            StringComparison.Ordinal))
+                    .ToList();
+                if (fallbackEntities.Count > 0)
                 {
-                    var matchedId = TryParseId(item?.Id) ?? TryParseId(item?.Result?.Id);
-                    if (!matchedId.HasValue)
-                    {
-                        batchFailed++;
-                        continue;
-                    }
-
-                    processedIds.Add(matchedId.Value);
-
-                    if (!entityMap.TryGetValue(matchedId.Value, out var entity))
-                    {
-                        batchFailed++;
-                        continue;
-                    }
-
-                    if (item.Success != true || item.Result == null)
-                    {
-                        batchFailed++;
-                        continue;
-                    }
-
-                    entity.FixedCycleDays = item.Result.FixedCycleDays;
-                    entity.ProductionLine = item.Result.ProductionLine;
-                    entity.StandardDeliveryDate = TryParseDate(item.Result.StandardDeliveryDate);
-                    entity.ScheduleDate = TryParseDate(item.Result.ScheduleDate);
-
-                    batchSuccess++;
-                    updated++;
-                    updatedEntities.Add(entity);
+                    await SendValveRuleBatchAsync(fallbackEntities, ValveRuleProductTextMode.ProductNameFallback);
                 }
 
-                summary.Succeeded += batchSuccess;
-                var missingCount = Math.Max(0, batchEntities.Count - processedIds.Count);
-                summary.Failed += batchFailed + missingCount;
+                summary.Succeeded += successIds.Count;
+                summary.Failed += Math.Max(0, batchEntities.Count - successIds.Count);
 
                 if (updatedEntities.Count > 0)
                 {
                     context.UpdateRange(updatedEntities);
                     await context.SaveChangesAsync(cancellationToken);
-                    summary.Updated += updated;
-                }
-
-                if (!string.IsNullOrWhiteSpace(batchResponse.LogFile))
-                {
-                    summary.LogFiles.Add(batchResponse.LogFile);
+                    summary.Updated += updatedEntities.Count;
                 }
             }
 
@@ -614,7 +628,27 @@ namespace HDPro.CY.Order.Services
             return summary;
         }
 
-        private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items)
+        private enum ValveRuleProductTextMode
+        {
+            SpecModelFirst,
+            ProductNameFallback
+        }
+
+        private static string ResolveValveRuleProductText(WZ_OrderCycleBase item, ValveRuleProductTextMode mode)
+        {
+            if (item == null)
+            {
+                return string.Empty;
+            }
+
+            var specModel = NormalizeCapacityText(item.GUI_GE_XING_HAO);
+            var productName = NormalizeCapacityText(item.ProductName);
+            return mode == ValveRuleProductTextMode.SpecModelFirst
+                ? (!string.IsNullOrWhiteSpace(specModel) ? specModel : productName)
+                : (!string.IsNullOrWhiteSpace(productName) ? productName : specModel);
+        }
+
+        private static List<ValveRuleRequest> BuildValveRuleRequests(List<WZ_OrderCycleBase> items, ValveRuleProductTextMode productTextMode)
         {
             var requests = new List<ValveRuleRequest>(items.Count);
             foreach (var item in items)
@@ -642,7 +676,7 @@ namespace HDPro.CY.Order.Services
                     SealFaceForm = item.SealFaceForm,
                     SpecialProduct = item.SpecialProduct,
                     PurchaseFlag = item.PurchaseFlag,
-                    ProductName = item.ProductName,
+                    ProductName = ResolveValveRuleProductText(item, productTextMode),
                     NominalDiameter = item.NominalDiameter,
                     NominalPressure = item.NominalPressure
                 });
@@ -785,6 +819,11 @@ namespace HDPro.CY.Order.Services
                     try
                     {
                         var newValue = CalcAssignedProductionLine(item.ProductionLine, item.ValveCategory, item.NominalDiameter);
+                        if (string.IsNullOrEmpty(newValue))
+                        {
+                            newValue = NormalizeCapacityText(item.ProductionLine);
+                        }
+
                         if (string.IsNullOrEmpty(newValue)
                             || string.Equals(newValue, item.AssignedProductionLine, StringComparison.Ordinal))
                         {
@@ -971,6 +1010,65 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return Math.Max(current.Value, incoming.Value);
         }
 
+        private static decimal? ResolveCapacityThreshold(
+            IReadOnlyDictionary<(string Cat, string Line), decimal> thresholds,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> outputThresholds,
+            string valveCategory,
+            string productionLine,
+            decimal? fallback)
+        {
+            if (thresholds != null
+                && thresholds.TryGetValue((NormalizeCapacityText(valveCategory), NormalizeCapacityText(productionLine)), out var threshold))
+            {
+                return threshold;
+            }
+
+            if (outputThresholds != null
+                && outputThresholds.TryGetValue((NormalizeCapacityText(valveCategory), NormalizeCapacityText(productionLine)), out var outputThreshold))
+            {
+                return outputThreshold;
+            }
+
+            return fallback;
+        }
+
+        private static async Task<Dictionary<(string Cat, string Line), decimal>> LoadCapacityThresholdMapAsync(
+            DbContext context,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var rows = await context.Set<WZ_ProductionOutputThreshold>()
+                    .AsNoTracking()
+                    .Select(p => new
+                    {
+                        p.ValveCategory,
+                        p.ProductionLine,
+                        p.CurrentThreshold
+                    })
+                    .ToListAsync(cancellationToken);
+
+                var result = new Dictionary<(string Cat, string Line), decimal>();
+                foreach (var row in rows)
+                {
+                    var cat = NormalizeCapacityText(row.ValveCategory);
+                    var line = NormalizeCapacityText(row.ProductionLine);
+                    if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    result[(cat, line)] = row.CurrentThreshold;
+                }
+
+                return result;
+            }
+            catch
+            {
+                return new Dictionary<(string Cat, string Line), decimal>();
+            }
+        }
+
         private static int FindFirstDateIndex(List<DateTime> dates, DateTime targetDate)
         {
             if (dates == null || dates.Count == 0)
@@ -988,6 +1086,306 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return index < dates.Count ? index : -1;
         }
 
+        private const decimal DailyReserveCapacityRatio = 1.2M;
+
+        private static CapacityScheduleDecision ResolveCapacityScheduleDate(
+            OrderCapacityCandidate order,
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> thresholdMap,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> outputThresholdMap,
+            string cat,
+            string line,
+            DateTime targetDate)
+        {
+            var quantity = order.OrderQty.GetValueOrDefault();
+            if (quantity <= 0)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            if (!TryGetCapacityWindow(order, out var startDate, out var endDate))
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            EnsureCapacityWindow(dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, startDate, endDate);
+            if (dates.Count == 0)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            var targetAttempt = targetDate >= startDate && targetDate <= endDate
+                ? TryAssignCapacityDate(capacityMap, cat, line, targetDate, quantity, 1M)
+                : CapacityAssignAttempt.Fail(CapacityFailureReasons.OutOfCapacityWindow);
+            if (targetAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(targetAttempt.CapacityDate.Value, CapacityScheduleMode.NormalCapacity);
+            }
+
+            var adjustedAttempt = TryFindFirstAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                startDate,
+                endDate,
+                quantity,
+                1M,
+                _ => true);
+            if (adjustedAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(adjustedAttempt.CapacityDate.Value, CapacityScheduleMode.DeliveryAdjusted);
+            }
+
+            var dailyReserveAttempt = TryFindFirstAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                startDate,
+                endDate,
+                quantity,
+                DailyReserveCapacityRatio,
+                date => date.DayOfWeek != DayOfWeek.Saturday);
+            if (dailyReserveAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(dailyReserveAttempt.CapacityDate.Value, CapacityScheduleMode.DailyReserve);
+            }
+
+            var saturdayReserveAttempt = TryFindFirstAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                startDate,
+                endDate,
+                quantity,
+                DailyReserveCapacityRatio,
+                date => date.DayOfWeek == DayOfWeek.Saturday);
+            if (saturdayReserveAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(saturdayReserveAttempt.CapacityDate.Value, CapacityScheduleMode.SaturdayReserve);
+            }
+
+            var balancedAttempt = TryAssignBalancedOverflowDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                startDate,
+                endDate,
+                quantity);
+            if (balancedAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(balancedAttempt.CapacityDate.Value, CapacityScheduleMode.BalancedOverflow);
+            }
+
+            return CapacityScheduleDecision.Fail(PickFailureReason(
+                targetAttempt.FailureReason,
+                adjustedAttempt.FailureReason,
+                dailyReserveAttempt.FailureReason,
+                saturdayReserveAttempt.FailureReason,
+                balancedAttempt.FailureReason));
+        }
+
+        private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
+        {
+            startDate = order.StandardDeliveryDate?.Date ?? DateTime.MinValue;
+            endDate = order.ReplyDeliveryDate?.Date ?? DateTime.MinValue;
+            return order.StandardDeliveryDate.HasValue
+                && order.ReplyDeliveryDate.HasValue
+                && endDate >= startDate;
+        }
+
+        private static void EnsureCapacityWindow(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> thresholdMap,
+            IReadOnlyDictionary<(string Cat, string Line), decimal> outputThresholdMap,
+            string cat,
+            string line,
+            DateTime startDate,
+            DateTime endDate)
+        {
+            var threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, null);
+            if (!threshold.HasValue)
+            {
+                return;
+            }
+
+            var knownDates = new HashSet<DateTime>(dates);
+            for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
+            {
+                var key = (cat, line, date);
+                if (!capacityMap.ContainsKey(key))
+                {
+                    capacityMap[key] = new CapacityBucket
+                    {
+                        Quantity = 0M,
+                        Threshold = threshold
+                    };
+                }
+
+                if (knownDates.Add(date))
+                {
+                    dates.Add(date);
+                }
+            }
+
+            dates.Sort();
+        }
+
+        private static CapacityAssignAttempt TryFindFirstAssignableDate(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime startDate,
+            DateTime endDate,
+            decimal quantity,
+            decimal capacityRatio,
+            Func<DateTime, bool> datePredicate)
+        {
+            var index = FindFirstDateIndex(dates, startDate.Date);
+            if (index < 0)
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            var failureReason = CapacityFailureReasons.ThresholdExceeded;
+            for (var i = index; i < dates.Count; i++)
+            {
+                var date = dates[i].Date;
+                if (date > endDate.Date)
+                {
+                    break;
+                }
+
+                if (!datePredicate(date))
+                {
+                    continue;
+                }
+
+                var attempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, capacityRatio);
+                if (attempt.CapacityDate.HasValue)
+                {
+                    return attempt;
+                }
+
+                failureReason = PickFailureReason(failureReason, attempt.FailureReason);
+            }
+
+            return CapacityAssignAttempt.Fail(failureReason);
+        }
+
+        private static CapacityAssignAttempt TryAssignCapacityDate(
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime date,
+            decimal quantity,
+            decimal capacityRatio)
+        {
+            if (!capacityMap.TryGetValue((cat, line, date.Date), out var bucket))
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            if (!bucket.Threshold.HasValue)
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingThreshold);
+            }
+
+            var capacityLimit = bucket.Threshold.Value * capacityRatio;
+            if (bucket.Quantity + quantity <= capacityLimit)
+            {
+                bucket.Quantity += quantity;
+                return CapacityAssignAttempt.Success(date.Date);
+            }
+
+            return CapacityAssignAttempt.Fail(CapacityFailureReasons.ThresholdExceeded);
+        }
+
+        private static CapacityAssignAttempt TryAssignBalancedOverflowDate(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime startDate,
+            DateTime endDate,
+            decimal quantity)
+        {
+            CapacityBucket? selectedBucket = null;
+            DateTime? selectedDate = null;
+            decimal? selectedLoadRate = null;
+            var failureReason = CapacityFailureReasons.MissingProductionOutput;
+
+            var index = FindFirstDateIndex(dates, startDate.Date);
+            if (index < 0)
+            {
+                return CapacityAssignAttempt.Fail(failureReason);
+            }
+
+            for (var i = index; i < dates.Count; i++)
+            {
+                var date = dates[i].Date;
+                if (date > endDate.Date)
+                {
+                    break;
+                }
+
+                if (!capacityMap.TryGetValue((cat, line, date), out var bucket))
+                {
+                    continue;
+                }
+
+                if (!bucket.Threshold.HasValue || bucket.Threshold.Value <= 0)
+                {
+                    failureReason = CapacityFailureReasons.MissingThreshold;
+                    continue;
+                }
+
+                var projectedLoadRate = (bucket.Quantity + quantity) / bucket.Threshold.Value;
+                var isEarlierTie = selectedDate.HasValue
+                    && selectedLoadRate.HasValue
+                    && projectedLoadRate == selectedLoadRate.Value
+                    && date < selectedDate.Value;
+
+                if (!selectedLoadRate.HasValue
+                    || projectedLoadRate < selectedLoadRate.Value
+                    || isEarlierTie)
+                {
+                    selectedLoadRate = projectedLoadRate;
+                    selectedBucket = bucket;
+                    selectedDate = date;
+                }
+            }
+
+            if (selectedDate.HasValue && selectedBucket != null)
+            {
+                selectedBucket.Quantity += quantity;
+                return CapacityAssignAttempt.Success(selectedDate.Value);
+            }
+
+            return CapacityAssignAttempt.Fail(failureReason);
+        }
+
+        private static string PickFailureReason(params string[] reasons)
+        {
+            if (reasons != null && reasons.Any(p => string.Equals(p, CapacityFailureReasons.MissingThreshold, StringComparison.Ordinal)))
+            {
+                return CapacityFailureReasons.MissingThreshold;
+            }
+
+            if (reasons != null && reasons.Any(p => string.Equals(p, CapacityFailureReasons.ThresholdExceeded, StringComparison.Ordinal)))
+            {
+                return CapacityFailureReasons.ThresholdExceeded;
+            }
+
+            return CapacityFailureReasons.MissingProductionOutput;
+        }
+
         private sealed class OrderCapacityCandidate
         {
             public int Id { get; set; }
@@ -996,9 +1394,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             public decimal? OrderQty { get; set; }
 
-            public string ValveCategory { get; set; }
+            public string ValveCategory { get; set; } = string.Empty;
 
-            public string AssignedProductionLine { get; set; }
+            public string AssignedProductionLine { get; set; } = string.Empty;
+
+            public DateTime? StandardDeliveryDate { get; set; }
+
+            public DateTime? ReplyDeliveryDate { get; set; }
+
+            public DateTime? RequestedDeliveryDate { get; set; }
         }
 
         private sealed class CapacityBucket
@@ -1006,6 +1410,72 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public decimal Quantity { get; set; }
 
             public decimal? Threshold { get; set; }
+        }
+
+        private enum CapacityScheduleMode
+        {
+            NormalCapacity,
+            DeliveryAdjusted,
+            DailyReserve,
+            SaturdayReserve,
+            BalancedOverflow
+        }
+
+        private static class CapacityFailureReasons
+        {
+            public const string MissingProductionOutput = "missing_production_output";
+            public const string MissingThreshold = "missing_threshold";
+            public const string ThresholdExceeded = "threshold_exceeded";
+            public const string OutOfCapacityWindow = "out_of_capacity_window";
+        }
+
+        private sealed class CapacityAssignAttempt
+        {
+            public DateTime? CapacityDate { get; set; }
+
+            public string FailureReason { get; set; } = string.Empty;
+
+            public static CapacityAssignAttempt Success(DateTime capacityDate)
+            {
+                return new CapacityAssignAttempt
+                {
+                    CapacityDate = capacityDate.Date
+                };
+            }
+
+            public static CapacityAssignAttempt Fail(string failureReason)
+            {
+                return new CapacityAssignAttempt
+                {
+                    FailureReason = failureReason
+                };
+            }
+        }
+
+        private sealed class CapacityScheduleDecision
+        {
+            public DateTime? CapacityDate { get; set; }
+
+            public CapacityScheduleMode Mode { get; set; }
+
+            public string FailureReason { get; set; } = string.Empty;
+
+            public static CapacityScheduleDecision Success(DateTime capacityDate, CapacityScheduleMode mode)
+            {
+                return new CapacityScheduleDecision
+                {
+                    CapacityDate = capacityDate.Date,
+                    Mode = mode
+                };
+            }
+
+            public static CapacityScheduleDecision Fail(string failureReason)
+            {
+                return new CapacityScheduleDecision
+                {
+                    FailureReason = failureReason
+                };
+            }
         }
 
         private sealed class ValveRuleRequest

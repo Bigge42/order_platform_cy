@@ -130,5 +130,30 @@ namespace HDPro.CY.Order.IServices
         /// 拆单排产的订单数
         /// </summary>
         public int SplitCount { get; set; }
+
+        /// <summary>
+        /// 未超日产能并直接确认排产的订单数
+        /// </summary>
+        public int NormalCapacityCount { get; set; }
+
+        /// <summary>
+        /// 货期可调整并重新落到可用产能日期的订单数
+        /// </summary>
+        public int DeliveryAdjustedCount { get; set; }
+
+        /// <summary>
+        /// 启用日产能 120% 预留产能的订单数
+        /// </summary>
+        public int DailyReserveCount { get; set; }
+
+        /// <summary>
+        /// 启用周六预留产能的订单数
+        /// </summary>
+        public int SaturdayReserveCount { get; set; }
+
+        /// <summary>
+        /// 区间内全部超过 120% 后均匀摊排的订单数
+        /// </summary>
+        public int BalancedOverflowCount { get; set; }
     }
- }
+}
