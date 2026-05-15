@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "dev:h5": "cross-env UNI_INPUT_DIR=. UNI_OUTPUT_DIR=unpackage/dist/dev/h5 uni -p h5",
-    "build:h5": "cross-env UNI_INPUT_DIR=. UNI_OUTPUT_DIR=unpackage/dist/build/h5 uni build -p h5"
+    "build:h5": "cross-env UNI_INPUT_DIR=. UNI_OUTPUT_DIR=unpackage/dist/build/h5 uni build -p h5",
+    "postbuild:h5": "node scripts/copy-static.mjs unpackage/dist/build/h5"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5000720260410001",

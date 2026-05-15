@@ -5,8 +5,9 @@
 				<view v-for="item in list" :key="item.name" class="bor-radius-32 back-fff pad-40 mar-bot-30"
 					@click="itemClick(item)">
 					<view class="box-center">
-						<image class="mar-rig-20" style="width: 70rpx; height: 70rpx;margin-right: 20rpx;"
-							:src="item.icon"></image>
+						<view class="entry-icon mar-rig-20">
+							<image :src="item.icon"></image>
+						</view>
 						<view class="fx-1">
 							<view class="item-name">
 								{{item.name}}
@@ -43,6 +44,13 @@
 	//默认选中项
 	const activeName = ref(-1)
 	const list = reactive([
+		{
+			name: 'AI',
+			path: "/pages/ai/index",
+			tabbar:true,//跳转到tabbar页面
+			icon: "/static/icon/ai-assistant.png",
+			text: 'AI助手'
+		},
 		{
 			name: '报表分析',
 			path:"/pages/report/index",
@@ -126,5 +134,22 @@
 		font-size: 24rpx;
 		color: #6c6c6c;
 		margin-top: 4rpx;
+	}
+
+	.entry-icon {
+		width: 70rpx;
+		height: 70rpx;
+		margin-right: 20rpx;
+		border-radius: 50%;
+		background: #e9f7ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+
+		image {
+			width: 44rpx;
+			height: 44rpx;
+		}
 	}
 </style>

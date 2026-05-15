@@ -13,10 +13,10 @@
 		</view>
 
 		<view class="home-item home-item-grid home-item-first">
-			<u-grid :border="false" @click="gridClick" col="4">
+			<u-grid :border="false" @click="gridClick" col="5">
 				<u-grid-item v-for="(item,index) in fn" :key="index">
 					<view :class="['grid-item-bg','grid-item-bg-'+(index+1)]">
-						<image style="width:100rpx;height: 100rpx;" :src="item.icon"></image>
+						<image :class="item.ai ? 'grid-ai-icon' : 'grid-icon'" :src="item.icon"></image>
 					</view>
 					<view class="grid-text">{{item.name}}</view>
 				</u-grid-item>
@@ -64,6 +64,12 @@
 			path:"/pages/report/index",
 			//path: "/pages/message/message",
 			subPage: true
+		},
+		{
+			name: "AI",
+			icon: '/static/icon/ai-assistant.png',
+			path: "/pages/ai/index",
+			subPage: false
 		},
 		{
 			name: "个人中心",
@@ -162,5 +168,16 @@
 		/*#ifdef H5*/
 		margin-top: -90rpx;
 		/*#endif*/
+	}
+
+	.grid-icon {
+		width: 100rpx;
+		height: 100rpx;
+	}
+
+	.grid-ai-icon {
+		width: 82rpx;
+		height: 82rpx;
+		margin: 9rpx;
 	}
 </style>

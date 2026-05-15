@@ -430,8 +430,7 @@
 				"pagePath": "pages/home/home",
 				"iconPath": "static/tabbar/home.png",
 				"selectedIconPath": "static/tabbar/home_active.png",
-				"text": "首页",
-				"visible": false
+				"text": "首页"
 			},
 			{
 				"pagePath": "pages/menu/menu",
@@ -448,9 +447,9 @@
 			},
 			{
 				"pagePath": "pages/ai/index",
-				"iconPath": "static/tabbar/message.png",
-				"selectedIconPath": "static/tabbar/message_active.png",
-				"text": "AI"
+				"iconPath": "static/tabbar/ai-assistant.png",
+				"selectedIconPath": "static/tabbar/ai-assistant_active.png",
+				"text": "AI助手"
 			},
 			{
 				"pagePath": "pages/user/user",
