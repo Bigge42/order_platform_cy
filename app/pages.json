@@ -461,7 +461,7 @@
 	},
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "uni-app",
+		"navigationBarTitleText": "控制阀订单智能管理系统移动端",
 		"navigationBarBackgroundColor": "#00aaff",
 		"navigationBarTextStyle": "white",
 		"backgroundColor": "#FFFFFF" //,

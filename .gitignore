@@ -378,3 +378,4 @@ error/*
 /app/unpackage
 /AGENTS.md
 /docs
+/app/.playwright-cli
