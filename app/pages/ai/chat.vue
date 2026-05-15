@@ -1677,11 +1677,17 @@ onUnload(() => {
 
 <style scoped lang="less">
 .chat-page {
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   background: #f5f7fb;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  overflow: hidden;
+
+  /* #ifdef H5 */
+  height: calc(100vh - var(--window-top, 0px) - var(--window-bottom, 0px));
+  /* #endif */
 }
 
 .top-bar {
