@@ -60,5 +60,15 @@ namespace HDPro.CY.Order.Services
             
             return response;
         }
+
+        //public override PageGridData<Sys_RoleAIApp> GetPageData(PageDataOptions options)
+        //{
+        //    QueryRelativeExpression = (IQueryable<Sys_RoleAIApp> queryable) =>
+        //    {
+        //        return queryable.Where(x => x.Enable == 1);
+        //    };
+
+        //    return base.GetPageData(options);
+        //}
   }
 } 

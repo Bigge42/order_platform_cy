@@ -2,11 +2,8 @@
 	export default {
 		onLaunch: function() {
 			console.log('App Launch')
-			uni.setNavigationBarTitle({
-				title: '控制阀订单智能管理系统移动端'
-			})
 			// #ifdef H5
-			document.title = '控制阀订单智能管理系统移动端'
+			document.title = '调节阀移动应用'
 			// #endif
 		},
 		onShow: function() {

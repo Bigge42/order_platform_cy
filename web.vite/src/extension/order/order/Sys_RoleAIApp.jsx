@@ -5,10 +5,12 @@
 *****************************************************************************************/
 //此js文件是用来自定义扩展业务代码，在当前[表.vue]文件中也可以实现业务处理
 
+import { defineAsyncComponent } from 'vue'
+
 let extension = {
   components: {
     //查询界面扩展组件
-    gridHeader: '',
+    gridHeader: defineAsyncComponent(() => import('./Sys_RoleAIApp/Sys_RoleAIAppBatchAuth.vue')),
     gridBody: '',
     gridFooter: '',
     //新建、编辑弹出框扩展组件
@@ -22,6 +24,29 @@ let extension = {
   methods: {
      //下面这些方法可以保留也可以删除
     onInit() {  //框架初始化配置前，
+        const canUpdate = this.buttons.some((x) => x.value === 'Add' || x.value === 'Update')
+        if (canUpdate && !this.buttons.some((x) => x.name === '按角色授权')) {
+          this.buttons.push({
+            name: '按角色授权',
+            icon: 'el-icon-user',
+            type: 'primary',
+            plain: true,
+            onClick: function () {
+              this.$refs.gridHeader.openByRole()
+            }
+          })
+        }
+        if (canUpdate && !this.buttons.some((x) => x.name === '按智能体授权')) {
+          this.buttons.push({
+            name: '按智能体授权',
+            icon: 'el-icon-connection',
+            type: 'success',
+            plain: true,
+            onClick: function () {
+              this.$refs.gridHeader.openByAIApp()
+            }
+          })
+        }
         //示例：在按钮的最前面添加一个按钮
         //   this.buttons.unshift({  //也可以用push或者splice方法来修改buttons数组
         //     name: '按钮', //按钮名称

@@ -41,6 +41,10 @@
 				<text @click="toAgreement" class="link">《用户服务协议》</text>与
 				<text @click="toPolicy" class="link">《隐私政策》</text>
 			</view> -->
+			<view class="remember-row">
+				<u-checkbox :checked="rememberPassword" @change="toggleRememberPassword" label="记住密码" :size="13"
+					labelSize="26rpx"></u-checkbox>
+			</view>
 			<view class="login-btn">
 				<u-button @click="loginClick" shape="circle" :loading="loading" :loadingText="loading?'登录中..':''"
 					:customStyle="{'box-shadow': '3px 3px 8px #5babff80'}" size="large" type="primary" text="登录">
@@ -59,9 +63,16 @@
 	import {
 		ref,
 		getCurrentInstance,
-		defineExpose
+		defineExpose,
+		onMounted
 	} from "vue"
+	import {
+		clearRememberedLogin,
+		loadRememberedLogin,
+		saveRememberedLogin
+	} from '@/util/login-remember.js'
 	const ck = ref(false);
+	const rememberPassword = ref(false);
 	const loading = ref(false);
 	const codeSrc = ref('');
 
@@ -120,6 +131,18 @@
 			userInfo.value.UUID = x.uuid;
 		});
 	}
+
+	const restoreRememberedLogin = () => {
+		const remembered = loadRememberedLogin()
+		if (!remembered.userName || !remembered.password) {
+			return
+		}
+
+		userInfo.value.userName = remembered.userName
+		userInfo.value.password = remembered.password
+		userInfo.value.verificationCode = ''
+		rememberPassword.value = remembered.rememberPassword
+	}
 	
 	const initTenancy=async()=>{
 		await proxy.http.post('api/menu/getTreeMenu', {}, false).then(result => {
@@ -161,6 +184,14 @@
 					return proxy.$toast(result.message);
 				}
 				proxy.$store.commit("setUserInfo", result.data);	
+				saveRememberedLogin({
+					userName: userInfo.value.userName,
+					password: userInfo.value.password,
+					rememberPassword: rememberPassword.value
+				})
+				if (!rememberPassword.value) {
+					clearRememberedLogin()
+				}
 				await initTenancy();
 				proxy.$toast(proxy.$ts("登录成功"));
 				uni.switchTab({
@@ -168,9 +199,15 @@
 				})
 			});
 	}
-	getVierificationCode();
+	onMounted(() => {
+		restoreRememberedLogin()
+		getVierificationCode();
+	})
 	const ckChange = () => {
 		ck.value = !ck.value;
+	}
+	const toggleRememberPassword = () => {
+		rememberPassword.value = !rememberPassword.value
 	}
 	defineExpose({})
 </script>
@@ -210,6 +247,12 @@
 		.login-btn {
 			margin: 30rpx 0 0rpx 0;
 		}
+	}
+
+	.remember-row {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 8rpx;
 	}
 
 	.agreement {
