@@ -1,0 +1,13 @@
+[Unit]
+Description=OCP missing Teamcenter BOM creator sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=d3h
+WorkingDirectory=/home/d3h/ocp-bom-creator-sync
+EnvironmentFile=/home/d3h/ocp-bom-creator-sync/.env
+ExecStart=/home/d3h/ocp-bom-creator-sync/.venv/bin/python /home/d3h/ocp-bom-creator-sync/sync_bom_creator.py --env-file /home/d3h/ocp-bom-creator-sync/.env
+StandardOutput=journal
+StandardError=journal
