@@ -59,5 +59,57 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 查询同步健康状态：明细刷新时间、源数据新鲜度、未归属明细和汇总覆盖情况。
+        /// </summary>
+        Task<WZProductionOutputSyncHealthDto> GetSyncHealthAsync(
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            CancellationToken ct = default);
+    }
+
+    public sealed class WZProductionOutputSyncHealthDto
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime? LastDetailSyncTime { get; set; }
+        public DateTime? LatestOcpEsbModifyDate { get; set; }
+        public DateTime? LatestOcpModifyDate { get; set; }
+        public int DetailRows { get; set; }
+        public int SummarizableRows { get; set; }
+        public int MissingLineRows { get; set; }
+        public int ConflictRows { get; set; }
+        public decimal DetailQuantity { get; set; }
+        public int SummaryRows { get; set; }
+        public decimal SummaryQuantity { get; set; }
+        public int OcpRowsInProductionDateRange { get; set; }
+        public int OcpRowsMissingProductionDate { get; set; }
+        public List<WZProductionOutputHealthBucketDto> UnresolvedByBill { get; set; } = new();
+        public List<WZProductionOutputHealthBucketDto> UnresolvedByDate { get; set; } = new();
+        public List<WZProductionOutputUnresolvedSampleDto> UnresolvedSamples { get; set; } = new();
+    }
+
+    public sealed class WZProductionOutputHealthBucketDto
+    {
+        public string Key { get; set; } = string.Empty;
+        public int Rows { get; set; }
+        public decimal Quantity { get; set; }
+    }
+
+    public sealed class WZProductionOutputUnresolvedSampleDto
+    {
+        public DateTime ProductionDate { get; set; }
+        public string BillNo { get; set; } = string.Empty;
+        public string PlanTrackingNo { get; set; } = string.Empty;
+        public long? EntryId { get; set; }
+        public string ValveCategory { get; set; } = string.Empty;
+        public string ProductionLine { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public string ClassifyStatus { get; set; } = string.Empty;
+        public int RawRowCount { get; set; }
+        public int LineCandidateCount { get; set; }
+        public DateTime? LastSyncTime { get; set; }
     }
 }

@@ -379,3 +379,10 @@ error/*
 /AGENTS.md
 /docs
 /app/.playwright-cli
+
+# Local analysis artifacts
+exports/*
+!exports/
+!exports/*.md
+order_cycle_platform/
+valve_rule_service_prod/

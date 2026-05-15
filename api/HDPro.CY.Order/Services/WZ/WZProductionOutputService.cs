@@ -3,12 +3,16 @@ using System.Linq;
 using System.Text;
 using System.Net;
 using System.Net.Http;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using HDPro.Core.Utilities;
 using HDPro.Core.EFDbContext;
 using HDPro.Core.Extensions.AutofacManager; // IDependency
 using HDPro.CY.Order.IServices.WZ;
@@ -21,9 +25,9 @@ namespace HDPro.CY.Order.Services.WZ
     /// 产线产量（热力图数据）服务实现
     /// 刷新（全量重建）语义说明：
     /// - 输入参数 startDate/endDate 是“订单修改日期窗口”，用于筛 ESB 接口数据；
-    /// - 数据入库以“排产日期（ProductionDate）× 阀体类别（ValveCategory）× 产线（ProductionLine）”为键进行聚合求和；
-    /// - 不对 ProductionDate 做按段过滤；跨段（按修改日分段）重复返回的键进行“累加汇总”，最后一次性入库；
-    /// - 当前实现为“全量重建”：先清空缓存表，再插入本次窗口汇总结果。
+    /// - 先按订单明细唯一键写入 WZ_ProductionOutputDetail，避免 ESB 重复行放大产能；
+    /// - 再从明细表按 ProductionDate × 阀体类别 × 产线重算 WZ_ProductionOutput 缓存；
+    /// - 增量同步也保持幂等：更新明细后重算汇总，不做 Quantity 累加。
     /// 
     /// 命名客户端：
     /// - 请在 Program.cs/Startup.cs 中注册： services.AddHttpClient("WZ", c => { c.Timeout = TimeSpan.FromMinutes(2); });
@@ -39,6 +43,15 @@ namespace HDPro.CY.Order.Services.WZ
         private const int InsertBatchSize = 2000; // 大批量入库时的分批大小
         private const int MaxEsbRetryCount = 3; // 单个时间片最大重试次数
         private const int EsbRetryDelayMilliseconds = 1500; // 失败重试基础等待时长
+        private const string ValveRuleServiceUrl = "http://10.11.10.101:8000/batch_infer?debug_trace=false";
+        private const int ValveRuleBatchSize = 200;
+        private const string DetailStatusMatched = "matched";
+        private const string DetailStatusMatchedByOrderCycle = "matched_order_cycle";
+        private const string DetailStatusMatchedBySyncLine = "matched_sync_line";
+        private const string DetailStatusMatchedByRule = "matched_rule";
+        private const string DetailStatusMissingLine = "missing_line";
+        private const string DetailStatusConflict = "conflict";
+        private const string BillPlanKeySeparator = "\u001F";
 
         private readonly ServiceDbContext _db;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -60,14 +73,159 @@ namespace HDPro.CY.Order.Services.WZ
         /// </summary>
         private sealed class EsbRow
         {
-            [JsonProperty("F_ORA_FMLB")] public string ValveCategory { get; set; }   // 阀门类别
-            [JsonProperty("F_ORA_SCX")] public string ProductionLine { get; set; }  // 生产线
+            [JsonProperty("FENTRYID")] public long? EntryId { get; set; } // 销售订单明细 ID
+            [JsonProperty("FBILLNO")] public string BillNo { get; set; } = string.Empty; // 单据编号
+            [JsonProperty("FMTONO")] public string PlanTrackingNo { get; set; } = string.Empty; // 计划跟踪号
+            [JsonProperty("FSEQ")] public int? Seq { get; set; } // 行号
+            [JsonProperty("F_ORA_FMLB")] public string ValveCategory { get; set; } = string.Empty;   // 阀门类别
+            [JsonProperty("F_ORA_SCX")] public string ProductionLine { get; set; } = string.Empty;  // 生产线
             [JsonProperty("FQTY")] public decimal? Qty { get; set; }           // 订单数量
 
             // 日期字段：优先 排产日期 F_ORA_DATE1，其次订单日期 & 要货日期
-            [JsonProperty("F_ORA_DATE1")] public string SchDate { get; set; }         // 排产日期（推荐映射 ProductionDate）
-            [JsonProperty("FDATE")] public string OrderDate { get; set; }       // 订单日期
-            [JsonProperty("F_ORA_DATETIME")] public string CustReqDate { get; set; }     // 客户要货日期
+            [JsonProperty("F_ORA_DATE1")] public string SchDate { get; set; } = string.Empty;         // 排产日期（推荐映射 ProductionDate）
+            [JsonProperty("FDATE")] public string OrderDate { get; set; } = string.Empty;       // 订单日期
+            [JsonProperty("F_ORA_DATETIME")] public string CustReqDate { get; set; } = string.Empty;     // 客户要货日期
+        }
+
+        private sealed class ParsedProductionOutputRow
+        {
+            public string BusinessKey { get; set; } = string.Empty;
+            public long? EntryId { get; set; }
+            public string BillNo { get; set; } = string.Empty;
+            public string PlanTrackingNo { get; set; } = string.Empty;
+            public int? Seq { get; set; }
+            public DateTime? ProductionDate { get; set; }
+            public string ValveCategory { get; set; } = string.Empty;
+            public string ProductionLine { get; set; } = string.Empty;
+            public decimal Quantity { get; set; }
+        }
+
+        private sealed class ProductionOutputDetailRow
+        {
+            public string BusinessKey { get; set; } = string.Empty;
+            public long? EntryId { get; set; }
+            public string BillNo { get; set; } = string.Empty;
+            public string PlanTrackingNo { get; set; } = string.Empty;
+            public int? Seq { get; set; }
+            public DateTime ProductionDate { get; set; }
+            public string ValveCategory { get; set; } = string.Empty;
+            public string ProductionLine { get; set; } = string.Empty;
+            public decimal Quantity { get; set; }
+            public string ClassifyStatus { get; set; } = string.Empty;
+            public int RawRowCount { get; set; }
+            public int LineCandidateCount { get; set; }
+            public DateTime SourceStartDate { get; set; }
+            public DateTime SourceEndDate { get; set; }
+        }
+
+        private sealed class OrderCycleLineCandidate
+        {
+            public long? EntryId { get; set; }
+            public string SalesOrderNo { get; set; } = string.Empty;
+            public string PlanTrackingNo { get; set; } = string.Empty;
+            public string ValveCategory { get; set; } = string.Empty;
+            public string ProductionLine { get; set; } = string.Empty;
+            public string AssignedProductionLine { get; set; } = string.Empty;
+            public DateTime? ProductionDate { get; set; }
+            public string NominalDiameter { get; set; } = string.Empty;
+            public string NominalPressure { get; set; } = string.Empty;
+            public string SpecModel { get; set; } = string.Empty;
+            public string ProductName { get; set; } = string.Empty;
+            public bool IsRuleServiceCandidate { get; set; }
+            public bool IsSyncProductionLineCandidate { get; set; }
+            public bool ResolvedByRuleService { get; set; }
+            public string MatchKey { get; set; } = string.Empty;
+            public DateTime? OrderApprovedDate { get; set; }
+            public DateTime? ReplyDeliveryDate { get; set; }
+            public DateTime? RequestedDeliveryDate { get; set; }
+            public string BodyMaterial { get; set; } = string.Empty;
+            public string InnerMaterial { get; set; } = string.Empty;
+            public string FlangeConnection { get; set; } = string.Empty;
+            public string BonnetForm { get; set; } = string.Empty;
+            public string FlowCharacteristic { get; set; } = string.Empty;
+            public string Actuator { get; set; } = string.Empty;
+            public string AccessoryConfig { get; set; } = string.Empty;
+            public string OutsourcedValveBody { get; set; } = string.Empty;
+            public string ValveCategory1 { get; set; } = string.Empty;
+            public string SealFaceForm { get; set; } = string.Empty;
+            public string SpecialProduct { get; set; } = string.Empty;
+            public string PurchaseFlag { get; set; } = string.Empty;
+        }
+
+        private sealed class ResolvedLineAssignment
+        {
+            public long? EntryId { get; set; }
+            public string BillPlanKey { get; set; } = string.Empty;
+            public string ValveCategory { get; set; } = string.Empty;
+            public string ProductionLine { get; set; } = string.Empty;
+            public DateTime? ProductionDate { get; set; }
+            public string ClassifyStatus { get; set; } = string.Empty;
+            public int Score { get; set; }
+        }
+
+        private sealed class DetailBackfillSummary
+        {
+            public int Candidates { get; set; }
+            public int FilledByOrderCycle { get; set; }
+            public int FilledBySyncLine { get; set; }
+            public int FilledByRule { get; set; }
+            public int RemainingMissingLine { get; set; }
+            public int RemainingConflict { get; set; }
+        }
+
+        private sealed class ValveLineRuleRequest
+        {
+            [JsonProperty("id")] public string Id { get; set; } = string.Empty;
+            [JsonProperty("OrderApprovedDate")] public DateTime? OrderApprovedDate { get; set; }
+            [JsonProperty("ReplyDeliveryDate")] public DateTime? ReplyDeliveryDate { get; set; }
+            [JsonProperty("RequestedDeliveryDate")] public DateTime? RequestedDeliveryDate { get; set; }
+            [JsonProperty("fa_ti_cai_zhi")] public string BodyMaterial { get; set; } = string.Empty;
+            [JsonProperty("nei_jian_cai_zhi")] public string InnerMaterial { get; set; } = string.Empty;
+            [JsonProperty("fa_lan_lian_jie")] public string FlangeConnection { get; set; } = string.Empty;
+            [JsonProperty("shang_gai_xing_shi")] public string BonnetForm { get; set; } = string.Empty;
+            [JsonProperty("liu_liang_te_xing")] public string FlowCharacteristic { get; set; } = string.Empty;
+            [JsonProperty("zhi_xing_ji_gou")] public string Actuator { get; set; } = string.Empty;
+            [JsonProperty("fu_jian_pei_zhi")] public string AccessoryConfig { get; set; } = string.Empty;
+            [JsonProperty("wai_gou_fa_ti")] public string OutsourcedValveBody { get; set; } = string.Empty;
+            [JsonProperty("fa_men_da_lei")] public string ValveCategory1 { get; set; } = string.Empty;
+            [JsonProperty("fa_men_lei_bie")] public string ValveCategory { get; set; } = string.Empty;
+            [JsonProperty("mi_feng_mian_xing_shi")] public string SealFaceForm { get; set; } = string.Empty;
+            [JsonProperty("te_pin")] public string SpecialProduct { get; set; } = string.Empty;
+            [JsonProperty("wai_gou_biao_zhi")] public string PurchaseFlag { get; set; } = string.Empty;
+            [JsonProperty("chan_pin_ming_cheng")] public string ProductName { get; set; } = string.Empty;
+            [JsonProperty("gong_cheng_tong_jing")] public string NominalDiameter { get; set; } = string.Empty;
+            [JsonProperty("gong_cheng_ya_li")] public string NominalPressure { get; set; } = string.Empty;
+        }
+
+        private sealed class ValveLineRuleResult
+        {
+            [JsonProperty("id")] public string Id { get; set; } = string.Empty;
+            [JsonProperty("sheng_chan_xian")] public string ProductionLine { get; set; } = string.Empty;
+        }
+
+        private sealed class ValveLineRuleResponseItem
+        {
+            [JsonProperty("id")] public string Id { get; set; } = string.Empty;
+            [JsonProperty("success")] public bool Success { get; set; }
+            [JsonProperty("result")] public ValveLineRuleResult Result { get; set; }
+        }
+
+        private sealed class ValveLineRuleBatchResponse
+        {
+            [JsonProperty("results")] public List<ValveLineRuleResponseItem> Results { get; set; } = new List<ValveLineRuleResponseItem>();
+            [JsonProperty("log_file")] public string LogFile { get; set; } = string.Empty;
+        }
+
+        private sealed class RuleLineCacheEntry
+        {
+            public bool Success { get; set; }
+            public string ProductionLine { get; set; } = string.Empty;
+        }
+
+        private enum RuleProductTextMode
+        {
+            SpecModelFirst,
+            ProductNameFallback
         }
 
         /// <summary>把日期区间按固定天数切段（闭区间）</summary>
@@ -86,6 +244,518 @@ namespace HDPro.CY.Order.Services.WZ
         /// <summary>字符串规整：Trim + 全/半角等标准化，避免“看起来一样但字符串不同”</summary>
         private static string NormalizeStr(string s)
             => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().Normalize(NormalizationForm.FormKC);
+
+        private static string NormalizeSyncProductionLineCandidate(string value)
+        {
+            var line = NormalizeStr(value);
+            if (line.Length == 0 || line.Contains("车间", StringComparison.Ordinal))
+            {
+                return string.Empty;
+            }
+
+            return line.StartsWith("旋转", StringComparison.Ordinal)
+                || line.StartsWith("直通", StringComparison.Ordinal)
+                || line.StartsWith("蝶阀", StringComparison.Ordinal)
+                ? line
+                : string.Empty;
+        }
+
+        private static string BuildBillPlanKey(string billNo, string planTrackingNo)
+            => $"{NormalizeStr(billNo)}{BillPlanKeySeparator}{NormalizeStr(planTrackingNo)}";
+
+        private static bool IsSummarizableStatus(string status)
+            => string.Equals(status, DetailStatusMatched, StringComparison.Ordinal)
+                || string.Equals(status, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal)
+                || string.Equals(status, DetailStatusMatchedBySyncLine, StringComparison.Ordinal)
+                || string.Equals(status, DetailStatusMatchedByRule, StringComparison.Ordinal);
+
+        private static string BuildBusinessKey(EsbRow row)
+        {
+            if (row == null)
+            {
+                return string.Empty;
+            }
+
+            if (row.EntryId.HasValue && row.EntryId.Value > 0)
+            {
+                return $"E:{row.EntryId.Value}";
+            }
+
+            var billNo = NormalizeStr(row.BillNo);
+            var planTrackingNo = NormalizeStr(row.PlanTrackingNo);
+            var seq = row.Seq.HasValue ? row.Seq.Value.ToString() : string.Empty;
+            if (billNo.Length == 0 && planTrackingNo.Length == 0 && seq.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return $"B:{billNo}|P:{planTrackingNo}|S:{seq}";
+        }
+
+        private static ParsedProductionOutputRow ParseProductionOutputRow(EsbRow row)
+        {
+            return new ParsedProductionOutputRow
+            {
+                BusinessKey = BuildBusinessKey(row),
+                EntryId = row.EntryId,
+                BillNo = NormalizeStr(row.BillNo),
+                PlanTrackingNo = NormalizeStr(row.PlanTrackingNo),
+                Seq = row.Seq,
+                ProductionDate = PickDate(row),
+                ValveCategory = NormalizeStr(row.ValveCategory),
+                ProductionLine = NormalizeStr(row.ProductionLine),
+                Quantity = row.Qty ?? 0m
+            };
+        }
+
+        private static ProductionOutputDetailRow BuildDetailRow(
+            IGrouping<string, ParsedProductionOutputRow> group,
+            DateTime sourceStartDate,
+            DateTime sourceEndDate)
+        {
+            var rows = group.ToList();
+            var first = rows.First();
+            var lineGroups = rows
+                .Where(x => x.ProductionDate.HasValue
+                    && x.ValveCategory.Length > 0
+                    && x.ProductionLine.Length > 0)
+                .GroupBy(x => new
+                {
+                    Date = x.ProductionDate!.Value.Date,
+                    x.ValveCategory,
+                    x.ProductionLine,
+                    x.Quantity
+                })
+                .Select(g => new
+                {
+                    g.Key.Date,
+                    g.Key.ValveCategory,
+                    g.Key.ProductionLine,
+                    g.Key.Quantity,
+                    Count = g.Count()
+                })
+                .OrderByDescending(x => x.Count)
+                .ThenBy(x => x.Date)
+                .ThenBy(x => x.ValveCategory)
+                .ThenBy(x => x.ProductionLine)
+                .ToList();
+
+            var fallback = rows
+                .Where(x => x.ProductionDate.HasValue)
+                .OrderBy(x => x.ProductionDate!.Value)
+                .FirstOrDefault() ?? first;
+
+            var chosen = lineGroups.FirstOrDefault();
+            var status = lineGroups.Count == 0
+                ? DetailStatusMissingLine
+                : lineGroups.Count == 1
+                    ? DetailStatusMatched
+                    : DetailStatusConflict;
+
+            return new ProductionOutputDetailRow
+            {
+                BusinessKey = group.Key,
+                EntryId = first.EntryId,
+                BillNo = first.BillNo,
+                PlanTrackingNo = first.PlanTrackingNo,
+                Seq = first.Seq,
+                ProductionDate = chosen?.Date ?? fallback.ProductionDate!.Value.Date,
+                ValveCategory = chosen?.ValveCategory ?? string.Empty,
+                ProductionLine = chosen?.ProductionLine ?? string.Empty,
+                Quantity = chosen?.Quantity ?? fallback.Quantity,
+                ClassifyStatus = status,
+                RawRowCount = rows.Count,
+                LineCandidateCount = lineGroups.Count,
+                SourceStartDate = sourceStartDate.Date,
+                SourceEndDate = sourceEndDate.Date
+            };
+        }
+
+        private static (List<ProductionOutputDetailRow> Details, int SkippedNoDate, int SkippedNoKey, int Matched, int MissingLine, int Conflict)
+            BuildDetailRows(IEnumerable<EsbRow> rows, DateTime sourceStartDate, DateTime sourceEndDate)
+        {
+            var parsedRows = rows
+                .Select(ParseProductionOutputRow)
+                .ToList();
+
+            var skippedNoDate = parsedRows.Count(x => !x.ProductionDate.HasValue);
+            var skippedNoKey = parsedRows.Count(x => x.ProductionDate.HasValue && x.BusinessKey.Length == 0);
+
+            var details = parsedRows
+                .Where(x => x.ProductionDate.HasValue && x.BusinessKey.Length > 0)
+                .GroupBy(x => x.BusinessKey)
+                .Select(g => BuildDetailRow(g, sourceStartDate, sourceEndDate))
+                .ToList();
+
+            return (
+                details,
+                skippedNoDate,
+                skippedNoKey,
+                details.Count(x => IsSummarizableStatus(x.ClassifyStatus)),
+                details.Count(x => x.ClassifyStatus == DetailStatusMissingLine),
+                details.Count(x => x.ClassifyStatus == DetailStatusConflict));
+        }
+
+        private static IEnumerable<List<T>> ChunkList<T>(IReadOnlyList<T> values, int chunkSize)
+        {
+            if (values == null || values.Count == 0)
+            {
+                yield break;
+            }
+
+            if (chunkSize <= 0)
+            {
+                chunkSize = 1000;
+            }
+
+            for (var index = 0; index < values.Count; index += chunkSize)
+            {
+                var take = Math.Min(chunkSize, values.Count - index);
+                var chunk = new List<T>(take);
+                for (var i = 0; i < take; i++)
+                {
+                    chunk.Add(values[index + i]);
+                }
+
+                yield return chunk;
+            }
+        }
+
+        private static ResolvedLineAssignment? ResolveOrderCycleLineCandidate(OrderCycleLineCandidate candidate)
+        {
+            if (candidate == null)
+            {
+                return null;
+            }
+
+            var valveCategory = NormalizeStr(candidate.ValveCategory);
+            var usedRule = false;
+
+            if (valveCategory.Length == 0)
+            {
+                var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(candidate.SpecModel, candidate.ProductName);
+                if (categoryRule.HasValue)
+                {
+                    valveCategory = NormalizeStr(categoryRule.Value.Category);
+                    usedRule = valveCategory.Length > 0;
+                }
+            }
+
+            var assignedLine = NormalizeStr(candidate.AssignedProductionLine);
+            var rawLine = NormalizeStr(candidate.ProductionLine);
+            if (assignedLine.Length == 0 && rawLine.Length > 0)
+            {
+                var ruleLine = global::HDPro.CY.Order.Services.WZ_OrderCycleBaseService.CalcAssignedProductionLine(
+                    rawLine,
+                    valveCategory,
+                    candidate.NominalDiameter);
+
+                assignedLine = NormalizeStr(ruleLine);
+                usedRule = usedRule || assignedLine.Length > 0;
+            }
+
+            if (assignedLine.Length == 0)
+            {
+                assignedLine = rawLine;
+            }
+
+            if (valveCategory.Length == 0 || assignedLine.Length == 0)
+            {
+                return null;
+            }
+
+            var score = 0;
+            if (NormalizeStr(candidate.ValveCategory).Length > 0) score += 8;
+            if (NormalizeStr(candidate.AssignedProductionLine).Length > 0) score += 8;
+            if (candidate.IsSyncProductionLineCandidate) score += 6;
+            if (rawLine.Length > 0) score += 4;
+            if (candidate.ProductionDate.HasValue) score += 3;
+            if (NormalizeStr(candidate.NominalDiameter).Length > 0) score += 2;
+            if (NormalizeStr(candidate.SpecModel).Length > 0 || NormalizeStr(candidate.ProductName).Length > 0) score += 1;
+
+            var status = candidate.ResolvedByRuleService
+                ? DetailStatusMatchedByRule
+                : candidate.IsSyncProductionLineCandidate
+                    ? DetailStatusMatchedBySyncLine
+                    : (usedRule || candidate.IsRuleServiceCandidate)
+                        ? DetailStatusMatchedByRule
+                        : DetailStatusMatchedByOrderCycle;
+
+            return new ResolvedLineAssignment
+            {
+                EntryId = candidate.EntryId,
+                BillPlanKey = BuildBillPlanKey(candidate.SalesOrderNo, candidate.PlanTrackingNo),
+                ValveCategory = valveCategory,
+                ProductionLine = assignedLine,
+                ProductionDate = candidate.ProductionDate?.Date,
+                ClassifyStatus = status,
+                Score = score
+            };
+        }
+
+        private static ResolvedLineAssignment PickBestResolvedLine(IEnumerable<ResolvedLineAssignment> assignments)
+        {
+            return assignments
+                .Where(x => x != null
+                    && NormalizeStr(x.ValveCategory).Length > 0
+                    && NormalizeStr(x.ProductionLine).Length > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.ClassifyStatus)
+                .ThenBy(x => x.ValveCategory)
+                .ThenBy(x => x.ProductionLine)
+                .FirstOrDefault();
+        }
+
+        private static (
+            Dictionary<long, ResolvedLineAssignment> ByEntryId,
+            Dictionary<string, ResolvedLineAssignment> ByBillPlan)
+            BuildResolvedLineLookups(IEnumerable<ResolvedLineAssignment> resolvedAssignments)
+        {
+            var byEntryId = new Dictionary<long, ResolvedLineAssignment>();
+            var byBillPlan = new Dictionary<string, ResolvedLineAssignment>(StringComparer.OrdinalIgnoreCase);
+            if (resolvedAssignments == null)
+            {
+                return (byEntryId, byBillPlan);
+            }
+
+            foreach (var group in resolvedAssignments
+                .Where(x => x != null && x.EntryId.HasValue && x.EntryId.Value > 0)
+                .GroupBy(x => x.EntryId!.Value))
+            {
+                var best = PickBestResolvedLine(group);
+                if (best != null)
+                {
+                    byEntryId[group.Key] = best;
+                }
+            }
+
+            foreach (var group in resolvedAssignments
+                .Where(x => x != null && NormalizeStr(x.BillPlanKey).Length > 0)
+                .GroupBy(x => x.BillPlanKey, StringComparer.OrdinalIgnoreCase))
+            {
+                var best = PickBestResolvedLine(group);
+                if (best != null)
+                {
+                    byBillPlan[group.Key] = best;
+                }
+            }
+
+            return (byEntryId, byBillPlan);
+        }
+
+        private static (int FilledByOrderCycle, int FilledBySyncLine, int FilledByRule) ApplyResolvedLineAssignments(
+            List<ProductionOutputDetailRow> unresolvedDetails,
+            IReadOnlyDictionary<long, ResolvedLineAssignment> byEntryId,
+            IReadOnlyDictionary<string, ResolvedLineAssignment> byBillPlan)
+        {
+            var filledByOrderCycle = 0;
+            var filledBySyncLine = 0;
+            var filledByRule = 0;
+            if (unresolvedDetails == null || unresolvedDetails.Count == 0)
+            {
+                return (filledByOrderCycle, filledBySyncLine, filledByRule);
+            }
+
+            foreach (var detail in unresolvedDetails)
+            {
+                ResolvedLineAssignment resolved = null;
+                if (detail.EntryId.HasValue && detail.EntryId.Value > 0)
+                {
+                    byEntryId?.TryGetValue(detail.EntryId.Value, out resolved);
+                }
+
+                if (resolved == null)
+                {
+                    byBillPlan?.TryGetValue(BuildBillPlanKey(detail.BillNo, detail.PlanTrackingNo), out resolved);
+                }
+
+                if (resolved == null)
+                {
+                    continue;
+                }
+
+                detail.ValveCategory = resolved.ValveCategory;
+                detail.ProductionLine = resolved.ProductionLine;
+                if (resolved.ProductionDate.HasValue)
+                {
+                    detail.ProductionDate = resolved.ProductionDate.Value.Date;
+                }
+                detail.ClassifyStatus = resolved.ClassifyStatus;
+
+                if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal))
+                {
+                    filledByOrderCycle++;
+                }
+                else if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedBySyncLine, StringComparison.Ordinal))
+                {
+                    filledBySyncLine++;
+                }
+                else if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedByRule, StringComparison.Ordinal))
+                {
+                    filledByRule++;
+                }
+            }
+
+            return (filledByOrderCycle, filledBySyncLine, filledByRule);
+        }
+
+        private static string ResolveRuleProductText(OrderCycleLineCandidate candidate, RuleProductTextMode mode)
+        {
+            if (candidate == null)
+            {
+                return string.Empty;
+            }
+
+            var specModel = NormalizeStr(candidate.SpecModel);
+            var productName = NormalizeStr(candidate.ProductName);
+            return mode == RuleProductTextMode.SpecModelFirst
+                ? (specModel.Length > 0 ? specModel : productName)
+                : (productName.Length > 0 ? productName : specModel);
+        }
+
+        private static ValveLineRuleRequest BuildValveLineRuleRequest(
+            OrderCycleLineCandidate candidate,
+            RuleProductTextMode productTextMode)
+        {
+            return new ValveLineRuleRequest
+            {
+                Id = candidate.MatchKey,
+                OrderApprovedDate = candidate.OrderApprovedDate,
+                ReplyDeliveryDate = candidate.ReplyDeliveryDate,
+                RequestedDeliveryDate = candidate.RequestedDeliveryDate,
+                BodyMaterial = candidate.BodyMaterial,
+                InnerMaterial = candidate.InnerMaterial,
+                FlangeConnection = candidate.FlangeConnection,
+                BonnetForm = candidate.BonnetForm,
+                FlowCharacteristic = candidate.FlowCharacteristic,
+                Actuator = candidate.Actuator,
+                AccessoryConfig = candidate.AccessoryConfig,
+                OutsourcedValveBody = candidate.OutsourcedValveBody,
+                ValveCategory1 = candidate.ValveCategory1,
+                ValveCategory = candidate.ValveCategory,
+                SealFaceForm = candidate.SealFaceForm,
+                SpecialProduct = candidate.SpecialProduct,
+                PurchaseFlag = candidate.PurchaseFlag,
+                ProductName = ResolveRuleProductText(candidate, productTextMode),
+                NominalDiameter = candidate.NominalDiameter,
+                NominalPressure = candidate.NominalPressure
+            };
+        }
+
+        private static string BuildValveLineRuleCacheKey(
+            OrderCycleLineCandidate candidate,
+            RuleProductTextMode productTextMode)
+        {
+            var request = BuildValveLineRuleRequest(candidate, productTextMode);
+            return string.Join("\u001E", new[]
+            {
+                productTextMode.ToString(),
+                NormalizeStr(request.BodyMaterial),
+                NormalizeStr(request.InnerMaterial),
+                NormalizeStr(request.FlangeConnection),
+                NormalizeStr(request.BonnetForm),
+                NormalizeStr(request.FlowCharacteristic),
+                NormalizeStr(request.Actuator),
+                NormalizeStr(request.AccessoryConfig),
+                NormalizeStr(request.OutsourcedValveBody),
+                NormalizeStr(request.ValveCategory1),
+                NormalizeStr(request.ValveCategory),
+                NormalizeStr(request.SealFaceForm),
+                NormalizeStr(request.SpecialProduct),
+                NormalizeStr(request.PurchaseFlag),
+                NormalizeStr(request.ProductName),
+                NormalizeStr(request.NominalDiameter),
+                NormalizeStr(request.NominalPressure)
+            });
+        }
+
+        private async Task<int> ApplyOcpScheduleDatesAsync(List<ProductionOutputDetailRow> details, CancellationToken ct)
+        {
+            if (details == null || details.Count == 0)
+            {
+                return 0;
+            }
+
+            var billNos = details
+                .Select(x => NormalizeStr(x.BillNo))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (billNos.Count == 0)
+            {
+                return 0;
+            }
+
+            var wantedBillPlanKeys = details
+                .Where(x => NormalizeStr(x.BillNo).Length > 0 && NormalizeStr(x.PlanTrackingNo).Length > 0)
+                .Select(x => BuildBillPlanKey(x.BillNo, x.PlanTrackingNo))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var byEntryId = new Dictionary<long, DateTime>();
+            var byBillPlan = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            foreach (var chunk in ChunkList(billNos, 500))
+            {
+                var rows = await _db.Set<OCP_OrderTracking>()
+                    .AsNoTracking()
+                    .Where(x => x.SOBillNo != null
+                        && chunk.Contains(x.SOBillNo)
+                        && x.PrdScheduleDate.HasValue)
+                    .Select(x => new
+                    {
+                        EntryId = x.SOEntryID,
+                        SalesOrderNo = x.SOBillNo,
+                        PlanTrackingNo = x.MtoNo,
+                        ProductionDate = x.PrdScheduleDate
+                    })
+                    .ToListAsync(ct);
+
+                foreach (var row in rows)
+                {
+                    if (!wantedBillPlanKeys.Contains(BuildBillPlanKey(row.SalesOrderNo, row.PlanTrackingNo))
+                        && (!row.EntryId.HasValue || row.EntryId.Value <= 0))
+                    {
+                        continue;
+                    }
+
+                    var date = row.ProductionDate!.Value.Date;
+                    if (row.EntryId.HasValue && row.EntryId.Value > 0 && !byEntryId.ContainsKey(row.EntryId.Value))
+                    {
+                        byEntryId[row.EntryId.Value] = date;
+                    }
+
+                    var billPlanKey = BuildBillPlanKey(row.SalesOrderNo, row.PlanTrackingNo);
+                    if (billPlanKey.Length > 1 && !byBillPlan.ContainsKey(billPlanKey))
+                    {
+                        byBillPlan[billPlanKey] = date;
+                    }
+                }
+            }
+
+            var updated = 0;
+            foreach (var detail in details)
+            {
+                DateTime? scheduleDate = null;
+                if (detail.EntryId.HasValue && detail.EntryId.Value > 0
+                    && byEntryId.TryGetValue(detail.EntryId.Value, out var entryDate))
+                {
+                    scheduleDate = entryDate;
+                }
+
+                if (!scheduleDate.HasValue
+                    && byBillPlan.TryGetValue(BuildBillPlanKey(detail.BillNo, detail.PlanTrackingNo), out var billPlanDate))
+                {
+                    scheduleDate = billPlanDate;
+                }
+
+                if (scheduleDate.HasValue && detail.ProductionDate.Date != scheduleDate.Value.Date)
+                {
+                    detail.ProductionDate = scheduleDate.Value.Date;
+                    updated++;
+                }
+            }
+
+            return updated;
+        }
 
         private static (string Cat, string Line) BuildThresholdKey(string valveCategory, string productionLine)
             => (NormalizeStr(valveCategory), NormalizeStr(productionLine));
@@ -119,6 +789,57 @@ BEGIN
     CREATE UNIQUE INDEX [IX_WZ_ProductionOutputThreshold_ValveLine]
         ON [dbo].[WZ_ProductionOutputThreshold]([ValveCategory], [ProductionLine]);
 END
+", ct);
+        }
+
+        private async Task EnsureProductionOutputDetailTableAsync(CancellationToken ct)
+        {
+            await _db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'[dbo].[WZ_ProductionOutputDetail]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WZ_ProductionOutputDetail](
+        [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WZ_ProductionOutputDetail] PRIMARY KEY,
+        [BusinessKey] NVARCHAR(300) NOT NULL,
+        [EntryId] BIGINT NULL,
+        [BillNo] NVARCHAR(100) NULL,
+        [PlanTrackingNo] NVARCHAR(255) NULL,
+        [Seq] INT NULL,
+        [ProductionDate] DATE NOT NULL,
+        [ValveCategory] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ValveCategory] DEFAULT(N''),
+        [ProductionLine] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ProductionLine] DEFAULT(N''),
+        [Quantity] DECIMAL(18,6) NOT NULL,
+        [ClassifyStatus] NVARCHAR(30) NOT NULL,
+        [RawRowCount] INT NOT NULL,
+        [LineCandidateCount] INT NOT NULL,
+        [SourceStartDate] DATE NULL,
+        [SourceEndDate] DATE NULL,
+        [LastSyncTime] DATETIME NOT NULL,
+        [CreateDate] DATETIME NULL,
+        [ModifyDate] DATETIME NULL
+    );
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'BusinessKey') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM sys.indexes
+       WHERE name = N'IX_WZ_ProductionOutputDetail_BusinessKey'
+         AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+   )
+BEGIN
+    CREATE UNIQUE INDEX [IX_WZ_ProductionOutputDetail_BusinessKey]
+        ON [dbo].[WZ_ProductionOutputDetail]([BusinessKey]);
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ClassifyStatus') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM sys.indexes
+       WHERE name = N'IX_WZ_ProductionOutputDetail_StatusDate'
+         AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+   )
+BEGIN
+    CREATE INDEX [IX_WZ_ProductionOutputDetail_StatusDate]
+        ON [dbo].[WZ_ProductionOutputDetail]([ClassifyStatus], [ProductionDate]);
+END;
 ", ct);
         }
 
@@ -222,7 +943,7 @@ END
         private async Task<List<EsbRow>> RequestEsbRowsWithRetryAsync(HttpClient client, DateTime startDate, DateTime endDate, CancellationToken ct)
         {
             var payloadJson = BuildEsbPayload(startDate, endDate);
-            Exception lastException = null;
+            Exception? lastException = null;
 
             for (var attempt = 1; attempt <= MaxEsbRetryCount; attempt++)
             {
@@ -302,9 +1023,1019 @@ END
             }
         }
 
+        private async Task<List<OrderCycleLineCandidate>> LoadOrderCycleLineCandidatesAsync(
+            IReadOnlyList<ProductionOutputDetailRow> unresolvedDetails,
+            CancellationToken ct)
+        {
+            var candidates = new List<OrderCycleLineCandidate>();
+            if (unresolvedDetails == null || unresolvedDetails.Count == 0)
+            {
+                return candidates;
+            }
+
+            var entryIds = unresolvedDetails
+                .Where(x => x.EntryId.HasValue && x.EntryId.Value > 0)
+                .Select(x => x.EntryId!.Value)
+                .Distinct()
+                .ToList();
+
+            foreach (var chunk in ChunkList(entryIds, 1000))
+            {
+                var rows = await _db.Set<WZ_OrderCycleBase>()
+                    .AsNoTracking()
+                    .Where(x => x.FENTRYID.HasValue && chunk.Contains(x.FENTRYID.Value))
+                    .Select(x => new OrderCycleLineCandidate
+                    {
+                        EntryId = x.FENTRYID,
+                        SalesOrderNo = x.SalesOrderNo,
+                        PlanTrackingNo = x.PlanTrackingNo,
+                        ValveCategory = x.ValveCategory,
+                        ProductionLine = x.ProductionLine,
+                        AssignedProductionLine = x.AssignedProductionLine,
+                        ProductionDate = x.ScheduleDate,
+                        NominalDiameter = x.NominalDiameter,
+                        SpecModel = x.GUI_GE_XING_HAO,
+                        ProductName = x.ProductName
+                    })
+                    .ToListAsync(ct);
+
+                candidates.AddRange(rows);
+            }
+
+            var billPlanKeys = unresolvedDetails
+                .Where(x => NormalizeStr(x.BillNo).Length > 0 && NormalizeStr(x.PlanTrackingNo).Length > 0)
+                .Select(x => BuildBillPlanKey(x.BillNo, x.PlanTrackingNo))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (billPlanKeys.Count > 0)
+            {
+                var billNos = unresolvedDetails
+                    .Select(x => NormalizeStr(x.BillNo))
+                    .Where(x => x.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var chunk in ChunkList(billNos, 1000))
+                {
+                    var rows = await _db.Set<WZ_OrderCycleBase>()
+                        .AsNoTracking()
+                        .Where(x => x.SalesOrderNo != null && chunk.Contains(x.SalesOrderNo))
+                        .Select(x => new OrderCycleLineCandidate
+                        {
+                            EntryId = x.FENTRYID,
+                            SalesOrderNo = x.SalesOrderNo,
+                            PlanTrackingNo = x.PlanTrackingNo,
+                            ValveCategory = x.ValveCategory,
+                            ProductionLine = x.ProductionLine,
+                            AssignedProductionLine = x.AssignedProductionLine,
+                            ProductionDate = x.ScheduleDate,
+                            NominalDiameter = x.NominalDiameter,
+                            SpecModel = x.GUI_GE_XING_HAO,
+                            ProductName = x.ProductName
+                        })
+                        .ToListAsync(ct);
+
+                    candidates.AddRange(rows.Where(x => billPlanKeys.Contains(BuildBillPlanKey(x.SalesOrderNo, x.PlanTrackingNo))));
+                }
+            }
+
+            return candidates;
+        }
+
+        private async Task<List<OrderCycleLineCandidate>> LoadOrderTrackingLineCandidatesAsync(
+            IReadOnlyList<ProductionOutputDetailRow> unresolvedDetails,
+            CancellationToken ct)
+        {
+            var candidates = new List<OrderCycleLineCandidate>();
+            if (unresolvedDetails == null || unresolvedDetails.Count == 0)
+            {
+                return candidates;
+            }
+
+            var entryIds = unresolvedDetails
+                .Where(x => x.EntryId.HasValue && x.EntryId.Value > 0)
+                .Select(x => x.EntryId!.Value)
+                .Distinct()
+                .ToList();
+
+            var orderRows = new List<dynamic>();
+            foreach (var chunk in ChunkList(entryIds, 1000))
+            {
+                var rows = await _db.Set<ERP_OrderTracking>()
+                    .AsNoTracking()
+                    .Where(x => chunk.Contains(x.FENTRYID))
+                    .Select(x => new
+                    {
+                        EntryId = (long?)x.FENTRYID,
+                        SalesOrderNo = x.FBILLNO,
+                        PlanTrackingNo = x.FMTONO,
+                        MaterialCode = x.FNUMBER,
+                        x.FAPPROVEDATE,
+                        x.F_BLN_HFJHRQ,
+                        x.F_ORA_DATETIME
+                    })
+                    .ToListAsync(ct);
+
+                orderRows.AddRange(rows);
+            }
+
+            if (orderRows.Count == 0)
+            {
+                return candidates;
+            }
+
+            var materialCodes = orderRows
+                .Select(x => NormalizeStr((string)x.MaterialCode))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var materialMap = new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase);
+            foreach (var chunk in ChunkList(materialCodes, 500))
+            {
+                var materials = await _db.Set<OCP_Material>()
+                    .AsNoTracking()
+                    .Where(x => x.MaterialCode != null && chunk.Contains(x.MaterialCode))
+                    .ToListAsync(ct);
+
+                foreach (var material in materials)
+                {
+                    var key = NormalizeStr(material.MaterialCode);
+                    if (key.Length > 0 && !materialMap.ContainsKey(key))
+                    {
+                        materialMap[key] = material;
+                    }
+                }
+            }
+
+            foreach (var order in orderRows)
+            {
+                var materialCode = NormalizeStr((string)order.MaterialCode);
+                materialMap.TryGetValue(materialCode, out var material);
+
+                var materialValveCategory = NormalizeStr(material?.ValveCategory);
+                var syncProductionLine = NormalizeSyncProductionLineCandidate(material?.Workshop);
+                var resolvedValveCategory = materialValveCategory;
+                if (resolvedValveCategory.Length == 0 && syncProductionLine.Length > 0)
+                {
+                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(material?.SpecModel, material?.ProductModel);
+                    if (categoryRule.HasValue)
+                    {
+                        resolvedValveCategory = NormalizeStr(categoryRule.Value.Category);
+                    }
+                }
+
+                candidates.Add(new OrderCycleLineCandidate
+                {
+                    EntryId = order.EntryId,
+                    SalesOrderNo = NormalizeStr((string)order.SalesOrderNo),
+                    PlanTrackingNo = NormalizeStr((string)order.PlanTrackingNo),
+                    ValveCategory = syncProductionLine.Length > 0 ? resolvedValveCategory : materialValveCategory,
+                    ProductionLine = syncProductionLine,
+                    NominalDiameter = NormalizeStr(material?.NominalDiameter),
+                    NominalPressure = NormalizeStr(material?.NominalPressure),
+                    SpecModel = NormalizeStr(material?.SpecModel),
+                    ProductName = NormalizeStr(material?.ProductModel),
+                    BodyMaterial = NormalizeStr(material?.BodyMaterial),
+                    InnerMaterial = NormalizeStr(material?.TrimMaterial ?? material?.InnerMaterial),
+                    FlangeConnection = NormalizeStr(material?.FlangeConnection),
+                    BonnetForm = NormalizeStr(material?.BonnetForm),
+                    FlowCharacteristic = NormalizeStr(material?.FlowCharacteristic),
+                    Actuator = NormalizeStr(material?.ActuatorModel),
+                    AccessoryConfig = NormalizeStr(material?.Accessories),
+                    SealFaceForm = NormalizeStr(material?.FlangeSealType ?? material?.SealFaceForm),
+                    OrderApprovedDate = order.FAPPROVEDATE,
+                    ReplyDeliveryDate = order.F_BLN_HFJHRQ,
+                    RequestedDeliveryDate = order.F_ORA_DATETIME,
+                    IsRuleServiceCandidate = true,
+                    IsSyncProductionLineCandidate = syncProductionLine.Length > 0,
+                    MatchKey = order.EntryId.HasValue
+                        ? $"E:{order.EntryId.Value}"
+                        : BuildBillPlanKey((string)order.SalesOrderNo, (string)order.PlanTrackingNo)
+                });
+            }
+
+            return candidates;
+        }
+
+        private async Task<List<OrderCycleLineCandidate>> LoadOcpOrderTrackingLineCandidatesAsync(
+            IReadOnlyList<ProductionOutputDetailRow> unresolvedDetails,
+            CancellationToken ct)
+        {
+            var candidates = new List<OrderCycleLineCandidate>();
+            if (unresolvedDetails == null || unresolvedDetails.Count == 0)
+            {
+                return candidates;
+            }
+
+            var billNos = unresolvedDetails
+                .Select(x => NormalizeStr(x.BillNo))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (billNos.Count == 0)
+            {
+                return candidates;
+            }
+
+            var wantedKeys = unresolvedDetails
+                .Where(x => NormalizeStr(x.BillNo).Length > 0 && NormalizeStr(x.PlanTrackingNo).Length > 0)
+                .Select(x => BuildBillPlanKey(x.BillNo, x.PlanTrackingNo))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var orderRows = new List<dynamic>();
+            foreach (var chunk in ChunkList(billNos, 500))
+            {
+                var rows = await _db.Set<OCP_OrderTracking>()
+                    .AsNoTracking()
+                    .Where(x => x.SOBillNo != null && chunk.Contains(x.SOBillNo))
+                    .Select(x => new
+                    {
+                        EntryId = x.SOEntryID,
+                        SalesOrderNo = x.SOBillNo,
+                        PlanTrackingNo = x.MtoNo,
+                        MaterialCode = x.MaterialNumber,
+                        ProductionDate = x.PrdScheduleDate,
+                        OrderApprovedDate = x.OrderAuditDate,
+                        x.ReplyDeliveryDate,
+                        RequestedDeliveryDate = x.DeliveryDate
+                    })
+                    .ToListAsync(ct);
+
+                orderRows.AddRange(rows.Where(x => wantedKeys.Contains(BuildBillPlanKey((string)x.SalesOrderNo, (string)x.PlanTrackingNo))));
+            }
+
+            if (orderRows.Count == 0)
+            {
+                return candidates;
+            }
+
+            var materialCodes = orderRows
+                .Select(x => NormalizeStr((string)x.MaterialCode))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var materialMap = new Dictionary<string, OCP_Material>(StringComparer.OrdinalIgnoreCase);
+            foreach (var chunk in ChunkList(materialCodes, 500))
+            {
+                var materials = await _db.Set<OCP_Material>()
+                    .AsNoTracking()
+                    .Where(x => x.MaterialCode != null && chunk.Contains(x.MaterialCode))
+                    .ToListAsync(ct);
+
+                foreach (var material in materials)
+                {
+                    var key = NormalizeStr(material.MaterialCode);
+                    if (key.Length > 0 && !materialMap.ContainsKey(key))
+                    {
+                        materialMap[key] = material;
+                    }
+                }
+            }
+
+            foreach (var order in orderRows)
+            {
+                var materialCode = NormalizeStr((string)order.MaterialCode);
+                materialMap.TryGetValue(materialCode, out var material);
+
+                var materialValveCategory = NormalizeStr(material?.ValveCategory);
+                var syncProductionLine = NormalizeSyncProductionLineCandidate(material?.Workshop);
+                var resolvedValveCategory = materialValveCategory;
+                if (resolvedValveCategory.Length == 0 && syncProductionLine.Length > 0)
+                {
+                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(material?.SpecModel, material?.ProductModel);
+                    if (categoryRule.HasValue)
+                    {
+                        resolvedValveCategory = NormalizeStr(categoryRule.Value.Category);
+                    }
+                }
+
+                candidates.Add(new OrderCycleLineCandidate
+                {
+                    EntryId = order.EntryId,
+                    SalesOrderNo = NormalizeStr((string)order.SalesOrderNo),
+                    PlanTrackingNo = NormalizeStr((string)order.PlanTrackingNo),
+                    ValveCategory = syncProductionLine.Length > 0 ? resolvedValveCategory : materialValveCategory,
+                    ProductionLine = syncProductionLine,
+                    ProductionDate = order.ProductionDate,
+                    NominalDiameter = NormalizeStr(material?.NominalDiameter),
+                    NominalPressure = NormalizeStr(material?.NominalPressure),
+                    SpecModel = NormalizeStr(material?.SpecModel),
+                    ProductName = NormalizeStr(material?.ProductModel),
+                    BodyMaterial = NormalizeStr(material?.BodyMaterial),
+                    InnerMaterial = NormalizeStr(material?.TrimMaterial ?? material?.InnerMaterial),
+                    FlangeConnection = NormalizeStr(material?.FlangeConnection),
+                    BonnetForm = NormalizeStr(material?.BonnetForm),
+                    FlowCharacteristic = NormalizeStr(material?.FlowCharacteristic),
+                    Actuator = NormalizeStr(material?.ActuatorModel),
+                    AccessoryConfig = NormalizeStr(material?.Accessories),
+                    SealFaceForm = NormalizeStr(material?.FlangeSealType ?? material?.SealFaceForm),
+                    OrderApprovedDate = order.OrderApprovedDate,
+                    ReplyDeliveryDate = order.ReplyDeliveryDate,
+                    RequestedDeliveryDate = order.RequestedDeliveryDate,
+                    IsRuleServiceCandidate = true,
+                    IsSyncProductionLineCandidate = syncProductionLine.Length > 0,
+                    MatchKey = order.EntryId.HasValue
+                        ? $"E:{order.EntryId.Value}"
+                        : BuildBillPlanKey((string)order.SalesOrderNo, (string)order.PlanTrackingNo)
+                });
+            }
+
+            return candidates;
+        }
+
+        private async Task<List<ResolvedLineAssignment>> ResolveLineCandidatesByRuleServiceAsync(
+            List<OrderCycleLineCandidate> candidates,
+            CancellationToken ct)
+        {
+            var resolvedAssignments = new List<ResolvedLineAssignment>();
+            if (candidates == null || candidates.Count == 0)
+            {
+                return resolvedAssignments;
+            }
+
+            var eligible = candidates
+                .Where(x => x.OrderApprovedDate.HasValue
+                    && x.ReplyDeliveryDate.HasValue
+                    && x.RequestedDeliveryDate.HasValue
+                    && NormalizeStr(x.MatchKey).Length > 0)
+                .ToList();
+
+            if (eligible.Count == 0)
+            {
+                return resolvedAssignments;
+            }
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(5);
+            var ruleLineCache = new Dictionary<string, RuleLineCacheEntry>(StringComparer.Ordinal);
+            var totalUniqueRequests = 0;
+            var totalCacheHits = 0;
+            var totalFailedRequests = 0;
+
+            bool ApplyRuleLine(OrderCycleLineCandidate candidate, string productionLine, HashSet<string> successKeys)
+            {
+                candidate.ProductionLine = NormalizeStr(productionLine);
+                candidate.ResolvedByRuleService = true;
+                var resolved = ResolveOrderCycleLineCandidate(candidate);
+                if (resolved == null)
+                {
+                    return false;
+                }
+
+                resolvedAssignments.Add(resolved);
+                successKeys.Add(candidate.MatchKey);
+                return true;
+            }
+
+            async Task<HashSet<string>> SendRuleBatchAsync(
+                List<OrderCycleLineCandidate> batch,
+                RuleProductTextMode productTextMode,
+                int batchStartIndex)
+            {
+                var successKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (batch == null || batch.Count == 0)
+                {
+                    return successKeys;
+                }
+
+                var requestPayload = new List<ValveLineRuleRequest>();
+                var requestMap = new Dictionary<string, (string CacheKey, List<OrderCycleLineCandidate> Candidates)>(StringComparer.OrdinalIgnoreCase);
+                var groupedRequests = new Dictionary<string, List<OrderCycleLineCandidate>>(StringComparer.Ordinal);
+
+                foreach (var candidate in batch)
+                {
+                    var cacheKey = BuildValveLineRuleCacheKey(candidate, productTextMode);
+                    if (ruleLineCache.TryGetValue(cacheKey, out var cacheEntry))
+                    {
+                        totalCacheHits++;
+                        if (cacheEntry.Success)
+                        {
+                            ApplyRuleLine(candidate, cacheEntry.ProductionLine, successKeys);
+                        }
+
+                        continue;
+                    }
+
+                    if (!groupedRequests.TryGetValue(cacheKey, out var group))
+                    {
+                        group = new List<OrderCycleLineCandidate>();
+                        groupedRequests[cacheKey] = group;
+                    }
+
+                    group.Add(candidate);
+                }
+
+                foreach (var group in groupedRequests)
+                {
+                    var representative = group.Value[0];
+                    var requestItem = BuildValveLineRuleRequest(representative, productTextMode);
+                    requestItem.Id = representative.MatchKey;
+                    requestPayload.Add(requestItem);
+                    requestMap[requestItem.Id] = (group.Key, group.Value);
+                }
+
+                if (requestPayload.Count == 0)
+                {
+                    return successKeys;
+                }
+
+                try
+                {
+                    totalUniqueRequests += requestPayload.Count;
+                    var json = JsonConvert.SerializeObject(requestPayload);
+                    using var request = new HttpRequestMessage(HttpMethod.Post, ValveRuleServiceUrl)
+                    {
+                        Content = new StringContent(json, Encoding.UTF8, "application/json")
+                    };
+
+                    using var response = await client.SendAsync(request, ct);
+                    var body = await response.Content.ReadAsStringAsync(ct);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("【WZ 补线】规则服务返回 {StatusCode}，响应片段：{Body}",
+                            (int)response.StatusCode,
+                            TruncateForLog(body));
+                        foreach (var group in groupedRequests)
+                        {
+                            ruleLineCache[group.Key] = new RuleLineCacheEntry { Success = false };
+                        }
+                        totalFailedRequests += requestPayload.Count;
+                        return successKeys;
+                    }
+
+                    var batchResponse = JsonConvert.DeserializeObject<ValveLineRuleBatchResponse>(body);
+                    if (batchResponse?.Results == null || batchResponse.Results.Count == 0)
+                    {
+                        foreach (var group in groupedRequests)
+                        {
+                            ruleLineCache[group.Key] = new RuleLineCacheEntry { Success = false };
+                        }
+                        totalFailedRequests += requestPayload.Count;
+                        return successKeys;
+                    }
+
+                    var returnedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var item in batchResponse.Results)
+                    {
+                        var id = NormalizeStr(item?.Id ?? item?.Result?.Id);
+                        if (id.Length == 0 || !requestMap.TryGetValue(id, out var mapped))
+                        {
+                            continue;
+                        }
+
+                        returnedIds.Add(id);
+                        if (item?.Success != true || item.Result == null)
+                        {
+                            ruleLineCache[mapped.CacheKey] = new RuleLineCacheEntry { Success = false };
+                            totalFailedRequests++;
+                            continue;
+                        }
+
+                        var productionLine = NormalizeStr(item.Result.ProductionLine);
+                        ruleLineCache[mapped.CacheKey] = new RuleLineCacheEntry
+                        {
+                            Success = productionLine.Length > 0,
+                            ProductionLine = productionLine
+                        };
+
+                        if (productionLine.Length == 0)
+                        {
+                            totalFailedRequests++;
+                            continue;
+                        }
+
+                        foreach (var candidate in mapped.Candidates)
+                        {
+                            ApplyRuleLine(candidate, productionLine, successKeys);
+                        }
+                    }
+
+                    foreach (var missing in requestMap.Where(x => !returnedIds.Contains(x.Key)))
+                    {
+                        ruleLineCache[missing.Value.CacheKey] = new RuleLineCacheEntry { Success = false };
+                        totalFailedRequests++;
+                    }
+                }
+                catch (Exception ex) when (!(ex is OperationCanceledException))
+                {
+                    foreach (var group in groupedRequests)
+                    {
+                        ruleLineCache[group.Key] = new RuleLineCacheEntry { Success = false };
+                    }
+                    totalFailedRequests += requestPayload.Count;
+                    _logger.LogWarning(ex,
+                        "【WZ 补线】规则服务批量推断失败，模式 {Mode}，批次 {Start}/{Total}",
+                        productTextMode,
+                        batchStartIndex + 1,
+                        eligible.Count);
+                }
+
+                return successKeys;
+            }
+
+            for (var i = 0; i < eligible.Count; i += ValveRuleBatchSize)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var batch = eligible.Skip(i).Take(ValveRuleBatchSize).ToList();
+                var specSuccessKeys = await SendRuleBatchAsync(batch, RuleProductTextMode.SpecModelFirst, i);
+                var fallbackBatch = batch
+                    .Where(x => !specSuccessKeys.Contains(x.MatchKey)
+                        && NormalizeStr(x.ProductName).Length > 0
+                        && !string.Equals(
+                            ResolveRuleProductText(x, RuleProductTextMode.SpecModelFirst),
+                            ResolveRuleProductText(x, RuleProductTextMode.ProductNameFallback),
+                            StringComparison.Ordinal))
+                    .ToList();
+                if (fallbackBatch.Count > 0)
+                {
+                    await SendRuleBatchAsync(fallbackBatch, RuleProductTextMode.ProductNameFallback, i);
+                }
+            }
+
+            _logger.LogInformation(
+                "【WZ 补线】规则服务去重完成：候选 {Candidates}，实际请求 {Requests}，缓存命中 {CacheHits}，失败请求 {FailedRequests}，补齐 {Resolved}",
+                eligible.Count,
+                totalUniqueRequests,
+                totalCacheHits,
+                totalFailedRequests,
+                resolvedAssignments.Count);
+
+            return resolvedAssignments;
+        }
+
+        private async Task<DetailBackfillSummary> BackfillDetailRowsAsync(
+            List<ProductionOutputDetailRow> details,
+            CancellationToken ct)
+        {
+            var unresolvedDetails = details?
+                .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                    || NormalizeStr(x.ValveCategory).Length == 0
+                    || NormalizeStr(x.ProductionLine).Length == 0)
+                .ToList() ?? new List<ProductionOutputDetailRow>();
+
+            var summary = new DetailBackfillSummary
+            {
+                Candidates = unresolvedDetails.Count
+            };
+
+            if (unresolvedDetails.Count == 0)
+            {
+                return summary;
+            }
+
+            var orderCycleCandidates = await LoadOrderCycleLineCandidatesAsync(unresolvedDetails, ct);
+            var resolvedAssignments = new List<ResolvedLineAssignment>();
+            foreach (var candidate in orderCycleCandidates)
+            {
+                var resolved = ResolveOrderCycleLineCandidate(candidate);
+                if (resolved != null)
+                {
+                    resolvedAssignments.Add(resolved);
+                }
+            }
+
+            if (resolvedAssignments.Count == 0)
+            {
+                summary.RemainingMissingLine = details.Count(x => x.ClassifyStatus == DetailStatusMissingLine);
+                summary.RemainingConflict = details.Count(x => x.ClassifyStatus == DetailStatusConflict);
+            }
+            else
+            {
+                var lookups = BuildResolvedLineLookups(resolvedAssignments);
+                var filled = ApplyResolvedLineAssignments(unresolvedDetails, lookups.ByEntryId, lookups.ByBillPlan);
+                summary.FilledByOrderCycle += filled.FilledByOrderCycle;
+                summary.FilledBySyncLine += filled.FilledBySyncLine;
+                summary.FilledByRule += filled.FilledByRule;
+            }
+
+            var stillUnresolved = details
+                .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                    || NormalizeStr(x.ValveCategory).Length == 0
+                    || NormalizeStr(x.ProductionLine).Length == 0)
+                .ToList();
+
+            if (stillUnresolved.Count > 0)
+            {
+                var orderTrackingCandidates = await LoadOrderTrackingLineCandidatesAsync(stillUnresolved, ct);
+                var directAssignments = orderTrackingCandidates
+                    .Select(ResolveOrderCycleLineCandidate)
+                    .OfType<ResolvedLineAssignment>()
+                    .ToList();
+
+                if (directAssignments.Count > 0)
+                {
+                    var lookups = BuildResolvedLineLookups(directAssignments);
+                    var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlan);
+                    summary.FilledByOrderCycle += filled.FilledByOrderCycle;
+                    summary.FilledBySyncLine += filled.FilledBySyncLine;
+                    summary.FilledByRule += filled.FilledByRule;
+                }
+
+                stillUnresolved = details
+                    .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                        || NormalizeStr(x.ValveCategory).Length == 0
+                        || NormalizeStr(x.ProductionLine).Length == 0)
+                    .ToList();
+
+                if (stillUnresolved.Count > 0)
+                {
+                    var ruleAssignments = await ResolveLineCandidatesByRuleServiceAsync(orderTrackingCandidates, ct);
+
+                    if (ruleAssignments.Count > 0)
+                    {
+                        var lookups = BuildResolvedLineLookups(ruleAssignments);
+                        var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlan);
+                        summary.FilledByOrderCycle += filled.FilledByOrderCycle;
+                        summary.FilledBySyncLine += filled.FilledBySyncLine;
+                        summary.FilledByRule += filled.FilledByRule;
+                    }
+                }
+            }
+
+            stillUnresolved = details
+                .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                    || NormalizeStr(x.ValveCategory).Length == 0
+                    || NormalizeStr(x.ProductionLine).Length == 0)
+                .ToList();
+
+            if (stillUnresolved.Count > 0)
+            {
+                var ocpOrderTrackingCandidates = await LoadOcpOrderTrackingLineCandidatesAsync(stillUnresolved, ct);
+                var ocpDirectAssignments = ocpOrderTrackingCandidates
+                    .Select(ResolveOrderCycleLineCandidate)
+                    .OfType<ResolvedLineAssignment>()
+                    .ToList();
+
+                if (ocpDirectAssignments.Count > 0)
+                {
+                    var lookups = BuildResolvedLineLookups(ocpDirectAssignments);
+                    var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlan);
+                    summary.FilledByOrderCycle += filled.FilledByOrderCycle;
+                    summary.FilledBySyncLine += filled.FilledBySyncLine;
+                    summary.FilledByRule += filled.FilledByRule;
+                }
+
+                stillUnresolved = details
+                    .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                        || NormalizeStr(x.ValveCategory).Length == 0
+                        || NormalizeStr(x.ProductionLine).Length == 0)
+                    .ToList();
+
+                if (stillUnresolved.Count > 0)
+                {
+                    var ocpRuleAssignments = await ResolveLineCandidatesByRuleServiceAsync(ocpOrderTrackingCandidates, ct);
+
+                    if (ocpRuleAssignments.Count > 0)
+                    {
+                        var lookups = BuildResolvedLineLookups(ocpRuleAssignments);
+                        var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlan);
+                        summary.FilledByOrderCycle += filled.FilledByOrderCycle;
+                        summary.FilledBySyncLine += filled.FilledBySyncLine;
+                        summary.FilledByRule += filled.FilledByRule;
+                    }
+                }
+            }
+
+            summary.RemainingMissingLine = details.Count(x => x.ClassifyStatus == DetailStatusMissingLine);
+            summary.RemainingConflict = details.Count(x => x.ClassifyStatus == DetailStatusConflict);
+            return summary;
+        }
+
+        private async Task<(List<ProductionOutputDetailRow> Details, int RawCount, int SkippedNoDate, int SkippedNoKey, int Matched, int MissingLine, int Conflict)>
+            LoadProductionOutputDetailsAsync(HttpClient client, DateTime startDate, DateTime endDate, CancellationToken ct)
+        {
+            var chunks = ChunkDates(startDate, endDate, ChunkDays).ToList();
+            using var esbGate = new SemaphoreSlim(MaxEsbConcurrentRequests, MaxEsbConcurrentRequests);
+            var chunkTasks = chunks.Select(async chunk =>
+            {
+                await esbGate.WaitAsync(ct);
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var rows = await RequestEsbRowsAdaptiveAsync(client, chunk.S, chunk.E, ct);
+                    _logger.LogInformation("  ├─ 段 {S}~{E}：ESB行 {Raw}",
+                        chunk.S.ToString("yyyy-MM-dd"),
+                        chunk.E.ToString("yyyy-MM-dd"),
+                        rows.Count);
+
+                    return (chunk.S, chunk.E, Rows: rows);
+                }
+                finally
+                {
+                    esbGate.Release();
+                }
+            }).ToList();
+
+            var chunkResults = await Task.WhenAll(chunkTasks);
+            var allRows = chunkResults
+                .OrderBy(x => x.S)
+                .SelectMany(x => x.Rows)
+                .ToList();
+
+            var build = BuildDetailRows(allRows, startDate, endDate);
+            var scheduleDateOverrides = await ApplyOcpScheduleDatesAsync(build.Details, ct);
+            var backfill = await BackfillDetailRowsAsync(build.Details, ct);
+            LogUnresolvedDetailRows(build.Details);
+            var summarizable = build.Details.Count(x => IsSummarizableStatus(x.ClassifyStatus));
+            var missingLine = build.Details.Count(x => x.ClassifyStatus == DetailStatusMissingLine);
+            var conflict = build.Details.Count(x => x.ClassifyStatus == DetailStatusConflict);
+
+            _logger.LogInformation(
+                "【WZ 明细去重】ESB行 {Raw}，明细键 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，同步排产日期覆盖 {ScheduleDateOverrides}，待补齐 {BackfillCandidates}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
+                allRows.Count,
+                build.Details.Count,
+                summarizable,
+                missingLine,
+                conflict,
+                scheduleDateOverrides,
+                backfill.Candidates,
+                backfill.FilledByOrderCycle,
+                backfill.FilledBySyncLine,
+                backfill.FilledByRule,
+                build.SkippedNoDate,
+                build.SkippedNoKey);
+
+            return (build.Details, allRows.Count, build.SkippedNoDate, build.SkippedNoKey, summarizable, missingLine, conflict);
+        }
+
+        private void LogUnresolvedDetailRows(IReadOnlyList<ProductionOutputDetailRow> details)
+        {
+            var unresolved = details?
+                .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                    || NormalizeStr(x.ValveCategory).Length == 0
+                    || NormalizeStr(x.ProductionLine).Length == 0)
+                .ToList() ?? new List<ProductionOutputDetailRow>();
+
+            if (unresolved.Count == 0)
+            {
+                return;
+            }
+
+            var topBills = unresolved
+                .GroupBy(x => NormalizeStr(x.BillNo))
+                .Select(g => new
+                {
+                    BillNo = g.Key.Length == 0 ? "(空订单号)" : g.Key,
+                    Rows = g.Count(),
+                    Quantity = g.Sum(x => x.Quantity)
+                })
+                .OrderByDescending(x => x.Rows)
+                .ThenBy(x => x.BillNo)
+                .Take(10)
+                .Select(x => $"{x.BillNo}:{x.Rows}/{x.Quantity:0.######}");
+
+            var topDates = unresolved
+                .GroupBy(x => x.ProductionDate.Date)
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    Rows = g.Count(),
+                    Quantity = g.Sum(x => x.Quantity)
+                })
+                .OrderByDescending(x => x.Rows)
+                .ThenBy(x => x.Date)
+                .Take(10)
+                .Select(x => $"{x.Date:yyyy-MM-dd}:{x.Rows}/{x.Quantity:0.######}");
+
+            var samples = unresolved
+                .OrderBy(x => x.ProductionDate)
+                .ThenBy(x => x.BillNo)
+                .ThenBy(x => x.PlanTrackingNo)
+                .Take(10)
+                .Select(x => $"{x.ProductionDate:yyyy-MM-dd}|{x.BillNo}|{x.PlanTrackingNo}|{x.EntryId}|{x.ClassifyStatus}|qty={x.Quantity:0.######}");
+
+            _logger.LogWarning(
+                "【WZ 未归属明细】剩余 {Rows} 行未进入产能汇总。按订单Top：{TopBills}；按排产日期Top：{TopDates}；样例：{Samples}",
+                unresolved.Count,
+                string.Join("; ", topBills),
+                string.Join("; ", topDates),
+                string.Join("; ", samples));
+        }
+
+        private async Task ClearTableAsync(string tableName, CancellationToken ct)
+        {
+            var (truncateSql, deleteSql) = tableName switch
+            {
+                "WZ_ProductionOutput" => (
+                    "TRUNCATE TABLE [dbo].[WZ_ProductionOutput];",
+                    "DELETE FROM [dbo].[WZ_ProductionOutput];"),
+                "WZ_ProductionOutputDetail" => (
+                    "TRUNCATE TABLE [dbo].[WZ_ProductionOutputDetail];",
+                    "DELETE FROM [dbo].[WZ_ProductionOutputDetail];"),
+                _ => throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "不支持清空该表")
+            };
+
+            try
+            {
+                await _db.Database.ExecuteSqlRawAsync(truncateSql, ct);
+            }
+            catch
+            {
+                await _db.Database.ExecuteSqlRawAsync(deleteSql, ct);
+            }
+        }
+
+        private static DataTable BuildProductionOutputDetailDataTable(IReadOnlyList<ProductionOutputDetailRow> details)
+        {
+            var table = new DataTable();
+            table.Columns.Add("BusinessKey", typeof(string));
+            table.Columns.Add("EntryId", typeof(long));
+            table.Columns.Add("BillNo", typeof(string));
+            table.Columns.Add("PlanTrackingNo", typeof(string));
+            table.Columns.Add("Seq", typeof(int));
+            table.Columns.Add("ProductionDate", typeof(DateTime));
+            table.Columns.Add("ValveCategory", typeof(string));
+            table.Columns.Add("ProductionLine", typeof(string));
+            table.Columns.Add("Quantity", typeof(decimal));
+            table.Columns.Add("ClassifyStatus", typeof(string));
+            table.Columns.Add("RawRowCount", typeof(int));
+            table.Columns.Add("LineCandidateCount", typeof(int));
+            table.Columns.Add("SourceStartDate", typeof(DateTime));
+            table.Columns.Add("SourceEndDate", typeof(DateTime));
+
+            foreach (var item in details)
+            {
+                table.Rows.Add(
+                    item.BusinessKey,
+                    item.EntryId.HasValue ? item.EntryId.Value : DBNull.Value,
+                    NormalizeStr(item.BillNo),
+                    NormalizeStr(item.PlanTrackingNo),
+                    item.Seq.HasValue ? item.Seq.Value : DBNull.Value,
+                    item.ProductionDate.Date,
+                    NormalizeStr(item.ValveCategory),
+                    NormalizeStr(item.ProductionLine),
+                    item.Quantity,
+                    NormalizeStr(item.ClassifyStatus),
+                    item.RawRowCount,
+                    item.LineCandidateCount,
+                    item.SourceStartDate.Date,
+                    item.SourceEndDate.Date);
+            }
+
+            return table;
+        }
+
+        private async Task<int> UpsertProductionOutputDetailsAsync(IReadOnlyList<ProductionOutputDetailRow> details, CancellationToken ct)
+        {
+            if (details == null || details.Count == 0)
+            {
+                return 0;
+            }
+
+            var sqlConnection = _db.Database.GetDbConnection() as SqlConnection;
+            if (sqlConnection == null)
+            {
+                throw new InvalidOperationException("WZ 明细批量入库需要 SQL Server 连接");
+            }
+
+            var sqlTransaction = _db.Database.CurrentTransaction?.GetDbTransaction() as SqlTransaction;
+            if (sqlTransaction == null)
+            {
+                throw new InvalidOperationException("WZ 明细批量入库必须在刷新事务内执行");
+            }
+
+            if (sqlConnection.State != ConnectionState.Open)
+            {
+                await sqlConnection.OpenAsync(ct);
+            }
+
+            using (var createCommand = new SqlCommand(@"
+IF OBJECT_ID('tempdb..#WZProductionOutputDetailImport') IS NOT NULL
+    DROP TABLE #WZProductionOutputDetailImport;
+
+CREATE TABLE #WZProductionOutputDetailImport
+(
+    [BusinessKey] NVARCHAR(300) NOT NULL,
+    [EntryId] BIGINT NULL,
+    [BillNo] NVARCHAR(100) NULL,
+    [PlanTrackingNo] NVARCHAR(255) NULL,
+    [Seq] INT NULL,
+    [ProductionDate] DATE NOT NULL,
+    [ValveCategory] NVARCHAR(50) NOT NULL,
+    [ProductionLine] NVARCHAR(50) NOT NULL,
+    [Quantity] DECIMAL(18,6) NOT NULL,
+    [ClassifyStatus] NVARCHAR(30) NOT NULL,
+    [RawRowCount] INT NOT NULL,
+    [LineCandidateCount] INT NOT NULL,
+    [SourceStartDate] DATE NULL,
+    [SourceEndDate] DATE NULL
+);", sqlConnection, sqlTransaction))
+            {
+                createCommand.CommandTimeout = 0;
+                await createCommand.ExecuteNonQueryAsync(ct);
+            }
+
+            var table = BuildProductionOutputDetailDataTable(details);
+            using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.CheckConstraints, sqlTransaction))
+            {
+                bulk.DestinationTableName = "#WZProductionOutputDetailImport";
+                bulk.BatchSize = InsertBatchSize;
+                bulk.BulkCopyTimeout = 0;
+                foreach (DataColumn column in table.Columns)
+                {
+                    bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+                }
+
+                await bulk.WriteToServerAsync(table, ct);
+            }
+
+            using (var mergeCommand = new SqlCommand(@"
+CREATE INDEX [IX_WZProductionOutputDetailImport_BusinessKey]
+    ON #WZProductionOutputDetailImport([BusinessKey]);
+
+CREATE TABLE #WZProductionOutputDetailMergeResult([Action] NVARCHAR(10) NOT NULL);
+
+MERGE [dbo].[WZ_ProductionOutputDetail] WITH (HOLDLOCK) AS target
+USING #WZProductionOutputDetailImport AS source
+ON target.[BusinessKey] = source.[BusinessKey]
+WHEN MATCHED THEN
+    UPDATE SET
+        [EntryId] = source.[EntryId],
+        [BillNo] = source.[BillNo],
+        [PlanTrackingNo] = source.[PlanTrackingNo],
+        [Seq] = source.[Seq],
+        [ProductionDate] = source.[ProductionDate],
+        [ValveCategory] = source.[ValveCategory],
+        [ProductionLine] = source.[ProductionLine],
+        [Quantity] = source.[Quantity],
+        [ClassifyStatus] = source.[ClassifyStatus],
+        [RawRowCount] = source.[RawRowCount],
+        [LineCandidateCount] = source.[LineCandidateCount],
+        [SourceStartDate] = source.[SourceStartDate],
+        [SourceEndDate] = source.[SourceEndDate],
+        [LastSyncTime] = GETDATE(),
+        [ModifyDate] = GETDATE()
+WHEN NOT MATCHED THEN
+    INSERT (
+        [BusinessKey], [EntryId], [BillNo], [PlanTrackingNo], [Seq],
+        [ProductionDate], [ValveCategory], [ProductionLine], [Quantity],
+        [ClassifyStatus], [RawRowCount], [LineCandidateCount],
+        [SourceStartDate], [SourceEndDate], [LastSyncTime], [CreateDate], [ModifyDate]
+    )
+    VALUES (
+        source.[BusinessKey], source.[EntryId], source.[BillNo], source.[PlanTrackingNo], source.[Seq],
+        source.[ProductionDate], source.[ValveCategory], source.[ProductionLine], source.[Quantity],
+        source.[ClassifyStatus], source.[RawRowCount], source.[LineCandidateCount],
+        source.[SourceStartDate], source.[SourceEndDate], GETDATE(), GETDATE(), GETDATE()
+    )
+OUTPUT $action INTO #WZProductionOutputDetailMergeResult;
+
+SELECT COUNT(1) FROM #WZProductionOutputDetailMergeResult;", sqlConnection, sqlTransaction))
+            {
+                mergeCommand.CommandTimeout = 0;
+                var result = await mergeCommand.ExecuteScalarAsync(ct);
+                var processed = Convert.ToInt32(result ?? 0);
+                _logger.LogInformation("  ├─ 批量写入/更新 WZ 明细 {Written}/{Total} 行", processed, details.Count);
+                return processed;
+            }
+        }
+
+        private async Task<int> RebuildProductionOutputSummaryAsync(CancellationToken ct)
+        {
+            await ClearTableAsync("WZ_ProductionOutput", ct);
+
+            var inserted = await _db.Database.ExecuteSqlRawAsync(@"
+INSERT INTO [dbo].[WZ_ProductionOutput]
+    ([ProductionDate], [ValveCategory], [ProductionLine], [Quantity], [CurrentThreshold])
+SELECT
+    d.[ProductionDate],
+    d.[ValveCategory],
+    d.[ProductionLine],
+    SUM(d.[Quantity]) AS [Quantity],
+    MAX(t.[CurrentThreshold]) AS [CurrentThreshold]
+FROM [dbo].[WZ_ProductionOutputDetail] d
+LEFT JOIN [dbo].[WZ_ProductionOutputThreshold] t
+    ON t.[ValveCategory] = d.[ValveCategory]
+   AND t.[ProductionLine] = d.[ProductionLine]
+WHERE d.[ClassifyStatus] IN ({0}, {1}, {2}, {3})
+  AND d.[ValveCategory] <> N''
+  AND d.[ProductionLine] <> N''
+GROUP BY d.[ProductionDate], d.[ValveCategory], d.[ProductionLine];
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutput', N'IsOverThreshold') IS NOT NULL
+BEGIN
+    UPDATE [dbo].[WZ_ProductionOutput]
+    SET [IsOverThreshold] =
+        CASE
+            WHEN [CurrentThreshold] IS NOT NULL
+             AND [CurrentThreshold] > 0
+             AND [Quantity] > [CurrentThreshold]
+            THEN 1 ELSE 0
+        END;
+END;
+", DetailStatusMatched, DetailStatusMatchedByOrderCycle, DetailStatusMatchedBySyncLine, DetailStatusMatchedByRule);
+
+            _logger.LogInformation("【WZ 汇总重算】已重建 WZ_ProductionOutput 聚合行：{Rows}", inserted);
+            return inserted;
+        }
+
         /// <summary>
-        /// 刷新（全量重建）：按“修改日期窗口”从 ESB 分段拉取数据，按“排产日×阀体×产线”聚合，最后一次性清表并入库。
-        /// 返回值：最终写入表中的“键行数”（即不同的 ProductionDate×ValveCategory×ProductionLine 的条目数）。
+        /// 刷新（全量重建）：按“修改日期窗口”拉取 ESB，重建明细去重表后重算产能汇总。
+        /// 返回值：最终写入 WZ_ProductionOutput 的汇总行数。
         /// </summary>
         public async Task<int> RefreshAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default)
         {
@@ -314,123 +2045,23 @@ END
                 if (endDate < startDate)
                     throw new ArgumentException("endDate 不能早于 startDate");
 
+                await EnsureThresholdTableAsync(ct);
+                await EnsureProductionOutputDetailTableAsync(ct);
+
                 var client = _httpClientFactory.CreateClient("WZ");
                 _logger.LogInformation("【WZ 刷新-全量重建】修改日窗口：{S} ~ {E}", startDate, endDate);
+                var load = await LoadProductionOutputDetailsAsync(client, startDate.Date, endDate.Date, ct);
 
-                // —— 全局聚合桶：跨分段累加（键 = 排产日×阀体×产线）
-                var buckets = new Dictionary<(DateTime Date, string Cat, string Line), decimal>();
-
-                var chunks = ChunkDates(startDate, endDate, ChunkDays).ToList();
-                using var esbGate = new SemaphoreSlim(MaxEsbConcurrentRequests, MaxEsbConcurrentRequests);
-                var chunkTasks = chunks.Select(async chunk =>
-                {
-                    await esbGate.WaitAsync(ct);
-                    try
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var rows = await RequestEsbRowsAdaptiveAsync(client, chunk.S, chunk.E, ct);
-
-                        // —— 本段内先做一次分组（按键求和），再汇入全局桶
-                        var aggregates = rows
-                            .Select(r => new
-                            {
-                                Date = PickDate(r), // 排产日（或回落日期）
-                                Cat = NormalizeStr(r.ValveCategory),
-                                Line = NormalizeStr(r.ProductionLine),
-                                Qty = r.Qty ?? 0m
-                            })
-                            .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
-                            .GroupBy(x => new { x.Date, x.Cat, x.Line })
-                            .Select(g => new
-                            {
-                                Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
-                                Sum = g.Sum(z => z.Qty)
-                            })
-                            .ToList();
-
-                        _logger.LogInformation("  ├─ 段 {S}~{E}：ESB行 {Raw}，聚合键 {Keys}",
-                            chunk.S.ToString("yyyy-MM-dd"), chunk.E.ToString("yyyy-MM-dd"),
-                            rows.Count, aggregates.Count);
-
-                        return (chunk.S, chunk.E, RawCount: rows.Count, Aggregates: aggregates);
-                    }
-                    finally
-                    {
-                        esbGate.Release();
-                    }
-                }).ToList();
-
-                var chunkResults = await Task.WhenAll(chunkTasks);
-                foreach (var result in chunkResults.OrderBy(x => x.S))
-                {
-                    foreach (var a in result.Aggregates)
-                    {
-                        if (buckets.TryGetValue(a.Key, out var cur))
-                            buckets[a.Key] = cur + a.Sum;
-                        else
-                            buckets[a.Key] = a.Sum;
-                    }
-
-                    _logger.LogInformation("  ├─ 段 {S}~{E} 汇总完成：累计键 {Total}",
-                        result.S.ToString("yyyy-MM-dd"), result.E.ToString("yyyy-MM-dd"), buckets.Count);
-                }
-
-                var thresholdMap = await LoadThresholdMapAsync(ct);
-
-                // —— 开启事务：清空 + 分批插入
                 using var tx = await _db.Database.BeginTransactionAsync(ct);
                 try
                 {
-                    // ① 清空缓存表（TRUNCATE 优先；失败则 DELETE 兜底）
-                    try
-                    {
-                        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [WZ_ProductionOutput];", ct);
-                    }
-                    catch
-                    {
-                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM [WZ_ProductionOutput];", ct);
-                    }
-
-                    // ② 分批插入
-                    var total = buckets.Count;
-                    if (total > 0)
-                    {
-                        var batch = new List<WZ_ProductionOutput>(InsertBatchSize);
-                        int written = 0;
-
-                        foreach (var kv in buckets)
-                        {
-                            batch.Add(new WZ_ProductionOutput
-                            {
-                                ProductionDate = kv.Key.Date,
-                                ValveCategory = kv.Key.Cat,
-                                ProductionLine = kv.Key.Line,
-                                Quantity = kv.Value,
-                                CurrentThreshold = ResolveThreshold(thresholdMap, kv.Key.Cat, kv.Key.Line)
-                            });
-
-                            if (batch.Count >= InsertBatchSize)
-                            {
-                                await _db.Set<WZ_ProductionOutput>().AddRangeAsync(batch, ct);
-                                await _db.SaveChangesAsync(ct);
-                                written += batch.Count;
-                                batch.Clear();
-                                _logger.LogInformation("  ├─ 已入库 {Written}/{Total} 行 ...", written, total);
-                            }
-                        }
-
-                        if (batch.Count > 0)
-                        {
-                            await _db.Set<WZ_ProductionOutput>().AddRangeAsync(batch, ct);
-                            await _db.SaveChangesAsync(ct);
-                            written += batch.Count;
-                            _logger.LogInformation("  ├─ 已入库 {Written}/{Total} 行（收尾批）", written, total);
-                        }
-                    }
+                    await ClearTableAsync("WZ_ProductionOutputDetail", ct);
+                    await UpsertProductionOutputDetailsAsync(load.Details, ct);
+                    var summaryRows = await RebuildProductionOutputSummaryAsync(ct);
 
                     await tx.CommitAsync(ct);
-                    _logger.LogInformation("【WZ 刷新完成】最终入库键数：{N}", total);
-                    return total;
+                    _logger.LogInformation("【WZ 刷新完成】明细键 {Details}，汇总行 {SummaryRows}", load.Details.Count, summaryRows);
+                    return summaryRows;
                 }
                 catch
                 {
@@ -445,7 +2076,7 @@ END
         }
 
         /// <summary>
-        /// 增量刷新：按“修改日期窗口”拉取 ESB 增量数据，按“排产日×阀体×产线”聚合后累加到本地缓存。
+        /// 增量刷新：按“修改日期窗口”拉取 ESB，幂等更新明细后重算汇总。
         /// </summary>
         public async Task<int> RefreshIncrementalAsync(DateTime startDate, DateTime endDate, CancellationToken ct = default)
         {
@@ -455,68 +2086,22 @@ END
                 if (endDate < startDate)
                     throw new ArgumentException("endDate 不能早于 startDate");
 
+                await EnsureThresholdTableAsync(ct);
+                await EnsureProductionOutputDetailTableAsync(ct);
+
                 var client = _httpClientFactory.CreateClient("WZ");
-                _logger.LogInformation("【WZ 刷新-增量累加】修改日窗口：{S} ~ {E}", startDate, endDate);
-
-                var rows = await RequestEsbRowsAdaptiveAsync(client, startDate.Date, endDate.Date, ct);
-                var buckets = rows
-                    .Select(r => new
-                    {
-                        Date = PickDate(r),
-                        Cat = NormalizeStr(r.ValveCategory),
-                        Line = NormalizeStr(r.ProductionLine),
-                        Qty = r.Qty ?? 0m
-                    })
-                    .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
-                    .GroupBy(x => new { x.Date, x.Cat, x.Line })
-                    .Select(g => new
-                    {
-                        Key = (Date: g.Key.Date!.Value, Cat: g.Key.Cat, Line: g.Key.Line),
-                        Sum = g.Sum(z => z.Qty)
-                    })
-                    .ToList();
-
-                _logger.LogInformation("【WZ 刷新-增量累加】ESB行 {Raw}，聚合键 {Keys}", rows.Count, buckets.Count);
-
-                if (buckets.Count == 0)
-                {
-                    return 0;
-                }
-
-                var thresholdMap = await LoadThresholdMapAsync(ct);
+                _logger.LogInformation("【WZ 刷新-增量幂等】修改日窗口：{S} ~ {E}", startDate, endDate);
+                var load = await LoadProductionOutputDetailsAsync(client, startDate.Date, endDate.Date, ct);
 
                 using var tx = await _db.Database.BeginTransactionAsync(ct);
                 try
                 {
-                    foreach (var item in buckets)
-                    {
-                        var threshold = ResolveThreshold(thresholdMap, item.Key.Cat, item.Key.Line);
-                        await _db.Database.ExecuteSqlRawAsync(@"
-MERGE [dbo].[WZ_ProductionOutput] WITH (HOLDLOCK) AS target
-USING (
-    SELECT
-        CAST({0} AS datetime) AS [ProductionDate],
-        CAST({1} AS nvarchar(50)) AS [ValveCategory],
-        CAST({2} AS nvarchar(50)) AS [ProductionLine],
-        CAST({3} AS decimal(18,6)) AS [Quantity],
-        CAST({4} AS decimal(18,6)) AS [CurrentThreshold]
-) AS source
-ON target.[ProductionDate] = source.[ProductionDate]
-   AND target.[ValveCategory] = source.[ValveCategory]
-   AND target.[ProductionLine] = source.[ProductionLine]
-WHEN MATCHED THEN
-    UPDATE SET
-        [Quantity] = ISNULL(target.[Quantity], 0) + source.[Quantity],
-        [CurrentThreshold] = source.[CurrentThreshold]
-WHEN NOT MATCHED THEN
-    INSERT ([ProductionDate], [ValveCategory], [ProductionLine], [Quantity], [CurrentThreshold])
-    VALUES (source.[ProductionDate], source.[ValveCategory], source.[ProductionLine], source.[Quantity], source.[CurrentThreshold]);
-", item.Key.Date, item.Key.Cat, item.Key.Line, item.Sum, threshold);
-                    }
+                    await UpsertProductionOutputDetailsAsync(load.Details, ct);
+                    var summaryRows = await RebuildProductionOutputSummaryAsync(ct);
 
                     await tx.CommitAsync(ct);
-                    _logger.LogInformation("【WZ 刷新-增量完成】已累加聚合键数：{N}", buckets.Count);
-                    return buckets.Count;
+                    _logger.LogInformation("【WZ 刷新-增量完成】明细键 {Details}，汇总行 {SummaryRows}", load.Details.Count, summaryRows);
+                    return summaryRows;
                 }
                 catch
                 {
@@ -563,6 +2148,270 @@ WHEN NOT MATCHED THEN
             ApplyThresholds(rows, thresholdMap);
 
             return rows;
+        }
+
+        public async Task<WZProductionOutputSyncHealthDto> GetSyncHealthAsync(
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            CancellationToken ct = default)
+        {
+            var start = (startDate ?? DateTime.Today.AddDays(-14)).Date;
+            var end = (endDate ?? DateTime.Today.AddDays(1)).Date;
+            if (end < start)
+            {
+                throw new ArgumentException("endDate 不能早于 startDate");
+            }
+
+            await EnsureProductionOutputDetailTableAsync(ct);
+
+            var health = new WZProductionOutputSyncHealthDto
+            {
+                StartDate = start,
+                EndDate = end
+            };
+
+            var connectionString = _db.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = _db.Database.GetDbConnection().ConnectionString;
+            }
+
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+
+            using (var cmd = new SqlCommand(@"
+SELECT
+    COUNT(1) AS DetailRows,
+    SUM(CASE WHEN [ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule')
+              AND ISNULL([ValveCategory], N'') <> N''
+              AND ISNULL([ProductionLine], N'') <> N'' THEN 1 ELSE 0 END) AS SummarizableRows,
+    SUM(CASE WHEN [ClassifyStatus] = N'missing_line'
+              OR ISNULL([ValveCategory], N'') = N''
+              OR ISNULL([ProductionLine], N'') = N'' THEN 1 ELSE 0 END) AS MissingLineRows,
+    SUM(CASE WHEN [ClassifyStatus] = N'conflict' THEN 1 ELSE 0 END) AS ConflictRows,
+    SUM(ISNULL([Quantity], 0)) AS DetailQuantity,
+    MAX([LastSyncTime]) AS LastDetailSyncTime
+FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate;", conn))
+            {
+                AddDateRangeParameters(cmd, start, end);
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    health.DetailRows = ReadInt(reader, "DetailRows");
+                    health.SummarizableRows = ReadInt(reader, "SummarizableRows");
+                    health.MissingLineRows = ReadInt(reader, "MissingLineRows");
+                    health.ConflictRows = ReadInt(reader, "ConflictRows");
+                    health.DetailQuantity = ReadDecimal(reader, "DetailQuantity");
+                    health.LastDetailSyncTime = ReadNullableDateTime(reader, "LastDetailSyncTime");
+                }
+            }
+
+            using (var cmd = new SqlCommand(@"
+SELECT
+    COUNT(1) AS SummaryRows,
+    SUM(ISNULL([Quantity], 0)) AS SummaryQuantity
+FROM [dbo].[WZ_ProductionOutput] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate;", conn))
+            {
+                AddDateRangeParameters(cmd, start, end);
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    health.SummaryRows = ReadInt(reader, "SummaryRows");
+                    health.SummaryQuantity = ReadDecimal(reader, "SummaryQuantity");
+                }
+            }
+
+            using (var cmd = new SqlCommand(@"
+SELECT
+    COUNT(1) AS OcpRowsInProductionDateRange,
+    SUM(CASE WHEN [PrdScheduleDate] IS NULL THEN 1 ELSE 0 END) AS OcpRowsMissingProductionDate
+FROM [dbo].[OCP_OrderTracking] WITH (NOLOCK)
+WHERE ([PrdScheduleDate] >= @StartDate AND [PrdScheduleDate] <= @EndDate)
+   OR ([PrdScheduleDate] IS NULL
+       AND [ESBModifyDate] >= @StartDate
+       AND [ESBModifyDate] < DATEADD(day, 1, @EndDate));
+
+SELECT
+    MAX([ESBModifyDate]) AS LatestOcpEsbModifyDate,
+    MAX([ModifyDate]) AS LatestOcpModifyDate
+FROM [dbo].[OCP_OrderTracking] WITH (NOLOCK);", conn))
+            {
+                AddDateRangeParameters(cmd, start, end);
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                {
+                    health.OcpRowsInProductionDateRange = ReadInt(reader, "OcpRowsInProductionDateRange");
+                    health.OcpRowsMissingProductionDate = ReadInt(reader, "OcpRowsMissingProductionDate");
+                }
+
+                if (await reader.NextResultAsync(ct) && await reader.ReadAsync(ct))
+                {
+                    health.LatestOcpEsbModifyDate = ReadNullableDateTime(reader, "LatestOcpEsbModifyDate");
+                    health.LatestOcpModifyDate = ReadNullableDateTime(reader, "LatestOcpModifyDate");
+                }
+            }
+
+            health.UnresolvedByBill = await QueryHealthBucketsAsync(conn, @"
+SELECT TOP (20)
+    ISNULL(NULLIF([BillNo], N''), N'(空订单号)') AS [KeyValue],
+    COUNT(1) AS [Rows],
+    SUM(ISNULL([Quantity], 0)) AS [Quantity]
+FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate
+  AND ([ClassifyStatus] IN (N'missing_line', N'conflict')
+       OR ISNULL([ValveCategory], N'') = N''
+       OR ISNULL([ProductionLine], N'') = N'')
+GROUP BY ISNULL(NULLIF([BillNo], N''), N'(空订单号)')
+ORDER BY COUNT(1) DESC, ISNULL(NULLIF([BillNo], N''), N'(空订单号)');", start, end, ct);
+
+            health.UnresolvedByDate = await QueryHealthBucketsAsync(conn, @"
+SELECT TOP (20)
+    CONVERT(varchar(10), [ProductionDate], 120) AS [KeyValue],
+    COUNT(1) AS [Rows],
+    SUM(ISNULL([Quantity], 0)) AS [Quantity]
+FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate
+  AND ([ClassifyStatus] IN (N'missing_line', N'conflict')
+       OR ISNULL([ValveCategory], N'') = N''
+       OR ISNULL([ProductionLine], N'') = N'')
+GROUP BY [ProductionDate]
+ORDER BY COUNT(1) DESC, [ProductionDate];", start, end, ct);
+
+            health.UnresolvedSamples = await QueryUnresolvedSamplesAsync(conn, start, end, ct);
+            health.Status = health.DetailRows == 0
+                ? "no_detail"
+                : health.MissingLineRows > 0 || health.ConflictRows > 0
+                    ? "warning"
+                    : "ok";
+
+            return health;
+        }
+
+        private static void AddDateRangeParameters(SqlCommand cmd, DateTime start, DateTime end)
+        {
+            cmd.CommandTimeout = 120;
+            cmd.Parameters.Add("@StartDate", SqlDbType.Date).Value = start.Date;
+            cmd.Parameters.Add("@EndDate", SqlDbType.Date).Value = end.Date;
+        }
+
+        private static int ReadInt(SqlDataReader reader, string name)
+        {
+            var ordinal = reader.GetOrdinal(name);
+            if (reader.IsDBNull(ordinal))
+            {
+                return 0;
+            }
+
+            return Convert.ToInt32(reader.GetValue(ordinal));
+        }
+
+        private static decimal ReadDecimal(SqlDataReader reader, string name)
+        {
+            var ordinal = reader.GetOrdinal(name);
+            if (reader.IsDBNull(ordinal))
+            {
+                return 0m;
+            }
+
+            return Convert.ToDecimal(reader.GetValue(ordinal));
+        }
+
+        private static string ReadString(SqlDataReader reader, string name)
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? string.Empty : Convert.ToString(reader.GetValue(ordinal)) ?? string.Empty;
+        }
+
+        private static DateTime? ReadNullableDateTime(SqlDataReader reader, string name)
+        {
+            var ordinal = reader.GetOrdinal(name);
+            if (reader.IsDBNull(ordinal))
+            {
+                return null;
+            }
+
+            return Convert.ToDateTime(reader.GetValue(ordinal));
+        }
+
+        private static async Task<List<WZProductionOutputHealthBucketDto>> QueryHealthBucketsAsync(
+            SqlConnection conn,
+            string sql,
+            DateTime start,
+            DateTime end,
+            CancellationToken ct)
+        {
+            var result = new List<WZProductionOutputHealthBucketDto>();
+            using var cmd = new SqlCommand(sql, conn);
+            AddDateRangeParameters(cmd, start, end);
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                result.Add(new WZProductionOutputHealthBucketDto
+                {
+                    Key = ReadString(reader, "KeyValue"),
+                    Rows = ReadInt(reader, "Rows"),
+                    Quantity = ReadDecimal(reader, "Quantity")
+                });
+            }
+
+            return result;
+        }
+
+        private static async Task<List<WZProductionOutputUnresolvedSampleDto>> QueryUnresolvedSamplesAsync(
+            SqlConnection conn,
+            DateTime start,
+            DateTime end,
+            CancellationToken ct)
+        {
+            var result = new List<WZProductionOutputUnresolvedSampleDto>();
+            using var cmd = new SqlCommand(@"
+SELECT TOP (50)
+    [ProductionDate],
+    ISNULL([BillNo], N'') AS [BillNo],
+    ISNULL([PlanTrackingNo], N'') AS [PlanTrackingNo],
+    [EntryId],
+    ISNULL([ValveCategory], N'') AS [ValveCategory],
+    ISNULL([ProductionLine], N'') AS [ProductionLine],
+    ISNULL([Quantity], 0) AS [Quantity],
+    ISNULL([ClassifyStatus], N'') AS [ClassifyStatus],
+    ISNULL([RawRowCount], 0) AS [RawRowCount],
+    ISNULL([LineCandidateCount], 0) AS [LineCandidateCount],
+    [LastSyncTime]
+FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate
+  AND ([ClassifyStatus] IN (N'missing_line', N'conflict')
+       OR ISNULL([ValveCategory], N'') = N''
+       OR ISNULL([ProductionLine], N'') = N'')
+ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [EntryId];", conn);
+            AddDateRangeParameters(cmd, start, end);
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var entryOrdinal = reader.GetOrdinal("EntryId");
+                result.Add(new WZProductionOutputUnresolvedSampleDto
+                {
+                    ProductionDate = Convert.ToDateTime(reader["ProductionDate"]).Date,
+                    BillNo = ReadString(reader, "BillNo"),
+                    PlanTrackingNo = ReadString(reader, "PlanTrackingNo"),
+                    EntryId = reader.IsDBNull(entryOrdinal) ? null : Convert.ToInt64(reader.GetValue(entryOrdinal)),
+                    ValveCategory = ReadString(reader, "ValveCategory"),
+                    ProductionLine = ReadString(reader, "ProductionLine"),
+                    Quantity = ReadDecimal(reader, "Quantity"),
+                    ClassifyStatus = ReadString(reader, "ClassifyStatus"),
+                    RawRowCount = ReadInt(reader, "RawRowCount"),
+                    LineCandidateCount = ReadInt(reader, "LineCandidateCount"),
+                    LastSyncTime = ReadNullableDateTime(reader, "LastSyncTime")
+                });
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -708,7 +2557,7 @@ WHEN NOT MATCHED THEN
         }
 
         /// <summary>
-        /// 排产优化汇总：用 CapacityScheduleDate 覆盖 ProductionDate 后按 ProductionDate × 阀体 × 产线聚合，写入 WZ_PreProductionOutput_2
+        /// 排产优化汇总：只按 CapacityScheduleDate × 阀体 × 产线聚合，写入 WZ_PreProductionOutput_2
         /// </summary>
         private async Task<int> RefreshPreProductionOutputOptimizedAsync(CancellationToken ct = default)
         {
@@ -719,7 +2568,6 @@ WHEN NOT MATCHED THEN
                     .AsNoTracking()
                     .Select(p => new
                     {
-                        p.ProductionDate,
                         p.CapacityScheduleDate,
                         p.ValveCategory,
                         p.ProductionLine,
@@ -728,14 +2576,15 @@ WHEN NOT MATCHED THEN
                     .ToListAsync(ct);
 
                 var buckets = rows
+                    .Where(r => r.CapacityScheduleDate.HasValue)
                     .Select(r => new
                     {
-                        Date = (r.CapacityScheduleDate ?? r.ProductionDate)?.Date,
+                        Date = r.CapacityScheduleDate!.Value.Date,
                         Cat = NormalizeStr(r.ValveCategory),
                         Line = NormalizeStr(r.ProductionLine),
                         Qty = r.Quantity
                     })
-                    .Where(x => x.Date.HasValue && x.Cat.Length > 0 && x.Line.Length > 0)
+                    .Where(x => x.Cat.Length > 0 && x.Line.Length > 0)
                     .GroupBy(x => new { x.Date, x.Cat, x.Line })
                     .Select(g => new
                     {
@@ -765,7 +2614,7 @@ WHEN NOT MATCHED THEN
                         {
                             batch.Add(new WZ_PreProductionOutput_2
                             {
-                                ProductionDate = item.Date!.Value,
+                                ProductionDate = item.Date,
                                 ValveCategory = item.Cat,
                                 ProductionLine = item.Line,
                                 Quantity = item.Sum

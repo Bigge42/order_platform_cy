@@ -77,6 +77,20 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
+        /// 同步健康检查：查看最近同步时间、源表新鲜度、未归属明细和样例。
+        /// GET /api/WZ/ProductionOutput/sync-health?start=2026-07-01&end=2026-07-31
+        /// </summary>
+        [HttpGet("sync-health")]
+        public async Task<ActionResult<WZProductionOutputSyncHealthDto>> GetSyncHealth(
+            [FromQuery(Name = "start")] DateTime? startDate,
+            [FromQuery(Name = "end")] DateTime? endDate,
+            CancellationToken ct = default)
+        {
+            var health = await _service.GetSyncHealthAsync(startDate, endDate, ct);
+            return Ok(health);
+        }
+
+        /// <summary>
         /// 手动刷新：清空并重建缓存（仅管理员调用）
         /// POST /api/WZ/ProductionOutput/refresh
         /// body: { "start":"2025-08-11", "end":"2025-08-12" }
@@ -102,9 +116,10 @@ namespace HDPro.CY.Order.Controllers.WZ
         [HttpPost("refresh/daily-increment-task")]
         public async Task<ActionResult<object>> RefreshDailyIncrementTask(CancellationToken ct = default)
         {
-            var syncDate = DateTime.Today;
-            var count = await _service.RefreshIncrementalAsync(syncDate, syncDate, ct);
-            return Ok(new { updated = count, range = $"{syncDate:yyyy-MM-dd}~{syncDate:yyyy-MM-dd}", mode = "incremental" });
+            var endDate = DateTime.Today.AddDays(1);
+            var startDate = DateTime.Today.AddDays(-14);
+            var count = await _service.RefreshIncrementalAsync(startDate, endDate, ct);
+            return Ok(new { updated = count, range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}", mode = "idempotent-rolling" });
         }
 
         /// <summary>
