@@ -63,7 +63,7 @@
 			icon: '/static/icon/31.png',
 			path:"/pages/report/index",
 			//path: "/pages/message/message",
-			subPage: false
+			subPage: true
 		},
 		{
 			name: "个人中心",
