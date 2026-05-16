@@ -62,6 +62,7 @@
         <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
         <el-button size="small" :type="buttonType('actual')" @click="loadData">仅看实际</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
+        <el-button size="small" :loading="unknownExportLoading" @click="exportUnknownData">导出未知产线</el-button>
       </div>
     </header>
 
@@ -89,6 +90,62 @@
 
     <!-- 悬浮提示 -->
     <div id="tooltip" class="tooltip" style="display:none"></div>
+
+    <!-- 同步弹窗 -->
+    <el-dialog
+      v-model="syncDialog"
+      title="产能数据同步"
+      width="860px"
+      class="sync-dialog"
+    >
+      <div class="sync-summary">
+        <div>
+          <div class="sync-title">最近定时增量更新记录</div>
+          <div class="sync-sub">近一年指同步接口入参时间窗口，返回数据仍按接口里的排产日期归集产能。</div>
+        </div>
+        <el-button size="small" :loading="syncHistoryLoading" @click="loadSyncHistory">刷新记录</el-button>
+      </div>
+
+      <el-table
+        :data="syncHistory"
+        size="small"
+        border
+        stripe
+        v-loading="syncHistoryLoading"
+        empty-text="暂无定时增量记录"
+        style="width:100%;margin-top:12px"
+      >
+        <el-table-column label="开始时间" width="154">
+          <template #default="{ row }">{{ fmtDateTime(row.startTime ?? row.StartTime) }}</template>
+        </el-table-column>
+        <el-table-column label="结束时间" width="154">
+          <template #default="{ row }">{{ fmtDateTime(row.endTime ?? row.EndTime) }}</template>
+        </el-table-column>
+        <el-table-column label="结果" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" :type="(row.success ?? row.Success) ? 'success' : 'danger'">
+              {{ (row.success ?? row.Success) ? '成功' : '失败' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="耗时" width="82" align="right">
+          <template #default="{ row }">{{ row.elapsedSeconds ?? row.ElapsedSeconds ?? '-' }} 秒</template>
+        </el-table-column>
+        <el-table-column label="返回内容" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.responseContent ?? row.ResponseContent ?? row.errorMsg ?? row.ErrorMsg ?? '' }}</template>
+        </el-table-column>
+      </el-table>
+
+      <div class="sync-window">
+        <div class="label">初始化全量同步窗口</div>
+        <div class="value">{{ syncRangeText }}</div>
+      </div>
+
+      <template #footer>
+        <el-button @click="syncDialog=false">关闭</el-button>
+        <el-button type="primary" :loading="syncLoading" @click="runFullSync">初始化全量同步（近一年）</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 阈值弹窗 -->
     <el-dialog
@@ -124,7 +181,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, getCurrentInstance } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import store from '@/store/index'
 
 /* ===== 尺寸参数 ===== */
@@ -136,6 +193,18 @@ const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+const fmtDateTime = value => {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value).replace('T', ' ').slice(0, 19)
+  return `${fmtYMD(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`
+}
+function getInterfaceSyncRange(){
+  const end = new Date()
+  const start = new Date(end)
+  start.setFullYear(start.getFullYear() - 1)
+  return { start: fmtYMD(start), end: fmtYMD(end) }
+}
 function daysBetween(start, end) {
   const s = new Date(start.getFullYear(), start.getMonth(), start.getDate())
   const e = new Date(end.getFullYear(), end.getMonth(), end.getDate())
@@ -202,6 +271,10 @@ const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const viewMode = ref('actual')
 const syncLoading = ref(false)
+const syncDialog = ref(false)
+const syncHistoryLoading = ref(false)
+const syncHistory = ref([])
+const unknownExportLoading = ref(false)
 const canSyncData = computed(() => {
   const userInfo = store.getters.getUserInfo?.() || {}
   const names = [
@@ -213,6 +286,10 @@ const canSyncData = computed(() => {
     store.getters.getLoginName?.()
   ]
   return names.some(name => String(name || '').trim().toLowerCase() === 'cyadmin')
+})
+const syncRangeText = computed(() => {
+  const { start, end } = getInterfaceSyncRange()
+  return `${start} ~ ${end}`
 })
 
 /* 原始返回数据（用于导出） */
@@ -550,15 +627,44 @@ async function syncData(){
     ElMessage.warning('只有 cyadmin 可以同步数据')
     return
   }
+  syncDialog.value = true
+  await loadSyncHistory()
+}
+
+async function loadSyncHistory(){
+  if (syncHistoryLoading.value) return
+  syncHistoryLoading.value = true
+  try{
+    const res = await proxy?.http?.get('/api/WZ/ProductionOutput/sync-history?take=10', {}, true)
+    syncHistory.value =
+      Array.isArray(res) ? res :
+        Array.isArray(res?.data) ? res.data :
+          Array.isArray(res?.Data) ? res.Data :
+            Array.isArray(res?.result) ? res.result : []
+  }catch(e){
+    console.error(e)
+    ElMessage.error('同步记录加载失败')
+  }finally{
+    syncHistoryLoading.value = false
+  }
+}
+
+async function runFullSync(){
+  if (syncLoading.value) return
+  const { start, end } = getInterfaceSyncRange()
+  try{
+    await ElMessageBox.confirm(
+      `确认按同步接口入参时间 ${start} ~ ${end} 初始化全量同步？该操作会重建产能明细与汇总表。`,
+      '初始化全量同步',
+      { type: 'warning', confirmButtonText: '开始同步', cancelButtonText: '取消' }
+    )
+  }catch{
+    return
+  }
+
   syncLoading.value = true
   try{
-    const endDate = new Date()
-    const startDate = new Date(endDate)
-    startDate.setFullYear(startDate.getFullYear() - 1)
-    const payload = {
-      start: fmtYMD(startDate),
-      end: fmtYMD(endDate)
-    }
+    const payload = { start, end }
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh', payload)
     const inserted = res?.inserted ?? res?.data?.inserted ?? res?.Data?.inserted
     const range = res?.range ?? res?.data?.range ?? res?.Data?.range
@@ -572,6 +678,7 @@ async function syncData(){
     ElMessage.error('同步失败，请查看控制台 Network/Console 日志')
   }finally{
     syncLoading.value = false
+    await loadSyncHistory()
   }
 }
 
@@ -732,6 +839,74 @@ function exportData(){
   ElMessage.success('导出完成')
 }
 
+function csvCell(value){
+  const text = String(value ?? '').replaceAll('"','""')
+  return `"${text}"`
+}
+
+function downloadCsv(fileName, headers, rows){
+  const csv = [headers.join(','), ...rows].join('\r\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function exportUnknownData(){
+  if (unknownExportLoading.value) return
+  const start = fmtYMD(state.rangeStart)
+  const end = fmtYMD(state.rangeEnd)
+  const qs = new URLSearchParams()
+  qs.set('start', start)
+  qs.set('end', end)
+  qs.set('take', '200000')
+
+  unknownExportLoading.value = true
+  try{
+    const res = await proxy?.http?.get(`/api/WZ/ProductionOutput/unknown-details?${qs.toString()}`, {}, true)
+    const rows =
+      Array.isArray(res) ? res :
+        Array.isArray(res?.data) ? res.data :
+          Array.isArray(res?.Data) ? res.Data :
+            Array.isArray(res?.result) ? res.result : []
+
+    if (!rows.length) {
+      ElMessage.warning('当前日期范围没有未知产线明细')
+      return
+    }
+
+    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','阀体种类','生产线','数量','状态','业务键']
+    const lines = rows.map(r => [
+      getProductionDateStr(r),
+      r.billNo ?? r.BillNo,
+      r.planTrackingNo ?? r.PlanTrackingNo,
+      r.seq ?? r.Seq,
+      r.entryId ?? r.EntryId,
+      r.materialKey ?? r.MaterialKey,
+      r.materialCode ?? r.MaterialCode,
+      r.materialId ?? r.MaterialId,
+      r.valveCategory ?? r.ValveCategory,
+      r.productionLine ?? r.ProductionLine,
+      Number(r.quantity ?? r.Quantity ?? 0),
+      r.classifyStatus ?? r.ClassifyStatus,
+      r.businessKey ?? r.BusinessKey
+    ].map(csvCell).join(','))
+
+    downloadCsv(`未知产线明细_${start}_${end}.csv`, headers, lines)
+    ElMessage.success(`已导出 ${rows.length} 条未知产线明细`)
+  }catch(e){
+    console.error(e)
+    ElMessage.error('未知产线明细导出失败')
+  }finally{
+    unknownExportLoading.value = false
+  }
+}
+
 function applyCurrentThresholdToRows(){
   if (!rawRows.value?.length) return
   rawRows.value.forEach(row => {
@@ -783,6 +958,16 @@ svg text{font-family:inherit}
 .threshold-dialog :deep(.el-dialog__header){padding:20px 24px 18px !important;border-bottom:1px solid var(--border)}
 .threshold-dialog :deep(.el-dialog__body){padding:20px 24px 26px !important}
 .threshold-dialog :deep(.el-dialog__footer){padding:18px 24px 22px !important}
+
+.sync-dialog :deep(.el-dialog__header){padding:20px 24px 16px !important;border-bottom:1px solid var(--border)}
+.sync-dialog :deep(.el-dialog__body){padding:18px 24px 22px !important}
+.sync-dialog :deep(.el-dialog__footer){padding:16px 24px 20px !important;border-top:1px solid var(--border)}
+.sync-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.sync-title{font-weight:600;color:#111827;font-size:14px}
+.sync-sub{font-size:12px;color:#64748b;margin-top:4px;line-height:1.5}
+.sync-window{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px}
+.sync-window .label{font-size:12px;color:#64748b}
+.sync-window .value{font-weight:600;color:#111827}
 
 /* 紧凑模式整体缩紧 */
 .compact .ph-container{padding:8px 12px}

@@ -285,8 +285,15 @@ if (app.Environment.IsDevelopment())
 //else
 //{
     // 定时任务，如果不需要定时执行定时任务，请将此处放到else里面
-    EnsureWzProductionOutputDailyRefreshTask();
-    app.UseQuartz(app.Environment);
+    var disableStartupQuartz = string.Equals(
+        Environment.GetEnvironmentVariable("HDPRO_DISABLE_STARTUP_QUARTZ"),
+        "1",
+        StringComparison.OrdinalIgnoreCase);
+    if (!disableStartupQuartz)
+    {
+        EnsureWzProductionOutputDailyRefreshTask();
+        app.UseQuartz(app.Environment);
+    }
 //}
 app.UseLanguagePack().UseMiddleware<LanguageMiddleWare>();
 app.UseMiddleware<ExceptionHandlerMiddleWare>();

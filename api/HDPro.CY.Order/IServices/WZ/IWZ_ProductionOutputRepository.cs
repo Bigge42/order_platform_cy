@@ -67,6 +67,65 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime? startDate = null,
             DateTime? endDate = null,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 导出未归属或冲突明细：用于人工补充规则。
+        /// </summary>
+        Task<List<WZProductionOutputUnknownDetailDto>> GetUnknownDetailsAsync(
+            DateTime startDate,
+            DateTime endDate,
+            int take = 100000,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 重新计算现有未归属明细的产线：不重拉源数据，只回写指定生产日期范围内的未知/冲突明细。
+        /// </summary>
+        Task<WZProductionOutputRefreshResultDto> ReclassifyExistingDetailsAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 预览：按 OCP_OrderTracking 的排产日期窗口生成 WZ 明细和汇总统计，不写入数据库。
+        /// </summary>
+        Task<WZProductionOutputRefreshResultDto> PreviewFromOrderTrackingAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 刷新：按 OCP_OrderTracking 的排产日期窗口重建 WZ 明细，并重算产能汇总。
+        /// </summary>
+        Task<WZProductionOutputRefreshResultDto> RefreshFromOrderTrackingAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
+    }
+
+    public sealed class WZProductionOutputRefreshResultDto
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public string Source { get; set; } = string.Empty;
+        public int RawRows { get; set; }
+        public int DetailRows { get; set; }
+        public int DistinctBills { get; set; }
+        public int DistinctBillPlans { get; set; }
+        public int SummarizableRows { get; set; }
+        public int MissingLineRows { get; set; }
+        public int ConflictRows { get; set; }
+        public decimal DetailQuantity { get; set; }
+        public int SummaryRows { get; set; }
+        public decimal SummaryQuantity { get; set; }
+        public List<WZProductionOutputStatusBucketDto> StatusBuckets { get; set; } = new();
+        public List<WZProductionOutputUnresolvedSampleDto> UnresolvedSamples { get; set; } = new();
+    }
+
+    public sealed class WZProductionOutputStatusBucketDto
+    {
+        public string Status { get; set; } = string.Empty;
+        public int Rows { get; set; }
+        public decimal Quantity { get; set; }
     }
 
     public sealed class WZProductionOutputSyncHealthDto
@@ -104,6 +163,26 @@ namespace HDPro.CY.Order.IServices.WZ
         public string BillNo { get; set; } = string.Empty;
         public string PlanTrackingNo { get; set; } = string.Empty;
         public long? EntryId { get; set; }
+        public string ValveCategory { get; set; } = string.Empty;
+        public string ProductionLine { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public string ClassifyStatus { get; set; } = string.Empty;
+        public int RawRowCount { get; set; }
+        public int LineCandidateCount { get; set; }
+        public DateTime? LastSyncTime { get; set; }
+    }
+
+    public sealed class WZProductionOutputUnknownDetailDto
+    {
+        public DateTime ProductionDate { get; set; }
+        public string BusinessKey { get; set; } = string.Empty;
+        public string BillNo { get; set; } = string.Empty;
+        public string PlanTrackingNo { get; set; } = string.Empty;
+        public long? EntryId { get; set; }
+        public int? Seq { get; set; }
+        public string MaterialKey { get; set; } = string.Empty;
+        public string MaterialCode { get; set; } = string.Empty;
+        public string MaterialId { get; set; } = string.Empty;
         public string ValveCategory { get; set; } = string.Empty;
         public string ProductionLine { get; set; } = string.Empty;
         public decimal Quantity { get; set; }
