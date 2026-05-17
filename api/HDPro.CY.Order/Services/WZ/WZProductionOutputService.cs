@@ -107,6 +107,8 @@ namespace HDPro.CY.Order.Services.WZ
             public string MaterialKey { get; set; } = string.Empty;
             public string MaterialCode { get; set; } = string.Empty;
             public string MaterialId { get; set; } = string.Empty;
+            public string SpecModel { get; set; } = string.Empty;
+            public string ProductModel { get; set; } = string.Empty;
             public DateTime? ProductionDate { get; set; }
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
@@ -123,6 +125,8 @@ namespace HDPro.CY.Order.Services.WZ
             public string MaterialKey { get; set; } = string.Empty;
             public string MaterialCode { get; set; } = string.Empty;
             public string MaterialId { get; set; } = string.Empty;
+            public string SpecModel { get; set; } = string.Empty;
+            public string ProductModel { get; set; } = string.Empty;
             public DateTime ProductionDate { get; set; }
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
@@ -176,8 +180,11 @@ namespace HDPro.CY.Order.Services.WZ
             public long? EntryId { get; set; }
             public string SalesOrderNo { get; set; } = string.Empty;
             public string PlanTrackingNo { get; set; } = string.Empty;
+            public long? MaterialId { get; set; }
             public string MaterialCode { get; set; } = string.Empty;
             public string MaterialName { get; set; } = string.Empty;
+            public string SpecModel { get; set; } = string.Empty;
+            public string ProductModel { get; set; } = string.Empty;
             public decimal Quantity { get; set; }
             public DateTime? ProductionDate { get; set; }
             public DateTime? OrderApprovedDate { get; set; }
@@ -194,6 +201,8 @@ namespace HDPro.CY.Order.Services.WZ
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
             public DateTime? ProductionDate { get; set; }
+            public string SpecModel { get; set; } = string.Empty;
+            public string ProductModel { get; set; } = string.Empty;
             public string ClassifyStatus { get; set; } = string.Empty;
             public int Score { get; set; }
         }
@@ -311,6 +320,9 @@ namespace HDPro.CY.Order.Services.WZ
         private static string BuildBillPlanMaterialKeyFromBillPlanKey(string billPlanKey, string materialKey)
             => $"{NormalizeStr(billPlanKey)}{BillPlanKeySeparator}{NormalizeStr(materialKey)}";
 
+        private static string MaterialIdToKey(long? materialId)
+            => materialId.HasValue && materialId.Value > 0 ? materialId.Value.ToString() : string.Empty;
+
         private static string BuildMaterialKey(string materialCode, string materialId)
         {
             var material = NormalizeStr(materialCode);
@@ -404,6 +416,41 @@ namespace HDPro.CY.Order.Services.WZ
                 ExtractMaterialKeyFromBusinessKey(detail.BusinessKey));
         }
 
+        private static List<string> GetOrderTrackingMaterialKeys(OrderTrackingMaterialRow row)
+        {
+            if (row == null)
+            {
+                return new List<string>();
+            }
+
+            return BuildMaterialKeys(row.MaterialCode, MaterialIdToKey(row.MaterialId));
+        }
+
+        private static int ScoreOrderTrackingMaterialRow(OrderTrackingMaterialRow row)
+        {
+            if (row == null)
+            {
+                return 0;
+            }
+
+            var score = 0;
+            if (row.MaterialId.HasValue && row.MaterialId.Value > 0) score += 8;
+            if (NormalizeStr(row.MaterialCode).Length > 0) score += 6;
+            if (NormalizeStr(row.SpecModel).Length > 0) score += 4;
+            if (NormalizeStr(row.ProductModel).Length > 0) score += 3;
+            if (NormalizeStr(row.MaterialName).Length > 0) score += 1;
+            if (row.ProductionDate.HasValue) score += 2;
+            if (row.EntryId.HasValue && row.EntryId.Value > 0) score += 2;
+            return score;
+        }
+
+        private static OrderTrackingMaterialRow PickBestOrderTrackingMaterialRow(IEnumerable<OrderTrackingMaterialRow> rows)
+            => rows?
+                .Where(x => x != null)
+                .OrderByDescending(ScoreOrderTrackingMaterialRow)
+                .ThenByDescending(x => x.TrackingId ?? 0)
+                .FirstOrDefault();
+
         private static bool IsSummarizableStatus(string status)
             => string.Equals(status, DetailStatusMatched, StringComparison.Ordinal)
                 || string.Equals(status, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal)
@@ -443,7 +490,7 @@ namespace HDPro.CY.Order.Services.WZ
 
             var billNo = NormalizeStr(row.SalesOrderNo);
             var planTrackingNo = NormalizeStr(row.PlanTrackingNo);
-            var materialKey = NormalizeStr(row.MaterialCode);
+            var materialKey = BuildMaterialKey(row.MaterialCode, MaterialIdToKey(row.MaterialId));
             var entryKey = row.EntryId.HasValue && row.EntryId.Value > 0
                 ? row.EntryId.Value.ToString()
                 : string.Empty;
@@ -476,6 +523,8 @@ namespace HDPro.CY.Order.Services.WZ
                 MaterialKey = BuildMaterialKey(row.MaterialCode, row.MaterialId),
                 MaterialCode = NormalizeStr(row.MaterialCode),
                 MaterialId = NormalizeStr(row.MaterialId),
+                SpecModel = string.Empty,
+                ProductModel = string.Empty,
                 ProductionDate = PickDate(row),
                 ValveCategory = NormalizeStr(row.ValveCategory),
                 ProductionLine = NormalizeStr(row.ProductionLine),
@@ -537,6 +586,8 @@ namespace HDPro.CY.Order.Services.WZ
                 MaterialKey = first.MaterialKey,
                 MaterialCode = first.MaterialCode,
                 MaterialId = first.MaterialId,
+                SpecModel = first.SpecModel,
+                ProductModel = first.ProductModel,
                 ProductionDate = chosen?.Date ?? fallback.ProductionDate!.Value.Date,
                 ValveCategory = chosen?.ValveCategory ?? string.Empty,
                 ProductionLine = chosen?.ProductionLine ?? string.Empty,
@@ -669,6 +720,8 @@ namespace HDPro.CY.Order.Services.WZ
                 ValveCategory = valveCategory,
                 ProductionLine = assignedLine,
                 ProductionDate = candidate.ProductionDate?.Date,
+                SpecModel = NormalizeStr(candidate.SpecModel),
+                ProductModel = NormalizeStr(candidate.ProductName),
                 ClassifyStatus = status,
                 Score = score
             };
@@ -799,6 +852,14 @@ namespace HDPro.CY.Order.Services.WZ
 
                 detail.ValveCategory = resolved.ValveCategory;
                 detail.ProductionLine = resolved.ProductionLine;
+                if (NormalizeStr(detail.SpecModel).Length == 0)
+                {
+                    detail.SpecModel = NormalizeStr(resolved.SpecModel);
+                }
+                if (NormalizeStr(detail.ProductModel).Length == 0)
+                {
+                    detail.ProductModel = NormalizeStr(resolved.ProductModel);
+                }
                 if (resolved.ProductionDate.HasValue)
                 {
                     detail.ProductionDate = resolved.ProductionDate.Value.Date;
@@ -910,6 +971,377 @@ namespace HDPro.CY.Order.Services.WZ
             }
 
             return materialMap;
+        }
+
+        private async Task<int> EnrichDetailMaterialModelsAsync(
+            IReadOnlyList<ProductionOutputDetailRow> details,
+            CancellationToken ct)
+        {
+            if (details == null || details.Count == 0)
+            {
+                return 0;
+            }
+
+            var materialKeys = details
+                .SelectMany(GetDetailMaterialKeys)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var materialMap = await LoadMaterialMapAsync(materialKeys, ct);
+            if (materialMap.Count == 0)
+            {
+                return 0;
+            }
+
+            var enriched = 0;
+            foreach (var detail in details)
+            {
+                OCP_Material material = null;
+                foreach (var key in GetDetailMaterialKeys(detail))
+                {
+                    if (materialMap.TryGetValue(key, out material))
+                    {
+                        break;
+                    }
+                }
+
+                if (material == null)
+                {
+                    continue;
+                }
+
+                var changed = false;
+                var materialId = material.MaterialID > 0 ? material.MaterialID.ToString() : string.Empty;
+                if (materialId.Length > 0 && NormalizeStr(detail.MaterialId).Length == 0)
+                {
+                    detail.MaterialId = materialId;
+                    changed = true;
+                }
+
+                var materialCode = NormalizeStr(material.MaterialCode);
+                if (materialCode.Length > 0 && !string.Equals(NormalizeStr(detail.MaterialCode), materialCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    detail.MaterialCode = materialCode;
+                    changed = true;
+                }
+
+                var materialKey = BuildMaterialKey(detail.MaterialCode, detail.MaterialId);
+                if (materialKey.Length > 0 && NormalizeStr(detail.MaterialKey).Length == 0)
+                {
+                    detail.MaterialKey = materialKey;
+                    changed = true;
+                }
+
+                var specModel = NormalizeStr(material.SpecModel);
+                if (specModel.Length > 0 && !string.Equals(NormalizeStr(detail.SpecModel), specModel, StringComparison.Ordinal))
+                {
+                    detail.SpecModel = specModel;
+                    changed = true;
+                }
+
+                var productModel = NormalizeStr(material.ProductModel);
+                if (productModel.Length > 0 && !string.Equals(NormalizeStr(detail.ProductModel), productModel, StringComparison.Ordinal))
+                {
+                    detail.ProductModel = productModel;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    enriched++;
+                }
+            }
+
+            return enriched;
+        }
+
+        private async Task<int> EnrichDetailMaterialsFromOcpOrderTrackingAsync(
+            IReadOnlyList<ProductionOutputDetailRow> details,
+            CancellationToken ct)
+        {
+            if (details == null || details.Count == 0)
+            {
+                return 0;
+            }
+
+            static bool IsUnknownValue(string value, string unknown)
+            {
+                var normalized = NormalizeStr(value);
+                return normalized.Length == 0 || string.Equals(normalized, unknown, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var targets = details
+                .Where(x => x != null
+                    && (NormalizeStr(x.MaterialCode).Length == 0
+                        || NormalizeStr(x.MaterialId).Length == 0
+                        || NormalizeStr(x.MaterialKey).Length == 0
+                        || NormalizeStr(x.SpecModel).Length == 0
+                        || NormalizeStr(x.ProductModel).Length == 0
+                        || IsUnknownValue(x.ValveCategory, UnknownValveCategory)))
+                .ToList();
+            if (targets.Count == 0)
+            {
+                return 0;
+            }
+
+            var entryIds = targets
+                .Where(x => x.EntryId.HasValue && x.EntryId.Value > 0)
+                .Select(x => x.EntryId!.Value)
+                .Distinct()
+                .ToList();
+
+            var wantedBillPlanKeys = targets
+                .Where(x => NormalizeStr(x.BillNo).Length > 0 && NormalizeStr(x.PlanTrackingNo).Length > 0)
+                .Select(x => BuildBillPlanKey(x.BillNo, x.PlanTrackingNo))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var billNos = targets
+                .Select(x => NormalizeStr(x.BillNo))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var orderRows = new List<OrderTrackingMaterialRow>();
+            foreach (var chunk in ChunkList(entryIds, 1000))
+            {
+                var rows = await _db.Set<OCP_OrderTracking>()
+                    .AsNoTracking()
+                    .Where(x => x.SOEntryID.HasValue && chunk.Contains(x.SOEntryID.Value))
+                    .Select(x => new OrderTrackingMaterialRow
+                    {
+                        TrackingId = x.Id,
+                        EntryId = x.SOEntryID,
+                        SalesOrderNo = x.SOBillNo,
+                        PlanTrackingNo = x.MtoNo,
+                        MaterialId = x.MaterialID,
+                        MaterialCode = x.MaterialNumber,
+                        MaterialName = x.MaterialName,
+                        SpecModel = x.TopSpecification,
+                        ProductModel = x.ProductionModel,
+                        Quantity = x.OrderQty ?? 0m,
+                        ProductionDate = x.PrdScheduleDate,
+                        OrderApprovedDate = x.OrderAuditDate,
+                        ReplyDeliveryDate = x.ReplyDeliveryDate,
+                        RequestedDeliveryDate = x.DeliveryDate
+                    })
+                    .ToListAsync(ct);
+
+                orderRows.AddRange(rows);
+            }
+
+            if (wantedBillPlanKeys.Count > 0)
+            {
+                foreach (var chunk in ChunkList(billNos, 500))
+                {
+                    var rows = await _db.Set<OCP_OrderTracking>()
+                        .AsNoTracking()
+                        .Where(x => x.SOBillNo != null && chunk.Contains(x.SOBillNo))
+                        .Select(x => new OrderTrackingMaterialRow
+                        {
+                            TrackingId = x.Id,
+                            EntryId = x.SOEntryID,
+                            SalesOrderNo = x.SOBillNo,
+                            PlanTrackingNo = x.MtoNo,
+                            MaterialId = x.MaterialID,
+                            MaterialCode = x.MaterialNumber,
+                            MaterialName = x.MaterialName,
+                            SpecModel = x.TopSpecification,
+                            ProductModel = x.ProductionModel,
+                            Quantity = x.OrderQty ?? 0m,
+                            ProductionDate = x.PrdScheduleDate,
+                            OrderApprovedDate = x.OrderAuditDate,
+                            ReplyDeliveryDate = x.ReplyDeliveryDate,
+                            RequestedDeliveryDate = x.DeliveryDate
+                        })
+                        .ToListAsync(ct);
+
+                    orderRows.AddRange(rows.Where(x => wantedBillPlanKeys.Contains(BuildBillPlanKey(x.SalesOrderNo, x.PlanTrackingNo))));
+                }
+            }
+
+            orderRows = orderRows
+                .Where(x => x != null && GetOrderTrackingMaterialKeys(x).Count > 0)
+                .GroupBy(x => x.TrackingId.HasValue
+                    ? $"T:{x.TrackingId.Value}"
+                    : $"{BuildBillPlanKey(x.SalesOrderNo, x.PlanTrackingNo)}{BillPlanKeySeparator}{BuildMaterialKey(x.MaterialCode, MaterialIdToKey(x.MaterialId))}",
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(PickBestOrderTrackingMaterialRow)
+                .Where(x => x != null)
+                .ToList();
+
+            if (orderRows.Count == 0)
+            {
+                return 0;
+            }
+
+            var materialKeys = orderRows
+                .SelectMany(GetOrderTrackingMaterialKeys)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var materialMap = await LoadMaterialMapAsync(materialKeys, ct);
+
+            var byEntryId = orderRows
+                .Where(x => x.EntryId.HasValue && x.EntryId.Value > 0)
+                .GroupBy(x => x.EntryId!.Value)
+                .ToDictionary(x => x.Key, x => PickBestOrderTrackingMaterialRow(x));
+
+            var byBillPlanMaterial = new Dictionary<string, OrderTrackingMaterialRow>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in orderRows)
+            {
+                foreach (var materialKey in GetOrderTrackingMaterialKeys(row))
+                {
+                    var key = BuildBillPlanMaterialKey(row.SalesOrderNo, row.PlanTrackingNo, materialKey);
+                    if (!byBillPlanMaterial.TryGetValue(key, out var existing)
+                        || ScoreOrderTrackingMaterialRow(row) > ScoreOrderTrackingMaterialRow(existing))
+                    {
+                        byBillPlanMaterial[key] = row;
+                    }
+                }
+            }
+
+            var byUniqueBillPlan = orderRows
+                .GroupBy(x => BuildBillPlanKey(x.SalesOrderNo, x.PlanTrackingNo), StringComparer.OrdinalIgnoreCase)
+                .Where(g =>
+                {
+                    var distinctMaterialKeys = g
+                        .SelectMany(GetOrderTrackingMaterialKeys)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(2)
+                        .Count();
+                    return distinctMaterialKeys == 1;
+                })
+                .ToDictionary(x => x.Key, x => PickBestOrderTrackingMaterialRow(x), StringComparer.OrdinalIgnoreCase);
+
+            var enriched = 0;
+            foreach (var detail in targets)
+            {
+                OrderTrackingMaterialRow order = null;
+                if (detail.EntryId.HasValue && detail.EntryId.Value > 0)
+                {
+                    byEntryId.TryGetValue(detail.EntryId.Value, out order);
+                }
+
+                var billPlanKey = BuildBillPlanKey(detail.BillNo, detail.PlanTrackingNo);
+                if (order == null)
+                {
+                    foreach (var materialKey in GetDetailMaterialKeys(detail))
+                    {
+                        if (byBillPlanMaterial.TryGetValue(BuildBillPlanMaterialKeyFromBillPlanKey(billPlanKey, materialKey), out order))
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (order == null)
+                {
+                    byUniqueBillPlan.TryGetValue(billPlanKey, out order);
+                }
+
+                if (order == null)
+                {
+                    continue;
+                }
+
+                OCP_Material material = null;
+                foreach (var materialKey in GetOrderTrackingMaterialKeys(order))
+                {
+                    if (materialMap.TryGetValue(materialKey, out material))
+                    {
+                        break;
+                    }
+                }
+
+                var changed = false;
+                var materialId = material != null && material.MaterialID > 0
+                    ? material.MaterialID.ToString()
+                    : MaterialIdToKey(order.MaterialId);
+                var materialCode = NormalizeStr(material?.MaterialCode);
+                if (materialCode.Length == 0)
+                {
+                    materialCode = NormalizeStr(order.MaterialCode);
+                }
+
+                if (NormalizeStr(detail.MaterialId).Length == 0 && materialId.Length > 0)
+                {
+                    detail.MaterialId = materialId;
+                    changed = true;
+                }
+
+                if (NormalizeStr(detail.MaterialCode).Length == 0 && materialCode.Length > 0)
+                {
+                    detail.MaterialCode = materialCode;
+                    changed = true;
+                }
+
+                var detailMaterialKey = BuildMaterialKey(detail.MaterialCode, detail.MaterialId);
+                if (NormalizeStr(detail.MaterialKey).Length == 0 && detailMaterialKey.Length > 0)
+                {
+                    detail.MaterialKey = detailMaterialKey;
+                    changed = true;
+                }
+
+                var specModel = NormalizeStr(material?.SpecModel);
+                if (specModel.Length == 0) specModel = NormalizeStr(order.SpecModel);
+                if (specModel.Length == 0) specModel = NormalizeStr(material?.ProductModel);
+
+                var productModel = NormalizeStr(material?.ProductModel);
+                if (productModel.Length == 0) productModel = NormalizeStr(order.ProductModel);
+                if (productModel.Length == 0) productModel = NormalizeStr(order.MaterialName);
+
+                if (NormalizeStr(detail.SpecModel).Length == 0 && specModel.Length > 0)
+                {
+                    detail.SpecModel = specModel;
+                    changed = true;
+                }
+
+                if (NormalizeStr(detail.ProductModel).Length == 0 && productModel.Length > 0)
+                {
+                    detail.ProductModel = productModel;
+                    changed = true;
+                }
+
+                var valveCategory = NormalizeStr(material?.ValveCategory);
+                if (valveCategory.Length == 0)
+                {
+                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(specModel, productModel);
+                    if (categoryRule.HasValue)
+                    {
+                        valveCategory = NormalizeStr(categoryRule.Value.Category);
+                    }
+                }
+
+                if (IsUnknownValue(detail.ValveCategory, UnknownValveCategory) && valveCategory.Length > 0)
+                {
+                    detail.ValveCategory = valveCategory;
+                    changed = true;
+                }
+
+                var productionLine = NormalizeSyncProductionLineCandidate(material?.Workshop);
+                if (IsUnknownValue(detail.ProductionLine, UnknownProductionLine) && productionLine.Length > 0)
+                {
+                    detail.ProductionLine = productionLine;
+                    changed = true;
+                }
+
+                var finalValve = NormalizeStr(detail.ValveCategory);
+                var finalLine = NormalizeStr(detail.ProductionLine);
+                if (finalValve.Length > 0
+                    && finalLine.Length > 0
+                    && !string.Equals(finalValve, UnknownValveCategory, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(finalLine, UnknownProductionLine, StringComparison.OrdinalIgnoreCase)
+                    && !IsSummarizableStatus(detail.ClassifyStatus))
+                {
+                    detail.ClassifyStatus = DetailStatusMatchedBySyncLine;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    enriched++;
+                }
+            }
+
+            return enriched;
         }
 
         private static List<WZProductionOutputManualLineRuleDto> NormalizeManualLineRules(
@@ -1407,6 +1839,8 @@ BEGIN
         [MaterialKey] NVARCHAR(100) NULL,
         [MaterialCode] NVARCHAR(100) NULL,
         [MaterialId] NVARCHAR(100) NULL,
+        [SpecModel] NVARCHAR(255) NULL,
+        [ProductModel] NVARCHAR(255) NULL,
         [ProductionDate] DATE NOT NULL,
         [ValveCategory] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ValveCategory] DEFAULT(N''),
         [ProductionLine] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ProductionLine] DEFAULT(N''),
@@ -1435,6 +1869,16 @@ END;
 IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'MaterialId') IS NULL
 BEGIN
     ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [MaterialId] NVARCHAR(100) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'SpecModel') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [SpecModel] NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductModel') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [ProductModel] NVARCHAR(255) NULL;
 END;
 ", ct);
 
@@ -1533,6 +1977,31 @@ IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductionDate') IS NOT NULL
 BEGIN
     CREATE INDEX [IX_WZ_ProductionOutputDetail_DateValveLineStatus]
         ON [dbo].[WZ_ProductionOutputDetail]([ProductionDate], [ValveCategory], [ProductionLine], [ClassifyStatus]);
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductionDate') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ValveCategory') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductionLine') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ClassifyStatus') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'BusinessKey') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'BillNo') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'PlanTrackingNo') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'Seq') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'MaterialCode') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'MaterialId') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'MaterialKey') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'SpecModel') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductModel') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'Quantity') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM sys.indexes
+       WHERE name = N'IX_WZ_ProductionOutputDetail_CellDetails'
+         AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+   )
+BEGIN
+    CREATE INDEX [IX_WZ_ProductionOutputDetail_CellDetails]
+        ON [dbo].[WZ_ProductionOutputDetail]([ProductionDate], [ValveCategory], [ProductionLine], [ClassifyStatus])
+        INCLUDE ([BusinessKey], [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [MaterialKey], [SpecModel], [ProductModel], [Quantity]);
 END;
 ", ct);
         }
@@ -1880,25 +2349,33 @@ END;
                 return candidates;
             }
 
-            var materialCodes = orderRows
-                .Select(x => NormalizeStr(x.MaterialCode))
-                .Where(x => x.Length > 0)
+            var materialKeys = orderRows
+                .SelectMany(GetOrderTrackingMaterialKeys)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var materialMap = await LoadMaterialMapAsync(materialCodes, ct);
+            var materialMap = await LoadMaterialMapAsync(materialKeys, ct);
 
             foreach (var order in orderRows)
             {
                 var materialCode = NormalizeStr(order.MaterialCode);
-                materialMap.TryGetValue(materialCode, out var material);
+                OCP_Material material = null;
+                foreach (var key in GetOrderTrackingMaterialKeys(order))
+                {
+                    if (materialMap.TryGetValue(key, out material))
+                    {
+                        break;
+                    }
+                }
 
                 var materialValveCategory = NormalizeStr(material?.ValveCategory);
                 var syncProductionLine = NormalizeSyncProductionLineCandidate(material?.Workshop);
                 var resolvedValveCategory = materialValveCategory;
                 if (resolvedValveCategory.Length == 0)
                 {
-                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(material?.SpecModel, material?.ProductModel);
+                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(
+                        NormalizeStr(material?.SpecModel).Length > 0 ? material?.SpecModel : order.SpecModel,
+                        NormalizeStr(material?.ProductModel).Length > 0 ? material?.ProductModel : order.ProductModel);
                     if (categoryRule.HasValue)
                     {
                         resolvedValveCategory = NormalizeStr(categoryRule.Value.Category);
@@ -1992,8 +2469,11 @@ END;
                         EntryId = x.SOEntryID,
                         SalesOrderNo = x.SOBillNo,
                         PlanTrackingNo = x.MtoNo,
+                        MaterialId = x.MaterialID,
                         MaterialCode = x.MaterialNumber,
                         MaterialName = x.MaterialName,
+                        SpecModel = x.TopSpecification,
+                        ProductModel = x.ProductionModel,
                         Quantity = x.OrderQty ?? 0m,
                         ProductionDate = x.PrdScheduleDate,
                         OrderApprovedDate = x.OrderAuditDate,
@@ -2020,25 +2500,33 @@ END;
                 return candidates;
             }
 
-            var materialCodes = orderRows
-                .Select(x => NormalizeStr(x.MaterialCode))
-                .Where(x => x.Length > 0)
+            var materialKeys = orderRows
+                .SelectMany(GetOrderTrackingMaterialKeys)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var materialMap = await LoadMaterialMapAsync(materialCodes, ct);
+            var materialMap = await LoadMaterialMapAsync(materialKeys, ct);
 
             foreach (var order in orderRows)
             {
                 var materialCode = NormalizeStr(order.MaterialCode);
-                materialMap.TryGetValue(materialCode, out var material);
+                OCP_Material material = null;
+                foreach (var key in GetOrderTrackingMaterialKeys(order))
+                {
+                    if (materialMap.TryGetValue(key, out material))
+                    {
+                        break;
+                    }
+                }
 
                 var materialValveCategory = NormalizeStr(material?.ValveCategory);
                 var syncProductionLine = NormalizeSyncProductionLineCandidate(material?.Workshop);
                 var resolvedValveCategory = materialValveCategory;
                 if (resolvedValveCategory.Length == 0)
                 {
-                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(material?.SpecModel, material?.ProductModel);
+                    var categoryRule = ValveCategoryRuleJudge.TryJudgeBySpecOrProduct(
+                        NormalizeStr(material?.SpecModel).Length > 0 ? material?.SpecModel : order.SpecModel,
+                        NormalizeStr(material?.ProductModel).Length > 0 ? material?.ProductModel : order.ProductModel);
                     if (categoryRule.HasValue)
                     {
                         resolvedValveCategory = NormalizeStr(categoryRule.Value.Category);
@@ -2050,17 +2538,21 @@ END;
                     EntryId = order.EntryId,
                     SalesOrderNo = NormalizeStr(order.SalesOrderNo),
                     PlanTrackingNo = NormalizeStr(order.PlanTrackingNo),
-                    MaterialKey = materialCode,
-                    MaterialKeys = BuildMaterialKeys(material, materialCode),
+                    MaterialKey = BuildMaterialKey(materialCode, MaterialIdToKey(order.MaterialId)),
+                    MaterialKeys = BuildMaterialKeys(material, materialCode, MaterialIdToKey(order.MaterialId)),
                     ValveCategory = resolvedValveCategory,
                     ProductionLine = syncProductionLine,
                     ProductionDate = order.ProductionDate,
                     NominalDiameter = NormalizeStr(material?.NominalDiameter),
                     NominalPressure = NormalizeStr(material?.NominalPressure),
-                    SpecModel = NormalizeStr(material?.SpecModel),
+                    SpecModel = NormalizeStr(material?.SpecModel).Length > 0
+                        ? NormalizeStr(material?.SpecModel)
+                        : NormalizeStr(order.SpecModel),
                     ProductName = NormalizeStr(material?.ProductModel).Length > 0
                         ? NormalizeStr(material?.ProductModel)
-                        : NormalizeStr(order.MaterialName),
+                        : (NormalizeStr(order.ProductModel).Length > 0
+                            ? NormalizeStr(order.ProductModel)
+                            : NormalizeStr(order.MaterialName)),
                     BodyMaterial = NormalizeStr(material?.BodyMaterial),
                     InnerMaterial = NormalizeStr(material?.TrimMaterial ?? material?.InnerMaterial),
                     FlangeConnection = NormalizeStr(material?.FlangeConnection),
@@ -2560,8 +3052,11 @@ END;
                     EntryId = x.SOEntryID,
                     SalesOrderNo = x.SOBillNo,
                     PlanTrackingNo = x.MtoNo,
+                    MaterialId = x.MaterialID,
                     MaterialCode = x.MaterialNumber,
                     MaterialName = x.MaterialName,
+                    SpecModel = x.TopSpecification,
+                    ProductModel = x.ProductionModel,
                     Quantity = x.OrderQty ?? 0m,
                     ProductionDate = x.PrdScheduleDate,
                     OrderApprovedDate = x.OrderAuditDate,
@@ -2595,9 +3090,11 @@ END;
                     BillNo = NormalizeStr(row.SalesOrderNo),
                     PlanTrackingNo = NormalizeStr(row.PlanTrackingNo),
                     Seq = null,
-                    MaterialKey = NormalizeStr(row.MaterialCode),
+                    MaterialKey = BuildMaterialKey(row.MaterialCode, MaterialIdToKey(row.MaterialId)),
                     MaterialCode = NormalizeStr(row.MaterialCode),
-                    MaterialId = string.Empty,
+                    MaterialId = MaterialIdToKey(row.MaterialId),
+                    SpecModel = NormalizeStr(row.SpecModel),
+                    ProductModel = NormalizeStr(row.ProductModel),
                     ProductionDate = row.ProductionDate.Value.Date,
                     ValveCategory = string.Empty,
                     ProductionLine = string.Empty,
@@ -2608,6 +3105,13 @@ END;
                     SourceStartDate = start,
                     SourceEndDate = endDate.Date
                 });
+            }
+
+            var ocpMaterialEnriched = await EnrichDetailMaterialsFromOcpOrderTrackingAsync(details, ct);
+            var materialEnriched = await EnrichDetailMaterialModelsAsync(details, ct);
+            if (materialEnriched > 0)
+            {
+                _logger.LogInformation("【WZ OCP口径】已补充物料规格型号 {Rows} 行，OCP订单跟踪补齐 {OcpRows} 行", materialEnriched, ocpMaterialEnriched);
             }
 
             var duplicateKeys = details
@@ -2763,6 +3267,8 @@ END;
                 .ToList();
 
             var build = BuildDetailRows(allRows, startDate, endDate);
+            var ocpMaterialEnriched = await EnrichDetailMaterialsFromOcpOrderTrackingAsync(build.Details, ct);
+            var materialEnriched = await EnrichDetailMaterialModelsAsync(build.Details, ct);
             var scheduleDateOverrides = await ApplyOcpScheduleDatesAsync(build.Details, ct);
             var backfill = await BackfillDetailRowsAsync(build.Details, ct);
             LogUnresolvedDetailRows(build.Details);
@@ -2771,12 +3277,14 @@ END;
             var conflict = build.Details.Count(x => x.ClassifyStatus == DetailStatusConflict);
 
             _logger.LogInformation(
-                "【WZ 明细去重】ESB行 {Raw}，明细键 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，同步排产日期覆盖 {ScheduleDateOverrides}，待补齐 {BackfillCandidates}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
+                "【WZ 明细去重】ESB行 {Raw}，明细键 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，OCP物料补齐 {OcpMaterialEnriched}，物料规格补齐 {MaterialEnriched}，同步排产日期覆盖 {ScheduleDateOverrides}，待补齐 {BackfillCandidates}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
                 allRows.Count,
                 build.Details.Count,
                 summarizable,
                 missingLine,
                 conflict,
+                ocpMaterialEnriched,
+                materialEnriched,
                 scheduleDateOverrides,
                 backfill.Candidates,
                 backfill.FilledByManual,
@@ -2877,6 +3385,8 @@ END;
             table.Columns.Add("MaterialKey", typeof(string));
             table.Columns.Add("MaterialCode", typeof(string));
             table.Columns.Add("MaterialId", typeof(string));
+            table.Columns.Add("SpecModel", typeof(string));
+            table.Columns.Add("ProductModel", typeof(string));
             table.Columns.Add("ProductionDate", typeof(DateTime));
             table.Columns.Add("ValveCategory", typeof(string));
             table.Columns.Add("ProductionLine", typeof(string));
@@ -2898,6 +3408,8 @@ END;
                     NormalizeStr(item.MaterialKey),
                     NormalizeStr(item.MaterialCode),
                     NormalizeStr(item.MaterialId),
+                    NormalizeStr(item.SpecModel),
+                    NormalizeStr(item.ProductModel),
                     item.ProductionDate.Date,
                     NormalizeStr(item.ValveCategory),
                     NormalizeStr(item.ProductionLine),
@@ -2950,6 +3462,8 @@ CREATE TABLE #WZProductionOutputDetailImport
     [MaterialKey] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
     [MaterialCode] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
     [MaterialId] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
+    [SpecModel] NVARCHAR(255) COLLATE DATABASE_DEFAULT NULL,
+    [ProductModel] NVARCHAR(255) COLLATE DATABASE_DEFAULT NULL,
     [ProductionDate] DATE NOT NULL,
     [ValveCategory] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
     [ProductionLine] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
@@ -3013,6 +3527,8 @@ WHEN MATCHED THEN
         [MaterialKey] = source.[MaterialKey],
         [MaterialCode] = source.[MaterialCode],
         [MaterialId] = source.[MaterialId],
+        [SpecModel] = source.[SpecModel],
+        [ProductModel] = source.[ProductModel],
         [ProductionDate] = source.[ProductionDate],
         [ValveCategory] = source.[ValveCategory],
         [ProductionLine] = source.[ProductionLine],
@@ -3027,14 +3543,14 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         [BusinessKey], [EntryId], [BillNo], [PlanTrackingNo], [Seq],
-        [MaterialKey], [MaterialCode], [MaterialId],
+        [MaterialKey], [MaterialCode], [MaterialId], [SpecModel], [ProductModel],
         [ProductionDate], [ValveCategory], [ProductionLine], [Quantity],
         [ClassifyStatus], [RawRowCount], [LineCandidateCount],
         [SourceStartDate], [SourceEndDate], [LastSyncTime], [CreateDate], [ModifyDate]
     )
     VALUES (
         source.[BusinessKey], source.[EntryId], source.[BillNo], source.[PlanTrackingNo], source.[Seq],
-        source.[MaterialKey], source.[MaterialCode], source.[MaterialId],
+        source.[MaterialKey], source.[MaterialCode], source.[MaterialId], source.[SpecModel], source.[ProductModel],
         source.[ProductionDate], source.[ValveCategory], source.[ProductionLine], source.[Quantity],
         source.[ClassifyStatus], source.[RawRowCount], source.[LineCandidateCount],
         source.[SourceStartDate], source.[SourceEndDate], GETDATE(), GETDATE(), GETDATE()
@@ -3375,6 +3891,8 @@ SELECT TOP (@Take)
         ELSE ISNULL(d.[MaterialCode], N'')
     END AS [MaterialCode],
     ISNULL(d.[MaterialId], N'') AS [MaterialId],
+    COALESCE(NULLIF(mat.[SpecModel], N''), NULLIF(mat.[ProductModel], N''), N'') AS [SpecModel],
+    ISNULL(mat.[ProductModel], N'') AS [ProductModel],
     ISNULL(d.[ValveCategory], N'') AS [ValveCategory],
     ISNULL(d.[ProductionLine], N'') AS [ProductionLine],
     ISNULL(d.[Quantity], 0) AS [Quantity],
@@ -3386,6 +3904,8 @@ FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
 OUTER APPLY (
     SELECT TOP (1)
         CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
+        CONVERT(NVARCHAR(255), ISNULL(m.[SpecModel], N'')) AS [SpecModel],
+        CONVERT(NVARCHAR(255), ISNULL(m.[ProductModel], N'')) AS [ProductModel],
         m.[MaterialID]
     FROM [dbo].[OCP_Material] m WITH (NOLOCK)
     WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
@@ -3425,6 +3945,8 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
                     MaterialKey = ReadString(reader, "MaterialKey"),
                     MaterialCode = ReadString(reader, "MaterialCode"),
                     MaterialId = ReadString(reader, "MaterialId"),
+                    SpecModel = ReadString(reader, "SpecModel"),
+                    ProductModel = ReadString(reader, "ProductModel"),
                     ValveCategory = ReadString(reader, "ValveCategory"),
                     ProductionLine = ReadString(reader, "ProductionLine"),
                     Quantity = ReadDecimal(reader, "Quantity"),
@@ -3445,22 +3967,67 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
             int take = 10000,
             CancellationToken ct = default)
         {
-            await EnsureProductionOutputDetailTableAsync(ct);
             take = Math.Clamp(take, 1, 50000);
+            var page = await GetCellDetailsPageInternalAsync(
+                productionDate,
+                valveCategory,
+                productionLine,
+                page: 1,
+                pageSize: take,
+                maxPageSize: 50000,
+                ct);
+
+            return page.Items;
+        }
+
+        public async Task<WZProductionOutputCellDetailPageDto> GetCellDetailsPageAsync(
+            DateTime productionDate,
+            string valveCategory,
+            string productionLine,
+            int page = 1,
+            int pageSize = 200,
+            CancellationToken ct = default)
+        {
+            return await GetCellDetailsPageInternalAsync(
+                productionDate,
+                valveCategory,
+                productionLine,
+                page,
+                pageSize,
+                maxPageSize: 1000,
+                ct);
+        }
+
+        private async Task<WZProductionOutputCellDetailPageDto> GetCellDetailsPageInternalAsync(
+            DateTime productionDate,
+            string valveCategory,
+            string productionLine,
+            int page,
+            int pageSize,
+            int maxPageSize,
+            CancellationToken ct)
+        {
+            await EnsureProductionOutputDetailTableAsync(ct);
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, maxPageSize);
 
             var normalizedValve = NormalizeStr(valveCategory);
-            if (normalizedValve.Length == 0)
-            {
-                normalizedValve = UnknownValveCategory;
-            }
+            if (normalizedValve.Length == 0) normalizedValve = UnknownValveCategory;
 
             var normalizedLine = NormalizeStr(productionLine);
-            if (normalizedLine.Length == 0)
-            {
-                normalizedLine = UnknownProductionLine;
-            }
+            if (normalizedLine.Length == 0) normalizedLine = UnknownProductionLine;
 
-            var result = new List<WZProductionOutputCellDetailDto>();
+            var isUnknownValve = string.Equals(normalizedValve, UnknownValveCategory, StringComparison.OrdinalIgnoreCase);
+            var isUnknownLine = string.Equals(normalizedLine, UnknownProductionLine, StringComparison.OrdinalIgnoreCase);
+            var filterSql = BuildCellDetailFilterSql(isUnknownValve, isUnknownLine);
+            page = Math.Min(page, (int.MaxValue / pageSize) + 1);
+            var offset = (page - 1) * pageSize;
+
+            var result = new WZProductionOutputCellDetailPageDto
+            {
+                Page = page,
+                PageSize = pageSize
+            };
             var connectionString = _db.Database.GetConnectionString();
             if (string.IsNullOrWhiteSpace(connectionString))
             {
@@ -3469,76 +4036,85 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
 
             using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync(ct);
-            using var cmd = new SqlCommand(@"
-WITH normalized AS (
+            using var cmd = new SqlCommand($@"
+WITH filtered AS (
     SELECT
         d.[ProductionDate],
+        ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
         ISNULL(d.[BillNo], N'') AS [BillNo],
         ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
         d.[Seq],
-        CASE
-            WHEN NULLIF(mat.[MaterialCode], N'') IS NOT NULL
-                 AND (ISNULL(d.[MaterialCode], N'') = N'' OR d.[MaterialCode] <> mat.[MaterialCode])
-                THEN mat.[MaterialCode]
-            ELSE ISNULL(d.[MaterialCode], N'')
-        END AS [MaterialCode],
+        ISNULL(d.[MaterialCode], N'') AS [MaterialCode],
         ISNULL(d.[MaterialId], N'') AS [MaterialId],
         ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+        COALESCE(NULLIF(d.[SpecModel], N''), NULLIF(d.[ProductModel], N''), N'') AS [SpecModel],
+        ISNULL(d.[ProductModel], N'') AS [ProductModel],
         ISNULL(d.[Quantity], 0) AS [Quantity],
-        ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
-        CASE
-            WHEN ISNULL(d.[ValveCategory], N'') <> N'' THEN d.[ValveCategory]
-            ELSE N'未知阀类'
-        END AS [NormalizedValveCategory],
-        CASE
-            WHEN d.[ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
-                 AND ISNULL(d.[ProductionLine], N'') <> N'' THEN d.[ProductionLine]
-            ELSE N'未知产线'
-        END AS [NormalizedProductionLine]
+        ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus]
     FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
-    OUTER APPLY (
-        SELECT TOP (1)
-            CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
-            m.[MaterialID]
-        FROM [dbo].[OCP_Material] m WITH (NOLOCK)
-        WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
-           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')))
-           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')))
-           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')))
-        ORDER BY CASE
-            WHEN NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode] THEN 0
-            WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) THEN 1
-            WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) THEN 2
-            ELSE 3
-        END
-    ) mat
-    WHERE d.[ProductionDate] = @ProductionDate
+    WHERE {filterSql}
 )
-SELECT TOP (@Take)
-    [ProductionDate],
-    [BillNo],
-    [PlanTrackingNo],
-    [Seq],
-    [MaterialCode],
-    [MaterialId],
-    [MaterialKey],
-    [Quantity],
-    [ClassifyStatus]
-FROM normalized
-WHERE [NormalizedValveCategory] = @ValveCategory
-  AND [NormalizedProductionLine] = @ProductionLine
-ORDER BY [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [MaterialKey];", conn);
+SELECT
+    COUNT(1) AS [TotalRows],
+    ISNULL(SUM([Quantity]), 0) AS [TotalQuantity]
+FROM filtered;
+
+WITH filtered AS (
+    SELECT
+        d.[ProductionDate],
+        ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
+        ISNULL(d.[BillNo], N'') AS [BillNo],
+        ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+        d.[Seq],
+        ISNULL(d.[MaterialCode], N'') AS [MaterialCode],
+        ISNULL(d.[MaterialId], N'') AS [MaterialId],
+        ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+        COALESCE(NULLIF(d.[SpecModel], N''), NULLIF(d.[ProductModel], N''), N'') AS [SpecModel],
+        ISNULL(d.[ProductModel], N'') AS [ProductModel],
+        ISNULL(d.[Quantity], 0) AS [Quantity],
+        ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus]
+    FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+    WHERE {filterSql}
+),
+paged AS (
+    SELECT *
+    FROM filtered
+    ORDER BY [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [MaterialKey], [BusinessKey]
+    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
+)
+SELECT
+    p.[ProductionDate],
+    p.[BillNo],
+    p.[PlanTrackingNo],
+    p.[Seq],
+    p.[MaterialCode],
+    p.[MaterialId],
+    p.[MaterialKey],
+    p.[SpecModel],
+    p.[ProductModel],
+    p.[Quantity],
+    p.[ClassifyStatus]
+FROM paged p
+ORDER BY p.[BillNo], p.[PlanTrackingNo], p.[Seq], p.[MaterialCode], p.[MaterialId], p.[MaterialKey], p.[BusinessKey];", conn);
 
             cmd.Parameters.Add("@ProductionDate", SqlDbType.Date).Value = productionDate.Date;
             cmd.Parameters.Add("@ValveCategory", SqlDbType.NVarChar, 50).Value = normalizedValve;
             cmd.Parameters.Add("@ProductionLine", SqlDbType.NVarChar, 50).Value = normalizedLine;
-            cmd.Parameters.Add("@Take", SqlDbType.Int).Value = take;
+            cmd.Parameters.Add("@Offset", SqlDbType.Int).Value = offset;
+            cmd.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
 
             using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                result.TotalRows = ReadInt(reader, "TotalRows");
+                result.TotalQuantity = ReadDecimal(reader, "TotalQuantity");
+            }
+
+            await reader.NextResultAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 var seqOrdinal = reader.GetOrdinal("Seq");
-                result.Add(new WZProductionOutputCellDetailDto
+                result.Items.Add(new WZProductionOutputCellDetailDto
                 {
                     ProductionDate = Convert.ToDateTime(reader["ProductionDate"]).Date,
                     BillNo = ReadString(reader, "BillNo"),
@@ -3547,6 +4123,8 @@ ORDER BY [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [Mater
                     MaterialCode = ReadString(reader, "MaterialCode"),
                     MaterialId = ReadString(reader, "MaterialId"),
                     MaterialKey = ReadString(reader, "MaterialKey"),
+                    SpecModel = ReadString(reader, "SpecModel"),
+                    ProductModel = ReadString(reader, "ProductModel"),
                     Quantity = ReadDecimal(reader, "Quantity"),
                     ClassifyStatus = ReadString(reader, "ClassifyStatus")
                 });
@@ -3554,6 +4132,24 @@ ORDER BY [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [Mater
 
             return result;
         }
+
+        private static string BuildCellDetailFilterSql(bool isUnknownValve, bool isUnknownLine)
+        {
+            var statusSql = GetSummarizableStatusSqlList();
+            var sql = new StringBuilder("d.[ProductionDate] = @ProductionDate");
+            sql.AppendLine();
+            sql.Append(isUnknownValve
+                ? "  AND (d.[ValveCategory] = N'' OR d.[ValveCategory] IS NULL)"
+                : "  AND d.[ValveCategory] = @ValveCategory");
+            sql.AppendLine();
+            sql.Append(isUnknownLine
+                ? $"  AND (d.[ClassifyStatus] NOT IN ({statusSql}) OR d.[ProductionLine] = N'' OR d.[ProductionLine] IS NULL)"
+                : $"  AND d.[ClassifyStatus] IN ({statusSql}) AND d.[ProductionLine] = @ProductionLine");
+            return sql.ToString();
+        }
+
+        private static string GetSummarizableStatusSqlList()
+            => $"N'{DetailStatusMatched}', N'{DetailStatusMatchedByOrderCycle}', N'{DetailStatusMatchedBySyncLine}', N'{DetailStatusMatchedByRule}', N'{DetailStatusMatchedByManual}'";
 
         private async Task<List<ProductionOutputDetailRow>> LoadExistingUnresolvedDetailRowsAsync(
             DateTime startDate,
@@ -3584,6 +4180,8 @@ SELECT
         ELSE ISNULL(d.[MaterialCode], N'')
     END AS [MaterialCode],
     ISNULL(d.[MaterialId], N'') AS [MaterialId],
+    COALESCE(NULLIF(d.[SpecModel], N''), NULLIF(d.[ProductModel], N''), N'') AS [SpecModel],
+    ISNULL(d.[ProductModel], N'') AS [ProductModel],
     d.[ProductionDate],
     ISNULL(d.[ValveCategory], N'') AS [ValveCategory],
     ISNULL(d.[ProductionLine], N'') AS [ProductionLine],
@@ -3636,6 +4234,8 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
                     MaterialKey = ReadString(reader, "MaterialKey"),
                     MaterialCode = ReadString(reader, "MaterialCode"),
                     MaterialId = ReadString(reader, "MaterialId"),
+                    SpecModel = ReadString(reader, "SpecModel"),
+                    ProductModel = ReadString(reader, "ProductModel"),
                     ProductionDate = Convert.ToDateTime(reader["ProductionDate"]).Date,
                     ValveCategory = ReadString(reader, "ValveCategory"),
                     ProductionLine = ReadString(reader, "ProductionLine"),
@@ -3673,6 +4273,8 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
                 details.Count,
                 details.Sum(x => x.Quantity));
 
+            var ocpMaterialEnriched = await EnrichDetailMaterialsFromOcpOrderTrackingAsync(details, ct);
+            var materialEnriched = await EnrichDetailMaterialModelsAsync(details, ct);
             var backfill = await BackfillDetailRowsAsync(details, ct);
             LogUnresolvedDetailRows(details);
 
@@ -3686,8 +4288,10 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
                 var result = BuildRefreshResult(details, startDate, endDate, "existing-detail.reclassify", details.Count);
 
                 _logger.LogInformation(
-                    "【WZ 重新归属完成】处理 {Details} 行，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，剩余缺产线 {MissingLine}，冲突 {Conflict}，汇总行 {SummaryRows}",
+                    "【WZ 重新归属完成】处理 {Details} 行，OCP物料补齐 {OcpMaterialEnriched}，物料规格补齐 {MaterialEnriched}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，剩余缺产线 {MissingLine}，冲突 {Conflict}，汇总行 {SummaryRows}",
                     details.Count,
+                    ocpMaterialEnriched,
+                    materialEnriched,
                     backfill.FilledByManual,
                     backfill.FilledByOrderCycle,
                     backfill.FilledBySyncLine,
@@ -3703,6 +4307,239 @@ ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[Busines
                 await tx.RollbackAsync(ct);
                 throw;
             }
+        }
+
+        public async Task<WZProductionOutputMaterialBackfillResultDto> BackfillMaterialModelsAsync(
+            DateTime startDate,
+            DateTime endDate,
+            int batchSize = 5000,
+            CancellationToken ct = default)
+        {
+            if (endDate < startDate)
+                throw new ArgumentException("endDate 不能早于 startDate");
+
+            batchSize = Math.Clamp(batchSize, 100, 20000);
+            await EnsureProductionOutputDetailTableAsync(ct);
+
+            var connectionString = _db.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = _db.Database.GetDbConnection().ConnectionString;
+            }
+
+            var updatedRows = 0;
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+
+            while (true)
+            {
+                using var cmd = new SqlCommand(@"
+;WITH matched AS
+(
+    SELECT TOP (@BatchSize)
+        d.[Id],
+        CONVERT(NVARCHAR(200), ISNULL(m.[MaterialCode], N'')) AS [MaterialCode],
+        CONVERT(NVARCHAR(255), ISNULL(m.[SpecModel], N'')) AS [SpecModel],
+        CONVERT(NVARCHAR(255), ISNULL(m.[ProductModel], N'')) AS [ProductModel]
+    FROM [dbo].[WZ_ProductionOutputDetail] d WITH (READPAST)
+    INNER JOIN [dbo].[OCP_Material] m WITH (NOLOCK)
+        ON m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(LTRIM(RTRIM(d.[MaterialId])), N''))
+    WHERE d.[ProductionDate] >= @StartDate
+      AND d.[ProductionDate] <= @EndDate
+      AND (
+            (NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') IS NULL
+                AND NULLIF(LTRIM(RTRIM(ISNULL(m.[MaterialCode], N''))), N'') IS NOT NULL)
+          OR (NULLIF(LTRIM(RTRIM(ISNULL(d.[SpecModel], N''))), N'') IS NULL
+                AND NULLIF(LTRIM(RTRIM(ISNULL(m.[SpecModel], N''))), N'') IS NOT NULL)
+          OR (NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductModel], N''))), N'') IS NULL
+                AND NULLIF(LTRIM(RTRIM(ISNULL(m.[ProductModel], N''))), N'') IS NOT NULL)
+      )
+    ORDER BY d.[Id]
+)
+UPDATE d
+SET
+    [MaterialCode] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[MaterialCode], N''))), N'') IS NOT NULL
+            THEN matched.[MaterialCode]
+        ELSE d.[MaterialCode]
+    END,
+    [SpecModel] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[SpecModel], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[SpecModel], N''))), N'') IS NOT NULL
+            THEN matched.[SpecModel]
+        ELSE d.[SpecModel]
+    END,
+    [ProductModel] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductModel], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[ProductModel], N''))), N'') IS NOT NULL
+            THEN matched.[ProductModel]
+        ELSE d.[ProductModel]
+    END,
+    [ModifyDate] = GETDATE()
+FROM [dbo].[WZ_ProductionOutputDetail] d
+INNER JOIN matched ON matched.[Id] = d.[Id];
+
+SELECT @@ROWCOUNT;", conn);
+
+                cmd.Parameters.Add("@BatchSize", SqlDbType.Int).Value = batchSize;
+                AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
+                cmd.CommandTimeout = 500;
+
+                var affected = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+                if (affected <= 0)
+                {
+                    break;
+                }
+
+                updatedRows += affected;
+            }
+
+            using (var cmd = new SqlCommand(@"
+CREATE TABLE #WZ_MaterialBackfillTarget
+(
+    [Id] INT NOT NULL PRIMARY KEY,
+    [EntryId] BIGINT NULL,
+    [BillNo] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
+    [PlanTrackingNo] NVARCHAR(255) COLLATE DATABASE_DEFAULT NULL,
+    [NeedMaterialCode] BIT NOT NULL,
+    [NeedSpecModel] BIT NOT NULL
+);
+
+INSERT INTO #WZ_MaterialBackfillTarget ([Id], [EntryId], [BillNo], [PlanTrackingNo], [NeedMaterialCode], [NeedSpecModel])
+SELECT
+    d.[Id],
+    TRY_CONVERT(BIGINT, d.[EntryId]) AS [EntryId],
+    NULLIF(LTRIM(RTRIM(ISNULL(d.[BillNo], N''))), N'') AS [BillNo],
+    NULLIF(LTRIM(RTRIM(ISNULL(d.[PlanTrackingNo], N''))), N'') AS [PlanTrackingNo],
+    CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') IS NULL THEN 1 ELSE 0 END AS [NeedMaterialCode],
+    CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[SpecModel], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductModel], N''))), N'') IS NULL
+            THEN 1
+        ELSE 0
+    END AS [NeedSpecModel]
+FROM [dbo].[WZ_ProductionOutputDetail] d WITH (READPAST)
+WHERE d.[ProductionDate] >= @StartDate
+  AND d.[ProductionDate] <= @EndDate
+  AND (
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') IS NULL
+     OR (
+            NULLIF(LTRIM(RTRIM(ISNULL(d.[SpecModel], N''))), N'') IS NULL
+        AND NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductModel], N''))), N'') IS NULL
+        )
+  );
+
+;WITH matched AS
+(
+    SELECT
+        t.[Id],
+        CONVERT(NVARCHAR(200), COALESCE(NULLIF(m.[MaterialCode], N''), NULLIF(ot.[MaterialNumber], N''), N'')) AS [MaterialCode],
+        CONVERT(NVARCHAR(255), COALESCE(NULLIF(m.[SpecModel], N''), NULLIF(ot.[TopSpecification], N''), NULLIF(m.[ProductModel], N''), NULLIF(ot.[ProductionModel], N''), N'')) AS [SpecModel],
+        CONVERT(NVARCHAR(255), COALESCE(NULLIF(m.[ProductModel], N''), NULLIF(ot.[ProductionModel], N''), N'')) AS [ProductModel]
+    FROM #WZ_MaterialBackfillTarget t
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            CONVERT(NVARCHAR(200), ISNULL(o.[MaterialNumber], N'')) COLLATE DATABASE_DEFAULT AS [MaterialNumber],
+            CONVERT(NVARCHAR(255), ISNULL(o.[TopSpecification], N'')) COLLATE DATABASE_DEFAULT AS [TopSpecification],
+            CONVERT(NVARCHAR(255), ISNULL(o.[ProductionModel], N'')) COLLATE DATABASE_DEFAULT AS [ProductionModel],
+            o.[MaterialID]
+        FROM [dbo].[OCP_OrderTracking] o WITH (NOLOCK)
+        WHERE (t.[EntryId] IS NOT NULL AND o.[SOEntryID] = t.[EntryId])
+           OR (t.[EntryId] IS NULL
+               AND t.[BillNo] IS NOT NULL
+               AND t.[PlanTrackingNo] IS NOT NULL
+               AND o.[SOBillNo] COLLATE DATABASE_DEFAULT = t.[BillNo]
+               AND o.[MtoNo] COLLATE DATABASE_DEFAULT = t.[PlanTrackingNo])
+        ORDER BY CASE WHEN t.[EntryId] IS NOT NULL AND o.[SOEntryID] = t.[EntryId] THEN 0 ELSE 1 END
+    ) ot
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            CONVERT(NVARCHAR(200), ISNULL(m0.[MaterialCode], N'')) COLLATE DATABASE_DEFAULT AS [MaterialCode],
+            CONVERT(NVARCHAR(255), ISNULL(m0.[SpecModel], N'')) COLLATE DATABASE_DEFAULT AS [SpecModel],
+            CONVERT(NVARCHAR(255), ISNULL(m0.[ProductModel], N'')) COLLATE DATABASE_DEFAULT AS [ProductModel]
+        FROM [dbo].[OCP_Material] m0 WITH (NOLOCK)
+        WHERE (ot.[MaterialID] IS NOT NULL AND m0.[MaterialID] = ot.[MaterialID])
+           OR (NULLIF(LTRIM(RTRIM(ISNULL(ot.[MaterialNumber], N''))), N'') IS NOT NULL AND m0.[MaterialCode] COLLATE DATABASE_DEFAULT = ot.[MaterialNumber])
+        ORDER BY CASE WHEN ot.[MaterialID] IS NOT NULL AND m0.[MaterialID] = ot.[MaterialID] THEN 0 ELSE 1 END
+    ) m
+    WHERE (
+              t.[NeedMaterialCode] = 1
+          AND NULLIF(LTRIM(RTRIM(COALESCE(NULLIF(m.[MaterialCode], N''), NULLIF(ot.[MaterialNumber], N''), N''))), N'') IS NOT NULL
+          )
+       OR (
+              t.[NeedSpecModel] = 1
+          AND NULLIF(LTRIM(RTRIM(COALESCE(NULLIF(m.[SpecModel], N''), NULLIF(ot.[TopSpecification], N''), NULLIF(m.[ProductModel], N''), NULLIF(ot.[ProductionModel], N''), N''))), N'') IS NOT NULL
+          )
+)
+UPDATE d
+SET
+    [MaterialCode] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[MaterialCode], N''))), N'') IS NOT NULL
+            THEN matched.[MaterialCode]
+        ELSE d.[MaterialCode]
+    END,
+    [SpecModel] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[SpecModel], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[SpecModel], N''))), N'') IS NOT NULL
+            THEN matched.[SpecModel]
+        ELSE d.[SpecModel]
+    END,
+    [ProductModel] = CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductModel], N''))), N'') IS NULL
+             AND NULLIF(LTRIM(RTRIM(ISNULL(matched.[ProductModel], N''))), N'') IS NOT NULL
+            THEN matched.[ProductModel]
+        ELSE d.[ProductModel]
+    END,
+    [ModifyDate] = GETDATE()
+FROM [dbo].[WZ_ProductionOutputDetail] d
+INNER JOIN matched ON matched.[Id] = d.[Id];
+
+SELECT @@ROWCOUNT;", conn))
+            {
+                AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
+                cmd.CommandTimeout = 500;
+                updatedRows += Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+            }
+
+            WZProductionOutputMaterialBackfillResultDto result;
+            using (var cmd = new SqlCommand(@"
+SELECT
+    COUNT(1) AS [TotalRows],
+    SUM(CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL([MaterialCode], N''))), N'') IS NOT NULL THEN 1 ELSE 0 END) AS [RowsWithMaterialCode],
+    SUM(CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL([SpecModel], N''))), N'') IS NOT NULL THEN 1 ELSE 0 END) AS [RowsWithSpecModel],
+    SUM(CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL([ProductModel], N''))), N'') IS NOT NULL THEN 1 ELSE 0 END) AS [RowsWithProductModel]
+FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
+WHERE [ProductionDate] >= @StartDate
+  AND [ProductionDate] <= @EndDate;", conn))
+            {
+                AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                await reader.ReadAsync(ct);
+                result = new WZProductionOutputMaterialBackfillResultDto
+                {
+                    StartDate = startDate.Date,
+                    EndDate = endDate.Date,
+                    UpdatedRows = updatedRows,
+                    TotalRows = ReadInt(reader, "TotalRows"),
+                    RowsWithMaterialCode = ReadInt(reader, "RowsWithMaterialCode"),
+                    RowsWithSpecModel = ReadInt(reader, "RowsWithSpecModel"),
+                    RowsWithProductModel = ReadInt(reader, "RowsWithProductModel")
+                };
+            }
+
+            _logger.LogInformation(
+                "【WZ 物料规格回填完成】日期 {Start}~{End}，更新 {UpdatedRows} 行，规格型号 {SpecRows}/{TotalRows}",
+                startDate.ToString("yyyy-MM-dd"),
+                endDate.ToString("yyyy-MM-dd"),
+                result.UpdatedRows,
+                result.RowsWithSpecModel,
+                result.TotalRows);
+
+            return result;
         }
 
         public async Task<WZProductionOutputSyncHealthDto> GetSyncHealthAsync(

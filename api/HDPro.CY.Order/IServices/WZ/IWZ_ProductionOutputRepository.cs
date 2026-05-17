@@ -88,6 +88,17 @@ namespace HDPro.CY.Order.IServices.WZ
             CancellationToken ct = default);
 
         /// <summary>
+        /// 分页查询指定热力图格子的订单明细。
+        /// </summary>
+        Task<WZProductionOutputCellDetailPageDto> GetCellDetailsPageAsync(
+            DateTime productionDate,
+            string valveCategory,
+            string productionLine,
+            int page = 1,
+            int pageSize = 200,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// 保存人工产线映射规则，后续同步/重新归类会优先使用。
         /// </summary>
         Task<int> SaveManualLineRulesAsync(
@@ -100,6 +111,15 @@ namespace HDPro.CY.Order.IServices.WZ
         Task<WZProductionOutputRefreshResultDto> ReclassifyExistingDetailsAsync(
             DateTime startDate,
             DateTime endDate,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 回填现有明细的物料规格型号：不重拉源数据、不重建明细，只按生产日期范围补充 SpecModel/ProductModel。
+        /// </summary>
+        Task<WZProductionOutputMaterialBackfillResultDto> BackfillMaterialModelsAsync(
+            DateTime startDate,
+            DateTime endDate,
+            int batchSize = 5000,
             CancellationToken ct = default);
 
         /// <summary>
@@ -136,6 +156,17 @@ namespace HDPro.CY.Order.IServices.WZ
         public decimal SummaryQuantity { get; set; }
         public List<WZProductionOutputStatusBucketDto> StatusBuckets { get; set; } = new();
         public List<WZProductionOutputUnresolvedSampleDto> UnresolvedSamples { get; set; } = new();
+    }
+
+    public sealed class WZProductionOutputMaterialBackfillResultDto
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public int UpdatedRows { get; set; }
+        public int TotalRows { get; set; }
+        public int RowsWithMaterialCode { get; set; }
+        public int RowsWithSpecModel { get; set; }
+        public int RowsWithProductModel { get; set; }
     }
 
     public sealed class WZProductionOutputStatusBucketDto
@@ -200,6 +231,8 @@ namespace HDPro.CY.Order.IServices.WZ
         public string MaterialKey { get; set; } = string.Empty;
         public string MaterialCode { get; set; } = string.Empty;
         public string MaterialId { get; set; } = string.Empty;
+        public string SpecModel { get; set; } = string.Empty;
+        public string ProductModel { get; set; } = string.Empty;
         public string ValveCategory { get; set; } = string.Empty;
         public string ProductionLine { get; set; } = string.Empty;
         public decimal Quantity { get; set; }
@@ -217,9 +250,20 @@ namespace HDPro.CY.Order.IServices.WZ
         public string MaterialCode { get; set; } = string.Empty;
         public string MaterialId { get; set; } = string.Empty;
         public string MaterialKey { get; set; } = string.Empty;
+        public string SpecModel { get; set; } = string.Empty;
+        public string ProductModel { get; set; } = string.Empty;
         public int? Seq { get; set; }
         public decimal Quantity { get; set; }
         public string ClassifyStatus { get; set; } = string.Empty;
+    }
+
+    public sealed class WZProductionOutputCellDetailPageDto
+    {
+        public List<WZProductionOutputCellDetailDto> Items { get; set; } = new();
+        public int TotalRows { get; set; }
+        public decimal TotalQuantity { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
     }
 
     public sealed class WZProductionOutputManualLineRuleDto

@@ -110,6 +110,25 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
+        /// 分页查询热力图单元格订单明细。
+        /// GET /api/WZ/ProductionOutput/details-page?date=2026-07-01&valveCategory=直通阀&productionLine=直通1&page=1&pageSize=200
+        /// </summary>
+        [HttpGet("details-page")]
+        public async Task<ActionResult<WZProductionOutputCellDetailPageDto>> GetCellDetailsPage(
+            [FromQuery(Name = "date")] DateTime productionDate,
+            [FromQuery] string valveCategory,
+            [FromQuery] string productionLine,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 200,
+            CancellationToken ct = default)
+        {
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 1000);
+            var result = await _service.GetCellDetailsPageAsync(productionDate, valveCategory, productionLine, page, pageSize, ct);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// 导出未知产线/冲突明细，供人工补充规则。
         /// GET /api/WZ/ProductionOutput/unknown-details?start=2026-07-01&end=2026-07-31
         /// </summary>
@@ -297,6 +316,42 @@ namespace HDPro.CY.Order.Controllers.WZ
             }
 
             var result = await _service.ReclassifyExistingDetailsAsync(dto.Start, dto.End, ct);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// 回填现有明细的物料编码/规格型号：不重拉源数据、不清空明细表。
+        /// POST /api/WZ/ProductionOutput/material-models/backfill
+        /// body: { "start":"2026-07-01", "end":"2026-07-31" }
+        /// </summary>
+        [HttpPost("material-models/backfill")]
+        public async Task<ActionResult<WZProductionOutputMaterialBackfillResultDto>> BackfillMaterialModels(
+            [FromBody] DateRangeDto dto,
+            [FromQuery] int batchSize = 5000,
+            CancellationToken ct = default)
+        {
+            var userName = UserContext.Current?.UserName;
+            if (!string.Equals(userName, "cyadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(403, new { message = "只有 cyadmin 可以回填物料规格型号", status = false, code = 403 });
+            }
+
+            var result = await _service.BackfillMaterialModelsAsync(dto.Start, dto.End, batchSize, ct);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Quartz/local task: 回填现有明细的物料编码/规格型号。
+        /// POST /api/WZ/ProductionOutput/material-models/backfill-task
+        /// </summary>
+        [ApiTask]
+        [HttpPost("material-models/backfill-task")]
+        public async Task<ActionResult<WZProductionOutputMaterialBackfillResultDto>> BackfillMaterialModelsTask(
+            [FromBody] DateRangeDto dto,
+            [FromQuery] int batchSize = 5000,
+            CancellationToken ct = default)
+        {
+            var result = await _service.BackfillMaterialModelsAsync(dto.Start, dto.End, batchSize, ct);
             return Ok(result);
         }
 

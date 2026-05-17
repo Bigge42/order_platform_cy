@@ -30,17 +30,15 @@
         <!-- 日期范围（同一年） -->
         <span class="ph-sub">范围：</span>
         <el-date-picker
-          v-model="startDateModel"
-          type="date" size="small" style="width:132px"
-          :disabled-date="d => disabledStart(d)"
-          @change="onStartChange"
-        />
-        <span class="ph-sub">至</span>
-        <el-date-picker
-          v-model="endDateModel"
-          type="date" size="small" style="width:132px"
-          :disabled-date="d => disabledEnd(d)"
-          @change="onEndChange"
+          v-model="dateRangeModel"
+          type="daterange"
+          size="small"
+          style="width:248px"
+          unlink-panels
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :disabled-date="disabledRange"
         />
 
         <el-button class="btn-ghost" size="small" @click="resetFullYear">重置全年</el-button>
@@ -58,19 +56,16 @@
 
         <el-button v-if="canSyncData" type="primary" size="small" :loading="syncLoading" @click="syncData">同步数据</el-button>
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
-        <el-button size="small" :type="buttonType('preproduction')" @click="loadPreProduction">展示预排产</el-button>
-        <el-button size="small" :type="buttonType('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
-        <el-button size="small" :type="buttonType('actual')" @click="loadData">仅看实际</el-button>
+        <el-button-group class="mode-switch" :style="{ '--mode-color': currentViewMode.color }">
+          <el-button size="small" :class="modeButtonClass('actual')" @click="loadData">仅看实际</el-button>
+          <el-button size="small" :class="modeButtonClass('preproduction')" @click="loadPreProduction">展示预排产</el-button>
+          <el-button size="small" :class="modeButtonClass('optimized')" @click="loadOptimizedPreProduction">展示排产优化</el-button>
+        </el-button-group>
+        <span class="mode-current" :style="{ color: currentViewMode.color, borderColor: currentViewMode.color }">
+          当前口径：{{ currentViewMode.label }}
+        </span>
         <el-button size="small" @click="exportData">导出数据</el-button>
         <el-button size="small" :loading="unknownExportLoading" @click="exportUnknownData">导出未知产线</el-button>
-        <el-button v-if="canSyncData" size="small" :loading="manualRuleImportLoading" @click="openManualRuleImport">导入人工规则</el-button>
-        <input
-          ref="manualRuleFileInput"
-          class="manual-rule-input"
-          type="file"
-          accept=".csv,text/csv"
-          @change="importManualRulesFromFile"
-        />
       </div>
     </header>
 
@@ -197,7 +192,7 @@
           <div class="detail-title">{{ cellDetailContext.date }} · {{ cellDetailContext.valveCategory }} · {{ cellDetailContext.productionLine }}</div>
           <div class="detail-sub">格子数量 {{ formatQty(cellDetailContext.quantity) }}，明细合计 {{ formatQty(cellDetailTotal) }}</div>
         </div>
-        <el-tag size="small" type="info">{{ cellDetailRows.length }} 条</el-tag>
+        <el-tag size="small" type="info">{{ cellDetailPageText }}</el-tag>
       </div>
       <el-table
         :data="cellDetailRows"
@@ -214,12 +209,29 @@
         <el-table-column label="物料号" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.materialCode || row.MaterialCode || row.materialId || row.MaterialId || row.materialKey || row.MaterialKey || '-' }}</template>
         </el-table-column>
+        <el-table-column label="规格型号" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.specModel || row.SpecModel || row.productModel || row.ProductModel || '-' }}</template>
+        </el-table-column>
         <el-table-column label="序号" prop="seq" width="72" align="right" />
         <el-table-column label="数量" width="92" align="right">
           <template #default="{ row }">{{ formatQty(row.quantity ?? row.Quantity ?? 0) }}</template>
         </el-table-column>
         <el-table-column label="状态" prop="classifyStatus" width="132" show-overflow-tooltip />
       </el-table>
+      <div class="detail-pager">
+        <span class="detail-page-info">{{ cellDetailPageText }}</span>
+        <el-pagination
+          v-if="cellDetailPager.totalRows > cellDetailPager.pageSize"
+          small
+          background
+          layout="prev, pager, next, jumper"
+          :current-page="cellDetailPager.page"
+          :page-size="cellDetailPager.pageSize"
+          :total="cellDetailPager.totalRows"
+          :disabled="cellDetailLoading"
+          @current-change="loadCellDetailsPage"
+        />
+      </div>
       <template #footer>
         <el-button @click="cellDetailDialog=false">关闭</el-button>
       </template>
@@ -297,6 +309,66 @@ const getYearMonth = rec => {
   // 导出时按“YYYY-MM”
   return String(v).slice(0,7)
 }
+const cellKeySeparator = '\u001F'
+function buildCellKey(valve, line, date){
+  const d = typeof date === 'string' ? date : fmtYMD(date)
+  return [String(valve || '').trim(), String(line || '').trim(), d].join(cellKeySeparator)
+}
+function actualBaselineSignature(){
+  return [
+    fmtYMD(state.rangeStart),
+    fmtYMD(state.rangeEnd),
+    valveCategory.value?.trim() || '',
+    productionLine.value?.trim() || ''
+  ].join(cellKeySeparator)
+}
+function parseRowsResponse(res){
+  return Array.isArray(res) ? res :
+    Array.isArray(res?.data) ? res.data :
+      Array.isArray(res?.Data) ? res.Data :
+        Array.isArray(res?.result) ? res.result : []
+}
+function buildCellBaseline(rows){
+  const map = {}
+  for (const r of rows || []){
+    const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
+    const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
+    const d = getProductionDateStr(r)
+    const q = Number(r.quantity ?? r.Quantity ?? 0)
+    if (!v || !l || !d || !Number.isFinite(q)) continue
+    const key = buildCellKey(v, l, d)
+    map[key] = Number(map[key] || 0) + q
+  }
+  return map
+}
+function storeActualBaseline(rows){
+  actualCellBaseline.value = buildCellBaseline(rows)
+  actualCellBaselineMeta.value = actualBaselineSignature()
+}
+async function ensureActualBaseline(){
+  if (actualCellBaselineMeta.value === actualBaselineSignature()) return
+  const qs = new URLSearchParams()
+  qs.set('start', fmtYMD(state.rangeStart))
+  qs.set('end', fmtYMD(state.rangeEnd))
+  if (valveCategory.value?.trim()) qs.set('valveCategory', valveCategory.value.trim())
+  if (productionLine.value?.trim()) qs.set('productionLine', productionLine.value.trim())
+  const res = await proxy?.http?.get(`/api/WZ/ProductionOutput?${qs.toString()}`, {}, true)
+  storeActualBaseline(parseRowsResponse(res))
+}
+function getActualCellValue(valve, line, date){
+  const value = actualCellBaseline.value?.[buildCellKey(valve, line, date)]
+  const num = Number(value ?? 0)
+  return Number.isFinite(num) ? num : 0
+}
+function hasChangedCell(valve, line, date, value){
+  if (viewMode.value === 'actual' || actualCellBaselineMeta.value !== actualBaselineSignature()) return false
+  return Math.abs(Number(value || 0) - getActualCellValue(valve, line, date)) > 0.000001
+}
+function formatSignedQty(value){
+  const num = Number(value || 0)
+  if (num > 0) return `+${formatQty(num)}`
+  return formatQty(num)
+}
 
 /* ===== 状态（动态阀体/产线） ===== */
 const state = reactive({
@@ -318,6 +390,12 @@ const thrDraft  = ref({}) // 弹窗草稿
 const chartsEl  = ref(null)
 const { proxy } = getCurrentInstance() || {}
 const viewMode = ref('actual')
+const viewModeOptions = {
+  actual: { label: '仅看实际', color: '#303384', cellBorder: '#ffffff' },
+  preproduction: { label: '展示预排产', color: '#0079C1', cellBorder: '#0079C1' },
+  optimized: { label: '展示排产优化', color: '#046BB6', cellBorder: '#046BB6' }
+}
+const currentViewMode = computed(() => viewModeOptions[viewMode.value] || viewModeOptions.actual)
 const syncLoading = ref(false)
 const syncDialog = ref(false)
 const syncHistoryLoading = ref(false)
@@ -328,15 +406,29 @@ const manualRuleFileInput = ref(null)
 const cellDetailDialog = ref(false)
 const cellDetailLoading = ref(false)
 const cellDetailRows = ref([])
+const cellDetailPager = reactive({
+  page: 1,
+  pageSize: 200,
+  totalRows: 0,
+  totalQuantity: 0
+})
 const cellDetailContext = reactive({
   date: '',
   valveCategory: '',
   productionLine: '',
   quantity: 0
 })
-const cellDetailTotal = computed(() =>
-  cellDetailRows.value.reduce((sum, row) => sum + Number(row.quantity ?? row.Quantity ?? 0), 0)
-)
+let cellDetailRequestSeq = 0
+const cellDetailTotal = computed(() => Number(cellDetailPager.totalQuantity || 0))
+const cellDetailPageText = computed(() => {
+  const total = Number(cellDetailPager.totalRows || 0)
+  if (!total) return '共 0 条'
+  const page = Math.max(1, Number(cellDetailPager.page || 1))
+  const pageSize = Math.max(1, Number(cellDetailPager.pageSize || 200))
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(start + cellDetailRows.value.length - 1, total)
+  return `共 ${total} 条，当前 ${start}-${end}`
+})
 const canSyncData = computed(() => {
   const userInfo = store.getters.getUserInfo?.() || {}
   const names = [
@@ -356,35 +448,36 @@ const syncRangeText = computed(() => {
 
 /* 原始返回数据（用于导出） */
 const rawRows = ref([])
+const actualCellBaseline = ref({})
+const actualCellBaselineMeta = ref('')
 
 /* 年份选项（±3 年） */
 const yearOptions = Array.from({length:7}, (_,i)=> state.year - 3 + i)
 
 /* 日期控件 */
-const startDateModel = ref(state.rangeStart)
-const endDateModel   = ref(state.rangeEnd)
-const disabledStart  = d => d.getFullYear() !== state.year
-const disabledEnd    = d => d.getFullYear() !== state.year
+const disabledRange  = d => d.getFullYear() !== state.year
+const dateRangeModel = computed({
+  get(){
+    return [state.rangeStart, state.rangeEnd]
+  },
+  set(value){
+    if (!Array.isArray(value) || value.length < 2 || !value[0] || !value[1]) return
+    const start = new Date(value[0])
+    const end = new Date(value[1])
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return
+    state.rangeStart = start <= end ? start : end
+    state.rangeEnd = start <= end ? end : start
+    renderAll()
+  }
+})
 function onYearChange(){
   state.rangeStart = new Date(state.year,0,1)
   state.rangeEnd   = new Date(state.year,11,31)
-  startDateModel.value = state.rangeStart
-  endDateModel.value   = state.rangeEnd
   renderAll()
-}
-function onStartChange(val){
-  const d = new Date(val); if (d > state.rangeEnd) { state.rangeEnd = d; endDateModel.value = d }
-  state.rangeStart = d; renderAll()
-}
-function onEndChange(val){
-  const d = new Date(val); if (d < state.rangeStart) { state.rangeStart = d; startDateModel.value = d }
-  state.rangeEnd = d; renderAll()
 }
 function resetFullYear(){
   state.rangeStart = new Date(state.year,0,1)
   state.rangeEnd   = new Date(state.year,11,31)
-  startDateModel.value = state.rangeStart
-  endDateModel.value   = state.rangeEnd
   renderAll()
 }
 function toggleBig(){ state.big=!state.big; renderAll() }
@@ -527,7 +620,8 @@ function renderAll(){
     wrapper.style.borderRadius = state.compact ? '12px' : '16px'
 
     const head=document.createElement('div'); head.className='valve-head'
-    head.innerHTML = `<div class="name">${v}</div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'}</div>`
+    const modeMeta = currentViewMode.value
+    head.innerHTML = `<div class="name"><span>${v}</span><span class="mode-badge" style="border-color:${modeMeta.color};color:${modeMeta.color}">${modeMeta.label}</span></div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'}</div>`
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
@@ -582,12 +676,15 @@ function renderAll(){
         const aboveMax = Math.max(0, lineMax-thr), belowMax = Math.max(thr - lineMin, 0)
         const colorMax = state.scope==='line' ? lineMax : state.scope==='valve' ? valveMax[v] : globalMax
         const fill = state.mode==='threshold' ? colorFromThreshold(val, thr, aboveMax, belowMax) : colorFromValue(val, colorMax)
+        const changed = hasChangedCell(v, l, days[k], val)
 
         const rect=document.createElementNS('http://www.w3.org/2000/svg','rect')
         rect.setAttribute('x', x); rect.setAttribute('y', y)
         rect.setAttribute('width', cellSize); rect.setAttribute('height', cellSize)
         rect.setAttribute('rx', 2); rect.setAttribute('ry', 2)
-        rect.setAttribute('fill', fill); rect.setAttribute('stroke', '#fff'); rect.setAttribute('stroke-width', 1)
+        rect.setAttribute('fill', fill)
+        rect.setAttribute('stroke', cellBorderColor(changed))
+        rect.setAttribute('stroke-width', cellBorderWidth(changed))
         rect.style.cursor='pointer'
 
         rect.addEventListener('click', ()=>{
@@ -596,10 +693,14 @@ function renderAll(){
         rect.addEventListener('mouseenter', ev=>{
           const tip = document.getElementById('tooltip')
           const lines = [
-            `阀体：${v}`, `产线：${l}`, `日期：${fmtYMD(days[k])}`,
+            `口径：${currentViewMode.value.label}`, `阀体：${v}`, `产线：${l}`, `日期：${fmtYMD(days[k])}`,
             `数量：${val}`, `阈值：${thr}`,
             (val>thr ? `状态：超阈值 +${val-thr}` : `状态：未超阈值 ${thr-val}`)
           ]
+          if (changed) {
+            const actualVal = getActualCellValue(v, l, days[k])
+            lines.push(`实际：${formatQty(actualVal)}`, `差异：${formatSignedQty(val - actualVal)}`)
+          }
           tip.textContent = lines.join('\n'); tip.style.display='block'
           tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'
         })
@@ -640,27 +741,52 @@ async function openCellDetails(valve, line, date, quantity){
   cellDetailContext.productionLine = line
   cellDetailContext.quantity = Number(quantity || 0)
   cellDetailRows.value = []
+  cellDetailPager.page = 1
+  cellDetailPager.pageSize = 200
+  cellDetailPager.totalRows = 0
+  cellDetailPager.totalQuantity = 0
   cellDetailDialog.value = true
+
+  await loadCellDetailsPage(1)
+}
+
+async function loadCellDetailsPage(page = 1){
+  if (!cellDetailContext.date) return
+
+  const currentSeq = ++cellDetailRequestSeq
+  const nextPage = Math.max(1, Number(page || 1))
   cellDetailLoading.value = true
 
   try{
     const qs = new URLSearchParams({
-      date: dateText,
-      valveCategory: valve,
-      productionLine: line,
-      take: '10000'
+      date: cellDetailContext.date,
+      valveCategory: cellDetailContext.valveCategory,
+      productionLine: cellDetailContext.productionLine,
+      page: String(nextPage),
+      pageSize: String(cellDetailPager.pageSize || 200)
     })
-    const res = await proxy?.http?.get(`/api/WZ/ProductionOutput/details?${qs.toString()}`, {}, true)
-    cellDetailRows.value =
-      Array.isArray(res) ? res :
-        Array.isArray(res?.data) ? res.data :
-          Array.isArray(res?.Data) ? res.Data :
-            Array.isArray(res?.result) ? res.result : []
+    const res = await proxy?.http?.get(`/api/WZ/ProductionOutput/details-page?${qs.toString()}`, {}, true)
+    if (currentSeq !== cellDetailRequestSeq) return
+
+    const payload = res?.data ?? res?.Data ?? res?.result ?? res
+    const rows =
+      Array.isArray(payload?.items) ? payload.items :
+        Array.isArray(payload?.Items) ? payload.Items : []
+
+    cellDetailRows.value = rows
+    cellDetailPager.page = Number(payload?.page ?? payload?.Page ?? nextPage) || nextPage
+    cellDetailPager.pageSize = Number(payload?.pageSize ?? payload?.PageSize ?? cellDetailPager.pageSize) || 200
+    cellDetailPager.totalRows = Number(payload?.totalRows ?? payload?.TotalRows ?? rows.length) || 0
+    cellDetailPager.totalQuantity = Number(payload?.totalQuantity ?? payload?.TotalQuantity ?? 0) || 0
   }catch(e){
     console.error(e)
-    ElMessage.error('格子明细加载失败')
+    if (currentSeq === cellDetailRequestSeq) {
+      ElMessage.error('格子明细加载失败')
+    }
   }finally{
-    cellDetailLoading.value = false
+    if (currentSeq === cellDetailRequestSeq) {
+      cellDetailLoading.value = false
+    }
   }
 }
 
@@ -723,12 +849,9 @@ async function loadData(){
     console.debug('[WZ_ProductionOutput] GET =>', url)
     const res = await proxy?.http?.get(url, {}, true)
 
-    const rows =
-      Array.isArray(res) ? res :
-        Array.isArray(res?.data) ? res.data :
-          Array.isArray(res?.Data) ? res.Data :
-            Array.isArray(res?.result) ? res.result : []
+    const rows = parseRowsResponse(res)
     viewMode.value = 'actual'
+    storeActualBaseline(rows)
     applyRows(rows, '数据加载成功')
   }catch(e){
     console.error(e)
@@ -799,6 +922,7 @@ async function runFullSync(){
 
 async function loadPreProduction(){
   try{
+    await ensureActualBaseline().catch(e => console.warn('[WZ_ProductionOutput] actual baseline load failed', e))
     const start = fmtYMD(state.rangeStart)
     const end   = fmtYMD(state.rangeEnd)
     const payload = {
@@ -808,11 +932,7 @@ async function loadPreProduction(){
       productionLine: productionLine.value?.trim() || ''
     }
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/merge', payload)
-    const rows =
-      Array.isArray(res) ? res :
-        Array.isArray(res?.data) ? res.data :
-          Array.isArray(res?.Data) ? res.Data :
-            Array.isArray(res?.result) ? res.result : []
+    const rows = parseRowsResponse(res)
     viewMode.value = 'preproduction'
     applyRows(rows, '预排产合并数据加载成功')
   }catch(e){
@@ -823,6 +943,7 @@ async function loadPreProduction(){
 
 async function loadOptimizedPreProduction(){
   try{
+    await ensureActualBaseline().catch(e => console.warn('[WZ_ProductionOutput] actual baseline load failed', e))
     const start = fmtYMD(state.rangeStart)
     const end   = fmtYMD(state.rangeEnd)
     const payload = {
@@ -832,11 +953,7 @@ async function loadOptimizedPreProduction(){
       productionLine: productionLine.value?.trim() || ''
     }
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/optimize', payload)
-    const rows =
-      Array.isArray(res) ? res :
-        Array.isArray(res?.data) ? res.data :
-          Array.isArray(res?.Data) ? res.Data :
-            Array.isArray(res?.result) ? res.result : []
+    const rows = parseRowsResponse(res)
     viewMode.value = 'optimized'
     applyRows(rows, '排产优化合并数据加载成功')
   }catch(e){
@@ -845,8 +962,16 @@ async function loadOptimizedPreProduction(){
   }
 }
 
-function buttonType(mode){
-  return viewMode.value === mode ? 'success' : 'default'
+function modeButtonClass(mode){
+  return viewMode.value === mode ? 'is-mode-active' : ''
+}
+
+function cellBorderColor(changed){
+  return changed ? (currentViewMode.value.cellBorder || '#ffffff') : '#ffffff'
+}
+
+function cellBorderWidth(changed){
+  return changed ? (state.big ? 2.6 : 1.8) : 1
 }
 
 function applyRows(rows, successMessage){
@@ -1150,7 +1275,7 @@ async function exportUnknownData(){
       return
     }
 
-    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','阀体种类','生产线','数量','状态','业务键','人工阀体种类','人工生产线','规则备注']
+    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','规格型号','阀体种类','生产线','数量','状态','业务键','人工阀体种类','人工生产线','规则备注']
     const lines = rows.map(r => {
       const valve = r.valveCategory ?? r.ValveCategory
       const line = r.productionLine ?? r.ProductionLine
@@ -1164,6 +1289,7 @@ async function exportUnknownData(){
         r.materialKey ?? r.MaterialKey,
         r.materialCode ?? r.MaterialCode,
         r.materialId ?? r.MaterialId,
+        r.specModel ?? r.SpecModel ?? r.productModel ?? r.ProductModel,
         valve,
         line,
         Number(r.quantity ?? r.Quantity ?? 0),
@@ -1213,6 +1339,10 @@ onMounted(()=>{ renderAll() })
 .manual-rule-input{display:none}
 
 .btn-amber{--el-button-bg-color:var(--amber);--el-button-text-color:#fff;border:none}
+.mode-switch{--mode-color:#303384}
+.mode-switch :deep(.el-button){border-color:#cbd5e1;color:#334155;background:#fff}
+.mode-switch :deep(.el-button.is-mode-active){border-color:var(--mode-color);color:var(--mode-color);background:#fdfdfd;font-weight:600;box-shadow:inset 0 0 0 1px var(--mode-color)}
+.mode-current{height:24px;display:inline-flex;align-items:center;border:1px solid;border-radius:4px;padding:0 8px;background:#fff;font-size:12px;font-weight:600}
 
 .ph-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px 16px 0}
 .ph-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 6px rgba(15,23,42,.04);padding:14px}
@@ -1221,7 +1351,8 @@ onMounted(()=>{ renderAll() })
 .stat .sub{font-size:12px;color:var(--slate400);margin-top:2px}
 
 .ph-charts{display:flex;flex-direction:column;gap:16px;padding:0 16px 16px}
-.valve .name{font-weight:600;font-size:13px;color:#111827}
+.valve .name{font-weight:600;font-size:13px;color:#111827;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mode-badge{display:inline-flex;align-items:center;height:18px;border:1px solid;border-radius:4px;padding:0 6px;font-size:11px;font-weight:600;background:#fff}
 .valve .meta{font-size:11px;color:#6b7280}
 svg text{font-family:inherit}
 
@@ -1254,6 +1385,8 @@ svg text{font-family:inherit}
 .detail-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .detail-title{font-weight:600;color:#111827;font-size:14px}
 .detail-sub{font-size:12px;color:#64748b;margin-top:4px;line-height:1.5}
+.detail-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.detail-page-info{font-size:12px;color:#64748b}
 
 /* 紧凑模式整体缩紧 */
 .compact .ph-container{padding:8px 12px}
