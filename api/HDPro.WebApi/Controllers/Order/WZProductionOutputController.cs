@@ -93,6 +93,23 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
+        /// 查询热力图单元格订单明细。
+        /// GET /api/WZ/ProductionOutput/details?date=2026-07-01&valveCategory=直通阀&productionLine=直通1
+        /// </summary>
+        [HttpGet("details")]
+        public async Task<ActionResult<List<WZProductionOutputCellDetailDto>>> GetCellDetails(
+            [FromQuery(Name = "date")] DateTime productionDate,
+            [FromQuery] string valveCategory,
+            [FromQuery] string productionLine,
+            [FromQuery] int take = 10000,
+            CancellationToken ct = default)
+        {
+            take = Math.Clamp(take, 1, 50000);
+            var list = await _service.GetCellDetailsAsync(productionDate, valveCategory, productionLine, take, ct);
+            return Ok(list);
+        }
+
+        /// <summary>
         /// 导出未知产线/冲突明细，供人工补充规则。
         /// GET /api/WZ/ProductionOutput/unknown-details?start=2026-07-01&end=2026-07-31
         /// </summary>
@@ -106,6 +123,25 @@ namespace HDPro.CY.Order.Controllers.WZ
             take = Math.Clamp(take, 1, 200000);
             var list = await _service.GetUnknownDetailsAsync(startDate, endDate, take, ct);
             return Ok(list);
+        }
+
+        /// <summary>
+        /// 保存人工产线映射规则，后续同步/重新归类会优先使用。
+        /// POST /api/WZ/ProductionOutput/manual-line-rules
+        /// </summary>
+        [HttpPost("manual-line-rules")]
+        public async Task<ActionResult<object>> SaveManualLineRules(
+            [FromBody] List<WZProductionOutputManualLineRuleDto> rules,
+            CancellationToken ct = default)
+        {
+            var userName = UserContext.Current?.UserName;
+            if (!string.Equals(userName, "cyadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(403, new { message = "只有 cyadmin 可以导入人工映射规则", status = false, code = 403 });
+            }
+
+            var saved = await _service.SaveManualLineRulesAsync(rules ?? new List<WZProductionOutputManualLineRuleDto>(), ct);
+            return Ok(new { saved, requested = rules?.Count ?? 0 });
         }
 
         private static bool IsSyncLogSuccessful(int? result, string responseContent, string errorMsg)
@@ -265,17 +301,17 @@ namespace HDPro.CY.Order.Controllers.WZ
         }
 
         /// <summary>
-        /// Quartz task: append today's incremental production output.
+        /// Quartz task: append previous day's incremental production output.
         /// POST /api/WZ/ProductionOutput/refresh/daily-increment-task
         /// </summary>
         [ApiTask]
         [HttpPost("refresh/daily-increment-task")]
         public async Task<ActionResult<object>> RefreshDailyIncrementTask(CancellationToken ct = default)
         {
-            var endDate = DateTime.Today.AddDays(1);
-            var startDate = DateTime.Today.AddDays(-14);
+            var startDate = DateTime.Today.AddDays(-1);
+            var endDate = startDate;
             var count = await _service.RefreshIncrementalAsync(startDate, endDate, ct);
-            return Ok(new { updated = count, range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}", mode = "idempotent-rolling" });
+            return Ok(new { updated = count, range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}", mode = "previous-day-idempotent" });
         }
 
         /// <summary>

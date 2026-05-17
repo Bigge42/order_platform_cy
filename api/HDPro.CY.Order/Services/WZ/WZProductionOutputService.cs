@@ -54,6 +54,7 @@ namespace HDPro.CY.Order.Services.WZ
         private const string DetailStatusMatchedByOrderCycle = "matched_order_cycle";
         private const string DetailStatusMatchedBySyncLine = "matched_sync_line";
         private const string DetailStatusMatchedByRule = "matched_rule";
+        private const string DetailStatusMatchedByManual = "matched_manual";
         private const string DetailStatusMissingLine = "missing_line";
         private const string DetailStatusConflict = "conflict";
         private const string UnknownValveCategory = "未知阀类";
@@ -189,6 +190,7 @@ namespace HDPro.CY.Order.Services.WZ
             public long? EntryId { get; set; }
             public string BillPlanKey { get; set; } = string.Empty;
             public List<string> MaterialKeys { get; set; } = new();
+            public bool AllowBillPlanFallback { get; set; } = true;
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
             public DateTime? ProductionDate { get; set; }
@@ -199,6 +201,7 @@ namespace HDPro.CY.Order.Services.WZ
         private sealed class DetailBackfillSummary
         {
             public int Candidates { get; set; }
+            public int FilledByManual { get; set; }
             public int FilledByOrderCycle { get; set; }
             public int FilledBySyncLine { get; set; }
             public int FilledByRule { get; set; }
@@ -405,7 +408,8 @@ namespace HDPro.CY.Order.Services.WZ
             => string.Equals(status, DetailStatusMatched, StringComparison.Ordinal)
                 || string.Equals(status, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal)
                 || string.Equals(status, DetailStatusMatchedBySyncLine, StringComparison.Ordinal)
-                || string.Equals(status, DetailStatusMatchedByRule, StringComparison.Ordinal);
+                || string.Equals(status, DetailStatusMatchedByRule, StringComparison.Ordinal)
+                || string.Equals(status, DetailStatusMatchedByManual, StringComparison.Ordinal);
 
         private static string BuildBusinessKey(EsbRow row)
         {
@@ -732,7 +736,9 @@ namespace HDPro.CY.Order.Services.WZ
             }
 
             foreach (var group in assignments
-                .Where(x => x != null && NormalizeStr(x.BillPlanKey).Length > 0)
+                .Where(x => x != null
+                    && x.AllowBillPlanFallback
+                    && NormalizeStr(x.BillPlanKey).Length > 0)
                 .GroupBy(x => x.BillPlanKey, StringComparer.OrdinalIgnoreCase))
             {
                 var best = PickBestResolvedLine(group);
@@ -745,18 +751,19 @@ namespace HDPro.CY.Order.Services.WZ
             return (byEntryId, byBillPlanMaterial, byBillPlan);
         }
 
-        private static (int FilledByOrderCycle, int FilledBySyncLine, int FilledByRule) ApplyResolvedLineAssignments(
+        private static (int FilledByManual, int FilledByOrderCycle, int FilledBySyncLine, int FilledByRule) ApplyResolvedLineAssignments(
             List<ProductionOutputDetailRow> unresolvedDetails,
             IReadOnlyDictionary<long, ResolvedLineAssignment> byEntryId,
             IReadOnlyDictionary<string, ResolvedLineAssignment> byBillPlanMaterial,
             IReadOnlyDictionary<string, ResolvedLineAssignment> byBillPlan)
         {
+            var filledByManual = 0;
             var filledByOrderCycle = 0;
             var filledBySyncLine = 0;
             var filledByRule = 0;
             if (unresolvedDetails == null || unresolvedDetails.Count == 0)
             {
-                return (filledByOrderCycle, filledBySyncLine, filledByRule);
+                return (filledByManual, filledByOrderCycle, filledBySyncLine, filledByRule);
             }
 
             foreach (var detail in unresolvedDetails)
@@ -798,7 +805,11 @@ namespace HDPro.CY.Order.Services.WZ
                 }
                 detail.ClassifyStatus = resolved.ClassifyStatus;
 
-                if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal))
+                if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedByManual, StringComparison.Ordinal))
+                {
+                    filledByManual++;
+                }
+                else if (string.Equals(resolved.ClassifyStatus, DetailStatusMatchedByOrderCycle, StringComparison.Ordinal))
                 {
                     filledByOrderCycle++;
                 }
@@ -812,7 +823,7 @@ namespace HDPro.CY.Order.Services.WZ
                 }
             }
 
-            return (filledByOrderCycle, filledBySyncLine, filledByRule);
+            return (filledByManual, filledByOrderCycle, filledBySyncLine, filledByRule);
         }
 
         private static string ResolveRuleProductText(OrderCycleLineCandidate candidate, RuleProductTextMode mode)
@@ -899,6 +910,307 @@ namespace HDPro.CY.Order.Services.WZ
             }
 
             return materialMap;
+        }
+
+        private static List<WZProductionOutputManualLineRuleDto> NormalizeManualLineRules(
+            IReadOnlyCollection<WZProductionOutputManualLineRuleDto> rules)
+        {
+            var result = new Dictionary<string, WZProductionOutputManualLineRuleDto>(StringComparer.OrdinalIgnoreCase);
+            if (rules == null || rules.Count == 0)
+            {
+                return new List<WZProductionOutputManualLineRuleDto>();
+            }
+
+            foreach (var rule in rules)
+            {
+                if (rule == null)
+                {
+                    continue;
+                }
+
+                var billNo = NormalizeStr(rule.BillNo);
+                var planTrackingNo = NormalizeStr(rule.PlanTrackingNo);
+                var materialCode = NormalizeStr(rule.MaterialCode);
+                var materialId = NormalizeStr(rule.MaterialId);
+                var materialKey = NormalizeStr(rule.MaterialKey);
+                var valveCategory = NormalizeStr(rule.ValveCategory);
+                var productionLine = NormalizeStr(rule.ProductionLine);
+                if (billNo.Length == 0
+                    || planTrackingNo.Length == 0
+                    || valveCategory.Length == 0
+                    || productionLine.Length == 0
+                    || string.Equals(valveCategory, UnknownValveCategory, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(productionLine, UnknownProductionLine, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var key = string.Join(
+                    BillPlanKeySeparator,
+                    billNo,
+                    planTrackingNo,
+                    materialCode,
+                    materialId,
+                    materialKey);
+
+                result[key] = new WZProductionOutputManualLineRuleDto
+                {
+                    BillNo = billNo,
+                    PlanTrackingNo = planTrackingNo,
+                    MaterialCode = materialCode,
+                    MaterialId = materialId,
+                    MaterialKey = materialKey,
+                    ValveCategory = valveCategory,
+                    ProductionLine = productionLine,
+                    Remark = NormalizeStr(rule.Remark),
+                    Enable = rule.Enable
+                };
+            }
+
+            return result.Values.ToList();
+        }
+
+        private static DataTable BuildManualLineRuleDataTable(IReadOnlyList<WZProductionOutputManualLineRuleDto> rules)
+        {
+            var table = new DataTable();
+            table.Columns.Add("BillNo", typeof(string));
+            table.Columns.Add("PlanTrackingNo", typeof(string));
+            table.Columns.Add("MaterialKey", typeof(string));
+            table.Columns.Add("MaterialCode", typeof(string));
+            table.Columns.Add("MaterialId", typeof(string));
+            table.Columns.Add("ValveCategory", typeof(string));
+            table.Columns.Add("ProductionLine", typeof(string));
+            table.Columns.Add("Remark", typeof(string));
+            table.Columns.Add("Enable", typeof(bool));
+
+            foreach (var rule in rules)
+            {
+                table.Rows.Add(
+                    rule.BillNo,
+                    rule.PlanTrackingNo,
+                    rule.MaterialKey,
+                    rule.MaterialCode,
+                    rule.MaterialId,
+                    rule.ValveCategory,
+                    rule.ProductionLine,
+                    rule.Remark,
+                    rule.Enable);
+            }
+
+            return table;
+        }
+
+        public async Task<int> SaveManualLineRulesAsync(
+            IReadOnlyCollection<WZProductionOutputManualLineRuleDto> rules,
+            CancellationToken ct = default)
+        {
+            var normalizedRules = NormalizeManualLineRules(rules);
+            if (normalizedRules.Count == 0)
+            {
+                return 0;
+            }
+
+            await EnsureManualLineRuleTableAsync(ct);
+
+            var sqlConnection = _db.Database.GetDbConnection() as SqlConnection;
+            if (sqlConnection == null)
+            {
+                throw new InvalidOperationException("WZ 人工映射规则批量入库需要 SQL Server 连接");
+            }
+
+            using var tx = await _db.Database.BeginTransactionAsync(ct);
+            var sqlTransaction = tx.GetDbTransaction() as SqlTransaction;
+            if (sqlTransaction == null)
+            {
+                throw new InvalidOperationException("WZ 人工映射规则批量入库必须使用 SQL Server 事务");
+            }
+
+            if (sqlConnection.State != ConnectionState.Open)
+            {
+                await sqlConnection.OpenAsync(ct);
+            }
+
+            try
+            {
+                using (var createCommand = new SqlCommand(@"
+IF OBJECT_ID('tempdb..#WZProductionOutputManualLineRuleImport') IS NOT NULL
+    DROP TABLE #WZProductionOutputManualLineRuleImport;
+
+CREATE TABLE #WZProductionOutputManualLineRuleImport
+(
+    [BillNo] NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+    [PlanTrackingNo] NVARCHAR(255) COLLATE DATABASE_DEFAULT NOT NULL,
+    [MaterialKey] NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+    [MaterialCode] NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+    [MaterialId] NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+    [ValveCategory] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
+    [ProductionLine] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
+    [Remark] NVARCHAR(500) COLLATE DATABASE_DEFAULT NULL,
+    [Enable] BIT NOT NULL
+);", sqlConnection, sqlTransaction))
+                {
+                    createCommand.CommandTimeout = 0;
+                    await createCommand.ExecuteNonQueryAsync(ct);
+                }
+
+                var table = BuildManualLineRuleDataTable(normalizedRules);
+                using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.CheckConstraints, sqlTransaction))
+                {
+                    bulk.DestinationTableName = "#WZProductionOutputManualLineRuleImport";
+                    bulk.BatchSize = InsertBatchSize;
+                    bulk.BulkCopyTimeout = 0;
+                    foreach (DataColumn column in table.Columns)
+                    {
+                        bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+                    }
+
+                    await bulk.WriteToServerAsync(table, ct);
+                }
+
+                using (var mergeCommand = new SqlCommand(@"
+CREATE INDEX [IX_WZProductionOutputManualLineRuleImport_Key]
+    ON #WZProductionOutputManualLineRuleImport([BillNo], [PlanTrackingNo], [MaterialCode], [MaterialId], [MaterialKey]);
+
+CREATE TABLE #WZProductionOutputManualLineRuleMergeResult([Action] NVARCHAR(10) NOT NULL);
+
+MERGE [dbo].[WZ_ProductionOutputManualLineRule] WITH (HOLDLOCK) AS target
+USING #WZProductionOutputManualLineRuleImport AS source
+ON target.[BillNo] = source.[BillNo]
+   AND target.[PlanTrackingNo] = source.[PlanTrackingNo]
+   AND target.[MaterialCode] = source.[MaterialCode]
+   AND target.[MaterialId] = source.[MaterialId]
+   AND target.[MaterialKey] = source.[MaterialKey]
+WHEN MATCHED THEN
+    UPDATE SET
+        [ValveCategory] = source.[ValveCategory],
+        [ProductionLine] = source.[ProductionLine],
+        [Remark] = source.[Remark],
+        [Enable] = source.[Enable],
+        [ModifyDate] = GETDATE()
+WHEN NOT MATCHED THEN
+    INSERT (
+        [BillNo], [PlanTrackingNo], [MaterialKey], [MaterialCode], [MaterialId],
+        [ValveCategory], [ProductionLine], [Remark], [Enable], [CreateDate], [ModifyDate]
+    )
+    VALUES (
+        source.[BillNo], source.[PlanTrackingNo], source.[MaterialKey], source.[MaterialCode], source.[MaterialId],
+        source.[ValveCategory], source.[ProductionLine], source.[Remark], source.[Enable], GETDATE(), GETDATE()
+    )
+OUTPUT $action INTO #WZProductionOutputManualLineRuleMergeResult;
+
+SELECT COUNT(1) FROM #WZProductionOutputManualLineRuleMergeResult;", sqlConnection, sqlTransaction))
+                {
+                    mergeCommand.CommandTimeout = 0;
+                    var result = await mergeCommand.ExecuteScalarAsync(ct);
+                    var processed = Convert.ToInt32(result ?? 0);
+                    await tx.CommitAsync(ct);
+                    _logger.LogInformation("【WZ 人工规则】已写入/更新人工产线映射规则 {Processed}/{Total} 条", processed, normalizedRules.Count);
+                    return processed;
+                }
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        private async Task<List<ResolvedLineAssignment>> LoadManualLineRuleAssignmentsAsync(
+            IReadOnlyList<ProductionOutputDetailRow> unresolvedDetails,
+            CancellationToken ct)
+        {
+            var assignments = new List<ResolvedLineAssignment>();
+            if (unresolvedDetails == null || unresolvedDetails.Count == 0)
+            {
+                return assignments;
+            }
+
+            var billNos = unresolvedDetails
+                .Select(x => NormalizeStr(x.BillNo))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var wantedBillPlans = unresolvedDetails
+                .Where(x => NormalizeStr(x.BillNo).Length > 0 && NormalizeStr(x.PlanTrackingNo).Length > 0)
+                .Select(x => BuildBillPlanKey(x.BillNo, x.PlanTrackingNo))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (billNos.Count == 0 || wantedBillPlans.Count == 0)
+            {
+                return assignments;
+            }
+
+            await EnsureManualLineRuleTableAsync(ct);
+
+            var connectionString = _db.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = _db.Database.GetDbConnection().ConnectionString;
+            }
+
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+
+            foreach (var chunk in ChunkList(billNos, 500))
+            {
+                var parameterNames = chunk.Select((_, index) => $"@BillNo{index}").ToList();
+                using var cmd = new SqlCommand($@"
+SELECT
+    ISNULL([BillNo], N'') AS [BillNo],
+    ISNULL([PlanTrackingNo], N'') AS [PlanTrackingNo],
+    ISNULL([MaterialKey], N'') AS [MaterialKey],
+    ISNULL([MaterialCode], N'') AS [MaterialCode],
+    ISNULL([MaterialId], N'') AS [MaterialId],
+    ISNULL([ValveCategory], N'') AS [ValveCategory],
+    ISNULL([ProductionLine], N'') AS [ProductionLine]
+FROM [dbo].[WZ_ProductionOutputManualLineRule] WITH (NOLOCK)
+WHERE [Enable] = 1
+  AND [BillNo] IN ({string.Join(", ", parameterNames)});", conn);
+
+                cmd.CommandTimeout = 120;
+                for (var i = 0; i < chunk.Count; i++)
+                {
+                    cmd.Parameters.Add(parameterNames[i], SqlDbType.NVarChar, 100).Value = chunk[i];
+                }
+
+                using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var billNo = ReadString(reader, "BillNo");
+                    var planTrackingNo = ReadString(reader, "PlanTrackingNo");
+                    var billPlanKey = BuildBillPlanKey(billNo, planTrackingNo);
+                    if (!wantedBillPlans.Contains(billPlanKey))
+                    {
+                        continue;
+                    }
+
+                    var valveCategory = NormalizeStr(ReadString(reader, "ValveCategory"));
+                    var productionLine = NormalizeStr(ReadString(reader, "ProductionLine"));
+                    if (valveCategory.Length == 0 || productionLine.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var materialKeys = BuildMaterialKeys(
+                        ReadString(reader, "MaterialKey"),
+                        ReadString(reader, "MaterialCode"),
+                        ReadString(reader, "MaterialId"));
+
+                    assignments.Add(new ResolvedLineAssignment
+                    {
+                        BillPlanKey = billPlanKey,
+                        MaterialKeys = materialKeys,
+                        AllowBillPlanFallback = materialKeys.Count == 0,
+                        ValveCategory = valveCategory,
+                        ProductionLine = productionLine,
+                        ClassifyStatus = DetailStatusMatchedByManual,
+                        Score = 200
+                    });
+                }
+            }
+
+            return assignments;
         }
 
         private static ValveLineRuleRequest BuildValveLineRuleRequest(
@@ -1207,6 +1519,58 @@ IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ClassifyStatus') IS NOT NULL
 BEGIN
     CREATE INDEX [IX_WZ_ProductionOutputDetail_StatusDate]
         ON [dbo].[WZ_ProductionOutputDetail]([ClassifyStatus], [ProductionDate]);
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductionDate') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ValveCategory') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductionLine') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ClassifyStatus') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM sys.indexes
+       WHERE name = N'IX_WZ_ProductionOutputDetail_DateValveLineStatus'
+         AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+   )
+BEGIN
+    CREATE INDEX [IX_WZ_ProductionOutputDetail_DateValveLineStatus]
+        ON [dbo].[WZ_ProductionOutputDetail]([ProductionDate], [ValveCategory], [ProductionLine], [ClassifyStatus]);
+END;
+", ct);
+        }
+
+        private async Task EnsureManualLineRuleTableAsync(CancellationToken ct)
+        {
+            await _db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'[dbo].[WZ_ProductionOutputManualLineRule]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WZ_ProductionOutputManualLineRule](
+        [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WZ_ProductionOutputManualLineRule] PRIMARY KEY,
+        [BillNo] NVARCHAR(100) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_BillNo] DEFAULT(N''),
+        [PlanTrackingNo] NVARCHAR(255) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_PlanTrackingNo] DEFAULT(N''),
+        [MaterialKey] NVARCHAR(100) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_MaterialKey] DEFAULT(N''),
+        [MaterialCode] NVARCHAR(100) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_MaterialCode] DEFAULT(N''),
+        [MaterialId] NVARCHAR(100) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_MaterialId] DEFAULT(N''),
+        [ValveCategory] NVARCHAR(50) NOT NULL,
+        [ProductionLine] NVARCHAR(50) NOT NULL,
+        [Remark] NVARCHAR(500) NULL,
+        [Enable] BIT NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_Enable] DEFAULT(1),
+        [CreateDate] DATETIME NULL,
+        [ModifyDate] DATETIME NULL
+    );
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputManualLineRule', N'MaterialKey') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[WZ_ProductionOutputManualLineRule] ADD [MaterialKey] NVARCHAR(100) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputManualLineRule_MaterialKey] DEFAULT(N'');
+END;
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'IX_WZ_ProductionOutputManualLineRule_Lookup'
+      AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputManualLineRule')
+)
+BEGIN
+    CREATE INDEX [IX_WZ_ProductionOutputManualLineRule_Lookup]
+        ON [dbo].[WZ_ProductionOutputManualLineRule]([Enable], [BillNo], [PlanTrackingNo], [MaterialCode], [MaterialId], [MaterialKey]);
 END;
 ", ct);
         }
@@ -2020,6 +2384,31 @@ END;
             }
 
             _logger.LogInformation("【WZ 补线】开始回填产线：待处理明细 {Details}", unresolvedDetails.Count);
+            var manualAssignments = await LoadManualLineRuleAssignmentsAsync(unresolvedDetails, ct);
+            if (manualAssignments.Count > 0)
+            {
+                var lookups = BuildResolvedLineLookups(manualAssignments);
+                var filled = ApplyResolvedLineAssignments(unresolvedDetails, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                summary.FilledByManual += filled.FilledByManual;
+                _logger.LogInformation(
+                    "【WZ 补线】人工映射规则候选 {Candidates}，补齐 {Filled}",
+                    manualAssignments.Count,
+                    filled.FilledByManual);
+            }
+
+            unresolvedDetails = details
+                .Where(x => !IsSummarizableStatus(x.ClassifyStatus)
+                    || NormalizeStr(x.ValveCategory).Length == 0
+                    || NormalizeStr(x.ProductionLine).Length == 0)
+                .ToList();
+
+            if (unresolvedDetails.Count == 0)
+            {
+                summary.RemainingMissingLine = details.Count(x => x.ClassifyStatus == DetailStatusMissingLine);
+                summary.RemainingConflict = details.Count(x => x.ClassifyStatus == DetailStatusConflict);
+                return summary;
+            }
+
             var orderCycleCandidates = await LoadOrderCycleLineCandidatesAsync(unresolvedDetails, ct);
             _logger.LogInformation("【WZ 补线】ERP订单周期候选 {Candidates}", orderCycleCandidates.Count);
             var resolvedAssignments = new List<ResolvedLineAssignment>();
@@ -2041,6 +2430,7 @@ END;
             {
                 var lookups = BuildResolvedLineLookups(resolvedAssignments);
                 var filled = ApplyResolvedLineAssignments(unresolvedDetails, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                summary.FilledByManual += filled.FilledByManual;
                 summary.FilledByOrderCycle += filled.FilledByOrderCycle;
                 summary.FilledBySyncLine += filled.FilledBySyncLine;
                 summary.FilledByRule += filled.FilledByRule;
@@ -2064,6 +2454,7 @@ END;
                 {
                     var lookups = BuildResolvedLineLookups(directAssignments);
                     var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                    summary.FilledByManual += filled.FilledByManual;
                     summary.FilledByOrderCycle += filled.FilledByOrderCycle;
                     summary.FilledBySyncLine += filled.FilledBySyncLine;
                     summary.FilledByRule += filled.FilledByRule;
@@ -2087,6 +2478,7 @@ END;
                     {
                         var lookups = BuildResolvedLineLookups(ruleAssignments);
                         var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                        summary.FilledByManual += filled.FilledByManual;
                         summary.FilledByOrderCycle += filled.FilledByOrderCycle;
                         summary.FilledBySyncLine += filled.FilledBySyncLine;
                         summary.FilledByRule += filled.FilledByRule;
@@ -2114,6 +2506,7 @@ END;
                 {
                     var lookups = BuildResolvedLineLookups(ocpDirectAssignments);
                     var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                    summary.FilledByManual += filled.FilledByManual;
                     summary.FilledByOrderCycle += filled.FilledByOrderCycle;
                     summary.FilledBySyncLine += filled.FilledBySyncLine;
                     summary.FilledByRule += filled.FilledByRule;
@@ -2137,6 +2530,7 @@ END;
                     {
                         var lookups = BuildResolvedLineLookups(ocpRuleAssignments);
                         var filled = ApplyResolvedLineAssignments(stillUnresolved, lookups.ByEntryId, lookups.ByBillPlanMaterial, lookups.ByBillPlan);
+                        summary.FilledByManual += filled.FilledByManual;
                         summary.FilledByOrderCycle += filled.FilledByOrderCycle;
                         summary.FilledBySyncLine += filled.FilledBySyncLine;
                         summary.FilledByRule += filled.FilledByRule;
@@ -2236,13 +2630,14 @@ END;
             var conflict = details.Count(x => x.ClassifyStatus == DetailStatusConflict);
 
             _logger.LogInformation(
-                "【WZ OCP口径】OCP行 {Raw}，明细 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，待补齐 {BackfillCandidates}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
+                "【WZ OCP口径】OCP行 {Raw}，明细 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，待补齐 {BackfillCandidates}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
                 orderRows.Count,
                 details.Count,
                 summarizable,
                 missingLine,
                 conflict,
                 backfill.Candidates,
+                backfill.FilledByManual,
                 backfill.FilledByOrderCycle,
                 backfill.FilledBySyncLine,
                 backfill.FilledByRule,
@@ -2376,7 +2771,7 @@ END;
             var conflict = build.Details.Count(x => x.ClassifyStatus == DetailStatusConflict);
 
             _logger.LogInformation(
-                "【WZ 明细去重】ESB行 {Raw}，明细键 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，同步排产日期覆盖 {ScheduleDateOverrides}，待补齐 {BackfillCandidates}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
+                "【WZ 明细去重】ESB行 {Raw}，明细键 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，同步排产日期覆盖 {ScheduleDateOverrides}，待补齐 {BackfillCandidates}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
                 allRows.Count,
                 build.Details.Count,
                 summarizable,
@@ -2384,6 +2779,7 @@ END;
                 conflict,
                 scheduleDateOverrides,
                 backfill.Candidates,
+                backfill.FilledByManual,
                 backfill.FilledByOrderCycle,
                 backfill.FilledBySyncLine,
                 backfill.FilledByRule,
@@ -2668,7 +3064,7 @@ WITH normalized AS (
             ELSE N'未知阀类'
         END AS [ValveCategory],
         CASE
-            WHEN d.[ClassifyStatus] IN ({0}, {1}, {2}, {3})
+            WHEN d.[ClassifyStatus] IN ({0}, {1}, {2}, {3}, {4})
                  AND ISNULL(d.[ProductionLine], N'') <> N'' THEN d.[ProductionLine]
             ELSE N'未知产线'
         END AS [ProductionLine],
@@ -2689,7 +3085,7 @@ LEFT JOIN [dbo].[WZ_ProductionOutputThreshold] t
    AND t.[ProductionLine] = n.[ProductionLine]
 GROUP BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];
 
-", DetailStatusMatched, DetailStatusMatchedByOrderCycle, DetailStatusMatchedBySyncLine, DetailStatusMatchedByRule);
+", DetailStatusMatched, DetailStatusMatchedByOrderCycle, DetailStatusMatchedBySyncLine, DetailStatusMatchedByRule, DetailStatusMatchedByManual);
 
             _logger.LogInformation("【WZ 汇总重算】已重建 WZ_ProductionOutput 聚合行：{Rows}", inserted);
             return inserted;
@@ -2897,7 +3293,7 @@ WITH normalized AS (
             ELSE N'未知阀类'
         END AS [ValveCategory],
         CASE
-            WHEN d.[ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule')
+            WHEN d.[ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
                  AND ISNULL(d.[ProductionLine], N'') <> N'' THEN d.[ProductionLine]
             ELSE N'未知产线'
         END AS [ProductionLine],
@@ -2965,29 +3361,50 @@ ORDER BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];", conn);
             await conn.OpenAsync(ct);
             using var cmd = new SqlCommand(@"
 SELECT TOP (@Take)
-    [ProductionDate],
-    ISNULL([BusinessKey], N'') AS [BusinessKey],
-    ISNULL([BillNo], N'') AS [BillNo],
-    ISNULL([PlanTrackingNo], N'') AS [PlanTrackingNo],
-    [EntryId],
-    [Seq],
-    ISNULL([MaterialKey], N'') AS [MaterialKey],
-    ISNULL([MaterialCode], N'') AS [MaterialCode],
-    ISNULL([MaterialId], N'') AS [MaterialId],
-    ISNULL([ValveCategory], N'') AS [ValveCategory],
-    ISNULL([ProductionLine], N'') AS [ProductionLine],
-    ISNULL([Quantity], 0) AS [Quantity],
-    ISNULL([ClassifyStatus], N'') AS [ClassifyStatus],
-    ISNULL([RawRowCount], 0) AS [RawRowCount],
-    ISNULL([LineCandidateCount], 0) AS [LineCandidateCount],
-    [LastSyncTime]
-FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
-WHERE [ProductionDate] >= @StartDate
-  AND [ProductionDate] <= @EndDate
-  AND ([ClassifyStatus] NOT IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule')
-       OR ISNULL([ValveCategory], N'') = N''
-       OR ISNULL([ProductionLine], N'') = N'')
-ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", conn);
+    d.[ProductionDate],
+    ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
+    ISNULL(d.[BillNo], N'') AS [BillNo],
+    ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+    d.[EntryId],
+    d.[Seq],
+    ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+    CASE
+        WHEN NULLIF(mat.[MaterialCode], N'') IS NOT NULL
+             AND (ISNULL(d.[MaterialCode], N'') = N'' OR d.[MaterialCode] <> mat.[MaterialCode])
+            THEN mat.[MaterialCode]
+        ELSE ISNULL(d.[MaterialCode], N'')
+    END AS [MaterialCode],
+    ISNULL(d.[MaterialId], N'') AS [MaterialId],
+    ISNULL(d.[ValveCategory], N'') AS [ValveCategory],
+    ISNULL(d.[ProductionLine], N'') AS [ProductionLine],
+    ISNULL(d.[Quantity], 0) AS [Quantity],
+    ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
+    ISNULL(d.[RawRowCount], 0) AS [RawRowCount],
+    ISNULL(d.[LineCandidateCount], 0) AS [LineCandidateCount],
+    d.[LastSyncTime]
+FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+OUTER APPLY (
+    SELECT TOP (1)
+        CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
+        m.[MaterialID]
+    FROM [dbo].[OCP_Material] m WITH (NOLOCK)
+    WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')))
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')))
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')))
+    ORDER BY CASE
+        WHEN NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode] THEN 0
+        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) THEN 1
+        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) THEN 2
+        ELSE 3
+    END
+) mat
+WHERE d.[ProductionDate] >= @StartDate
+  AND d.[ProductionDate] <= @EndDate
+  AND (d.[ClassifyStatus] NOT IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
+       OR ISNULL(d.[ValveCategory], N'') = N''
+       OR ISNULL(d.[ProductionLine], N'') = N'')
+ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[BusinessKey];", conn);
 
             AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
             cmd.Parameters.Add("@Take", SqlDbType.Int).Value = take;
@@ -3021,6 +3438,123 @@ ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", c
             return result;
         }
 
+        public async Task<List<WZProductionOutputCellDetailDto>> GetCellDetailsAsync(
+            DateTime productionDate,
+            string valveCategory,
+            string productionLine,
+            int take = 10000,
+            CancellationToken ct = default)
+        {
+            await EnsureProductionOutputDetailTableAsync(ct);
+            take = Math.Clamp(take, 1, 50000);
+
+            var normalizedValve = NormalizeStr(valveCategory);
+            if (normalizedValve.Length == 0)
+            {
+                normalizedValve = UnknownValveCategory;
+            }
+
+            var normalizedLine = NormalizeStr(productionLine);
+            if (normalizedLine.Length == 0)
+            {
+                normalizedLine = UnknownProductionLine;
+            }
+
+            var result = new List<WZProductionOutputCellDetailDto>();
+            var connectionString = _db.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = _db.Database.GetDbConnection().ConnectionString;
+            }
+
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+            using var cmd = new SqlCommand(@"
+WITH normalized AS (
+    SELECT
+        d.[ProductionDate],
+        ISNULL(d.[BillNo], N'') AS [BillNo],
+        ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+        d.[Seq],
+        CASE
+            WHEN NULLIF(mat.[MaterialCode], N'') IS NOT NULL
+                 AND (ISNULL(d.[MaterialCode], N'') = N'' OR d.[MaterialCode] <> mat.[MaterialCode])
+                THEN mat.[MaterialCode]
+            ELSE ISNULL(d.[MaterialCode], N'')
+        END AS [MaterialCode],
+        ISNULL(d.[MaterialId], N'') AS [MaterialId],
+        ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+        ISNULL(d.[Quantity], 0) AS [Quantity],
+        ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
+        CASE
+            WHEN ISNULL(d.[ValveCategory], N'') <> N'' THEN d.[ValveCategory]
+            ELSE N'未知阀类'
+        END AS [NormalizedValveCategory],
+        CASE
+            WHEN d.[ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
+                 AND ISNULL(d.[ProductionLine], N'') <> N'' THEN d.[ProductionLine]
+            ELSE N'未知产线'
+        END AS [NormalizedProductionLine]
+    FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+    OUTER APPLY (
+        SELECT TOP (1)
+            CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
+            m.[MaterialID]
+        FROM [dbo].[OCP_Material] m WITH (NOLOCK)
+        WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
+           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')))
+           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')))
+           OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')))
+        ORDER BY CASE
+            WHEN NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode] THEN 0
+            WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) THEN 1
+            WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) THEN 2
+            ELSE 3
+        END
+    ) mat
+    WHERE d.[ProductionDate] = @ProductionDate
+)
+SELECT TOP (@Take)
+    [ProductionDate],
+    [BillNo],
+    [PlanTrackingNo],
+    [Seq],
+    [MaterialCode],
+    [MaterialId],
+    [MaterialKey],
+    [Quantity],
+    [ClassifyStatus]
+FROM normalized
+WHERE [NormalizedValveCategory] = @ValveCategory
+  AND [NormalizedProductionLine] = @ProductionLine
+ORDER BY [BillNo], [PlanTrackingNo], [Seq], [MaterialCode], [MaterialId], [MaterialKey];", conn);
+
+            cmd.Parameters.Add("@ProductionDate", SqlDbType.Date).Value = productionDate.Date;
+            cmd.Parameters.Add("@ValveCategory", SqlDbType.NVarChar, 50).Value = normalizedValve;
+            cmd.Parameters.Add("@ProductionLine", SqlDbType.NVarChar, 50).Value = normalizedLine;
+            cmd.Parameters.Add("@Take", SqlDbType.Int).Value = take;
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var seqOrdinal = reader.GetOrdinal("Seq");
+                result.Add(new WZProductionOutputCellDetailDto
+                {
+                    ProductionDate = Convert.ToDateTime(reader["ProductionDate"]).Date,
+                    BillNo = ReadString(reader, "BillNo"),
+                    PlanTrackingNo = ReadString(reader, "PlanTrackingNo"),
+                    Seq = reader.IsDBNull(seqOrdinal) ? null : Convert.ToInt32(reader.GetValue(seqOrdinal)),
+                    MaterialCode = ReadString(reader, "MaterialCode"),
+                    MaterialId = ReadString(reader, "MaterialId"),
+                    MaterialKey = ReadString(reader, "MaterialKey"),
+                    Quantity = ReadDecimal(reader, "Quantity"),
+                    ClassifyStatus = ReadString(reader, "ClassifyStatus")
+                });
+            }
+
+            return result;
+        }
+
         private async Task<List<ProductionOutputDetailRow>> LoadExistingUnresolvedDetailRowsAsync(
             DateTime startDate,
             DateTime endDate,
@@ -3037,30 +3571,51 @@ ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", c
             await conn.OpenAsync(ct);
             using var cmd = new SqlCommand(@"
 SELECT
-    ISNULL([BusinessKey], N'') AS [BusinessKey],
-    [EntryId],
-    ISNULL([BillNo], N'') AS [BillNo],
-    ISNULL([PlanTrackingNo], N'') AS [PlanTrackingNo],
-    [Seq],
-    ISNULL([MaterialKey], N'') AS [MaterialKey],
-    ISNULL([MaterialCode], N'') AS [MaterialCode],
-    ISNULL([MaterialId], N'') AS [MaterialId],
-    [ProductionDate],
-    ISNULL([ValveCategory], N'') AS [ValveCategory],
-    ISNULL([ProductionLine], N'') AS [ProductionLine],
-    ISNULL([Quantity], 0) AS [Quantity],
-    ISNULL([ClassifyStatus], N'') AS [ClassifyStatus],
-    ISNULL([RawRowCount], 0) AS [RawRowCount],
-    ISNULL([LineCandidateCount], 0) AS [LineCandidateCount],
-    [SourceStartDate],
-    [SourceEndDate]
-FROM [dbo].[WZ_ProductionOutputDetail] WITH (NOLOCK)
-WHERE [ProductionDate] >= @StartDate
-  AND [ProductionDate] <= @EndDate
-  AND ([ClassifyStatus] NOT IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule')
-       OR ISNULL([ValveCategory], N'') = N''
-       OR ISNULL([ProductionLine], N'') = N'')
-ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", conn);
+    ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
+    d.[EntryId],
+    ISNULL(d.[BillNo], N'') AS [BillNo],
+    ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+    d.[Seq],
+    ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+    CASE
+        WHEN NULLIF(mat.[MaterialCode], N'') IS NOT NULL
+             AND (ISNULL(d.[MaterialCode], N'') = N'' OR d.[MaterialCode] <> mat.[MaterialCode])
+            THEN mat.[MaterialCode]
+        ELSE ISNULL(d.[MaterialCode], N'')
+    END AS [MaterialCode],
+    ISNULL(d.[MaterialId], N'') AS [MaterialId],
+    d.[ProductionDate],
+    ISNULL(d.[ValveCategory], N'') AS [ValveCategory],
+    ISNULL(d.[ProductionLine], N'') AS [ProductionLine],
+    ISNULL(d.[Quantity], 0) AS [Quantity],
+    ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
+    ISNULL(d.[RawRowCount], 0) AS [RawRowCount],
+    ISNULL(d.[LineCandidateCount], 0) AS [LineCandidateCount],
+    d.[SourceStartDate],
+    d.[SourceEndDate]
+FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+OUTER APPLY (
+    SELECT TOP (1)
+        CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
+        m.[MaterialID]
+    FROM [dbo].[OCP_Material] m WITH (NOLOCK)
+    WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')))
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')))
+       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')))
+    ORDER BY CASE
+        WHEN NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode] THEN 0
+        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) THEN 1
+        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) THEN 2
+        ELSE 3
+    END
+) mat
+WHERE d.[ProductionDate] >= @StartDate
+  AND d.[ProductionDate] <= @EndDate
+  AND (d.[ClassifyStatus] NOT IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
+       OR ISNULL(d.[ValveCategory], N'') = N''
+       OR ISNULL(d.[ProductionLine], N'') = N'')
+ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[BusinessKey];", conn);
 
             AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
 
@@ -3131,8 +3686,9 @@ ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", c
                 var result = BuildRefreshResult(details, startDate, endDate, "existing-detail.reclassify", details.Count);
 
                 _logger.LogInformation(
-                    "【WZ 重新归属完成】处理 {Details} 行，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，剩余缺产线 {MissingLine}，冲突 {Conflict}，汇总行 {SummaryRows}",
+                    "【WZ 重新归属完成】处理 {Details} 行，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，剩余缺产线 {MissingLine}，冲突 {Conflict}，汇总行 {SummaryRows}",
                     details.Count,
+                    backfill.FilledByManual,
                     backfill.FilledByOrderCycle,
                     backfill.FilledBySyncLine,
                     backfill.FilledByRule,
@@ -3181,7 +3737,7 @@ ORDER BY [ProductionDate], [BillNo], [PlanTrackingNo], [Seq], [BusinessKey];", c
             using (var cmd = new SqlCommand(@"
 SELECT
     COUNT(1) AS DetailRows,
-    SUM(CASE WHEN [ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule')
+    SUM(CASE WHEN [ClassifyStatus] IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
               AND ISNULL([ValveCategory], N'') <> N''
               AND ISNULL([ProductionLine], N'') <> N'' THEN 1 ELSE 0 END) AS SummarizableRows,
     SUM(CASE WHEN [ClassifyStatus] = N'missing_line'

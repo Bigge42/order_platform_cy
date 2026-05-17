@@ -63,6 +63,14 @@
         <el-button size="small" :type="buttonType('actual')" @click="loadData">仅看实际</el-button>
         <el-button size="small" @click="exportData">导出数据</el-button>
         <el-button size="small" :loading="unknownExportLoading" @click="exportUnknownData">导出未知产线</el-button>
+        <el-button v-if="canSyncData" size="small" :loading="manualRuleImportLoading" @click="openManualRuleImport">导入人工规则</el-button>
+        <input
+          ref="manualRuleFileInput"
+          class="manual-rule-input"
+          type="file"
+          accept=".csv,text/csv"
+          @change="importManualRulesFromFile"
+        />
       </div>
     </header>
 
@@ -176,6 +184,46 @@
         <el-button type="primary" @click="saveThresholds">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 单元格明细弹窗 -->
+    <el-dialog
+      v-model="cellDetailDialog"
+      title="产能占用明细"
+      width="980px"
+      class="cell-detail-dialog"
+    >
+      <div class="detail-summary">
+        <div>
+          <div class="detail-title">{{ cellDetailContext.date }} · {{ cellDetailContext.valveCategory }} · {{ cellDetailContext.productionLine }}</div>
+          <div class="detail-sub">格子数量 {{ formatQty(cellDetailContext.quantity) }}，明细合计 {{ formatQty(cellDetailTotal) }}</div>
+        </div>
+        <el-tag size="small" type="info">{{ cellDetailRows.length }} 条</el-tag>
+      </div>
+      <el-table
+        :data="cellDetailRows"
+        size="small"
+        border
+        stripe
+        v-loading="cellDetailLoading"
+        empty-text="当前格子暂无订单明细"
+        max-height="520"
+        style="width:100%;margin-top:12px"
+      >
+        <el-table-column label="订单号" prop="billNo" min-width="150" show-overflow-tooltip />
+        <el-table-column label="计划跟踪号" prop="planTrackingNo" min-width="180" show-overflow-tooltip />
+        <el-table-column label="物料号" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.materialCode || row.MaterialCode || row.materialId || row.MaterialId || row.materialKey || row.MaterialKey || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="序号" prop="seq" width="72" align="right" />
+        <el-table-column label="数量" width="92" align="right">
+          <template #default="{ row }">{{ formatQty(row.quantity ?? row.Quantity ?? 0) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" prop="classifyStatus" width="132" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="cellDetailDialog=false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -275,6 +323,20 @@ const syncDialog = ref(false)
 const syncHistoryLoading = ref(false)
 const syncHistory = ref([])
 const unknownExportLoading = ref(false)
+const manualRuleImportLoading = ref(false)
+const manualRuleFileInput = ref(null)
+const cellDetailDialog = ref(false)
+const cellDetailLoading = ref(false)
+const cellDetailRows = ref([])
+const cellDetailContext = reactive({
+  date: '',
+  valveCategory: '',
+  productionLine: '',
+  quantity: 0
+})
+const cellDetailTotal = computed(() =>
+  cellDetailRows.value.reduce((sum, row) => sum + Number(row.quantity ?? row.Quantity ?? 0), 0)
+)
 const canSyncData = computed(() => {
   const userInfo = store.getters.getUserInfo?.() || {}
   const names = [
@@ -359,6 +421,29 @@ function getThr(valve, line){
 function setThr(valve, line, val){
   if (!thrDraft.value[valve]) thrDraft.value[valve] = {}
   thrDraft.value[valve][line] = Number(val ?? 0)
+}
+function formatQty(value){
+  const num = Number(value ?? 0)
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString('zh-CN', { maximumFractionDigits: 6 })
+}
+function isUnknownValveCategory(value){
+  return String(value || '').trim() === '未知阀类'
+}
+function compareCategoryName(a, b){
+  const au = isUnknownValveCategory(a)
+  const bu = isUnknownValveCategory(b)
+  if (au !== bu) return au ? 1 : -1
+  return String(a || '').localeCompare(String(b || ''), 'zh-Hans-CN')
+}
+function compareLineName(a, b){
+  const au = String(a || '').trim() === '未知产线'
+  const bu = String(b || '').trim() === '未知产线'
+  if (au !== bu) return au ? 1 : -1
+  const na = String(a || '').match(/\d+/)?.[0]
+  const nb = String(b || '').match(/\d+/)?.[0]
+  if (na && nb && na !== nb) return Number(na) - Number(nb)
+  return String(a || '').localeCompare(String(b || ''), 'zh-Hans-CN')
 }
 function getGithubLine(valve){
   return state.githubLine?.[valve] || null
@@ -506,11 +591,7 @@ function renderAll(){
         rect.style.cursor='pointer'
 
         rect.addEventListener('click', ()=>{
-          const input = window.prompt(`请输入 ${v}-${l}（${fmtYMD(days[k])}）的新产量`, String(val))
-          if(input==null) return
-          const num = Math.max(0, Math.floor(Number(input)||0))
-          state.data[v][l][k] = num
-          renderAll()
+          openCellDetails(v, l, days[k], val)
         })
         rect.addEventListener('mouseenter', ev=>{
           const tip = document.getElementById('tooltip')
@@ -546,6 +627,40 @@ function renderAll(){
 
     wrapper.appendChild(svg)
     container.appendChild(wrapper)
+  }
+}
+
+async function openCellDetails(valve, line, date, quantity){
+  const tip = document.getElementById('tooltip')
+  if (tip) tip.style.display = 'none'
+
+  const dateText = fmtYMD(date)
+  cellDetailContext.date = dateText
+  cellDetailContext.valveCategory = valve
+  cellDetailContext.productionLine = line
+  cellDetailContext.quantity = Number(quantity || 0)
+  cellDetailRows.value = []
+  cellDetailDialog.value = true
+  cellDetailLoading.value = true
+
+  try{
+    const qs = new URLSearchParams({
+      date: dateText,
+      valveCategory: valve,
+      productionLine: line,
+      take: '10000'
+    })
+    const res = await proxy?.http?.get(`/api/WZ/ProductionOutput/details?${qs.toString()}`, {}, true)
+    cellDetailRows.value =
+      Array.isArray(res) ? res :
+        Array.isArray(res?.data) ? res.data :
+          Array.isArray(res?.Data) ? res.Data :
+            Array.isArray(res?.result) ? res.result : []
+  }catch(e){
+    console.error(e)
+    ElMessage.error('格子明细加载失败')
+  }finally{
+    cellDetailLoading.value = false
   }
 }
 
@@ -760,13 +875,9 @@ function applyRows(rows, successMessage){
   }
   // 排序
   const categories = Array.from(catMap.keys())
-    .sort((a,b)=>a.localeCompare(b, 'zh-Hans-CN'))
+    .sort(compareCategoryName)
     .map(v=>{
-      const lines = Array.from(catMap.get(v)).sort((a,b)=>{
-        const na=a.match(/\d+/)?.[0], nb=b.match(/\d+/)?.[0]
-        if (na && nb && na!==nb) return Number(na)-Number(nb)
-        return a.localeCompare(b, 'zh-Hans-CN')
-      })
+      const lines = Array.from(catMap.get(v)).sort(compareLineName)
       return { name:v, lines }
     })
   state.categories = categories
@@ -857,6 +968,165 @@ function downloadCsv(fileName, headers, rows){
   URL.revokeObjectURL(url)
 }
 
+function readFileAsText(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('文件读取失败'))
+    reader.readAsText(file, 'utf-8')
+  })
+}
+
+function parseCsvRows(text){
+  const rows = []
+  let row = []
+  let cell = ''
+  let quoted = false
+  const source = String(text || '').replace(/^\uFEFF/, '')
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (quoted) {
+      if (ch === '"' && source[i + 1] === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') {
+        quoted = false
+      } else {
+        cell += ch
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      quoted = true
+    } else if (ch === ',') {
+      row.push(cell)
+      cell = ''
+    } else if (ch === '\n') {
+      row.push(cell)
+      if (row.some(v => String(v || '').trim())) rows.push(row)
+      row = []
+      cell = ''
+    } else if (ch !== '\r') {
+      cell += ch
+    }
+  }
+
+  row.push(cell)
+  if (row.some(v => String(v || '').trim())) rows.push(row)
+  return rows
+}
+
+function buildCsvHeaderMap(headers){
+  const map = new Map()
+  headers.forEach((header, index) => {
+    map.set(String(header || '').trim().toLowerCase(), index)
+  })
+  return map
+}
+
+function csvValue(row, headerMap, aliases){
+  for (const name of aliases) {
+    const index = headerMap.get(String(name).trim().toLowerCase())
+    if (index != null) return String(row[index] ?? '').trim()
+  }
+  return ''
+}
+
+function cleanManualValue(value, unknownText = ''){
+  const text = String(value || '').trim()
+  if (!text || (unknownText && text === unknownText)) return ''
+  return text
+}
+
+function openManualRuleImport(){
+  if (!canSyncData.value) {
+    ElMessage.warning('只有 cyadmin 可以导入人工规则')
+    return
+  }
+  manualRuleFileInput.value?.click?.()
+}
+
+async function importManualRulesFromFile(event){
+  const input = event?.target
+  const file = input?.files?.[0]
+  if (!file || manualRuleImportLoading.value) return
+
+  manualRuleImportLoading.value = true
+  try{
+    const text = await readFileAsText(file)
+    const csvRows = parseCsvRows(text)
+    if (csvRows.length < 2) {
+      ElMessage.warning('CSV 没有可导入的数据行')
+      return
+    }
+
+    const headerMap = buildCsvHeaderMap(csvRows[0])
+    const aliases = {
+      billNo: ['单据号', '订单号', 'BillNo', 'billNo'],
+      planTrackingNo: ['计划跟踪号', 'PlanTrackingNo', 'planTrackingNo'],
+      materialKey: ['物料键', 'MaterialKey', 'materialKey'],
+      materialCode: ['物料编码', '物料号', 'MaterialCode', 'materialCode'],
+      materialId: ['物料ID', 'MaterialId', 'materialId'],
+      manualValveCategory: ['人工阀体种类', '人工阀体类别', '人工阀类', 'ManualValveCategory'],
+      valveCategory: ['阀体种类', '阀体类别', 'ValveCategory', 'valveCategory'],
+      manualProductionLine: ['人工生产线', '人工产线', 'ManualProductionLine'],
+      productionLine: ['生产线', '产线', 'ProductionLine', 'productionLine'],
+      remark: ['规则备注', '备注', 'Remark', 'remark']
+    }
+
+    const ruleMap = new Map()
+    for (const row of csvRows.slice(1)) {
+      const billNo = csvValue(row, headerMap, aliases.billNo)
+      const planTrackingNo = csvValue(row, headerMap, aliases.planTrackingNo)
+      const materialCode = csvValue(row, headerMap, aliases.materialCode)
+      const materialId = csvValue(row, headerMap, aliases.materialId)
+      const materialKey = csvValue(row, headerMap, aliases.materialKey)
+      const valveCategory = cleanManualValue(
+        csvValue(row, headerMap, aliases.manualValveCategory)
+          || csvValue(row, headerMap, aliases.valveCategory),
+        '未知阀类'
+      )
+      const productionLine = cleanManualValue(
+        csvValue(row, headerMap, aliases.manualProductionLine)
+          || csvValue(row, headerMap, aliases.productionLine),
+        '未知产线'
+      )
+      if (!billNo || !planTrackingNo || !valveCategory || !productionLine) continue
+
+      const key = [billNo, planTrackingNo, materialCode, materialId, materialKey].join('\u001F')
+      ruleMap.set(key, {
+        billNo,
+        planTrackingNo,
+        materialCode,
+        materialId,
+        materialKey,
+        valveCategory,
+        productionLine,
+        remark: csvValue(row, headerMap, aliases.remark),
+        enable: true
+      })
+    }
+
+    const rules = Array.from(ruleMap.values())
+    if (!rules.length) {
+      ElMessage.warning('没有识别到可导入的人工规则，请填写“人工阀体种类”和“人工生产线”')
+      return
+    }
+
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/manual-line-rules', rules)
+    const saved = Number(res?.saved ?? res?.data?.saved ?? res?.Data?.saved ?? rules.length)
+    ElMessage.success(`已导入 ${saved} 条人工规则，下次同步或重新归类会优先使用`)
+  }catch(e){
+    console.error(e)
+    ElMessage.error('人工规则导入失败')
+  }finally{
+    manualRuleImportLoading.value = false
+    if (input) input.value = ''
+  }
+}
+
 async function exportUnknownData(){
   if (unknownExportLoading.value) return
   const start = fmtYMD(state.rangeStart)
@@ -880,22 +1150,30 @@ async function exportUnknownData(){
       return
     }
 
-    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','阀体种类','生产线','数量','状态','业务键']
-    const lines = rows.map(r => [
-      getProductionDateStr(r),
-      r.billNo ?? r.BillNo,
-      r.planTrackingNo ?? r.PlanTrackingNo,
-      r.seq ?? r.Seq,
-      r.entryId ?? r.EntryId,
-      r.materialKey ?? r.MaterialKey,
-      r.materialCode ?? r.MaterialCode,
-      r.materialId ?? r.MaterialId,
-      r.valveCategory ?? r.ValveCategory,
-      r.productionLine ?? r.ProductionLine,
-      Number(r.quantity ?? r.Quantity ?? 0),
-      r.classifyStatus ?? r.ClassifyStatus,
-      r.businessKey ?? r.BusinessKey
-    ].map(csvCell).join(','))
+    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','阀体种类','生产线','数量','状态','业务键','人工阀体种类','人工生产线','规则备注']
+    const lines = rows.map(r => {
+      const valve = r.valveCategory ?? r.ValveCategory
+      const line = r.productionLine ?? r.ProductionLine
+      const manualValve = cleanManualValue(valve, '未知阀类')
+      return [
+        getProductionDateStr(r),
+        r.billNo ?? r.BillNo,
+        r.planTrackingNo ?? r.PlanTrackingNo,
+        r.seq ?? r.Seq,
+        r.entryId ?? r.EntryId,
+        r.materialKey ?? r.MaterialKey,
+        r.materialCode ?? r.MaterialCode,
+        r.materialId ?? r.MaterialId,
+        valve,
+        line,
+        Number(r.quantity ?? r.Quantity ?? 0),
+        r.classifyStatus ?? r.ClassifyStatus,
+        r.businessKey ?? r.BusinessKey,
+        manualValve,
+        '',
+        ''
+      ].map(csvCell).join(',')
+    })
 
     downloadCsv(`未知产线明细_${start}_${end}.csv`, headers, lines)
     ElMessage.success(`已导出 ${rows.length} 条未知产线明细`)
@@ -932,6 +1210,7 @@ onMounted(()=>{ renderAll() })
 .ph-sub{font-size:12px;color:var(--muted)}
 .ph-header{position:sticky;top:0;backdrop-filter:saturate(150%) blur(6px);background:rgba(255,255,255,.8);border-bottom:1px solid var(--border);z-index:10}
 .ph-container{width:100%;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.manual-rule-input{display:none}
 
 .btn-amber{--el-button-bg-color:var(--amber);--el-button-text-color:#fff;border:none}
 
@@ -968,6 +1247,13 @@ svg text{font-family:inherit}
 .sync-window{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px}
 .sync-window .label{font-size:12px;color:#64748b}
 .sync-window .value{font-weight:600;color:#111827}
+
+.cell-detail-dialog :deep(.el-dialog__header){padding:20px 24px 16px !important;border-bottom:1px solid var(--border)}
+.cell-detail-dialog :deep(.el-dialog__body){padding:18px 24px 22px !important}
+.cell-detail-dialog :deep(.el-dialog__footer){padding:16px 24px 20px !important;border-top:1px solid var(--border)}
+.detail-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.detail-title{font-weight:600;color:#111827;font-size:14px}
+.detail-sub{font-size:12px;color:#64748b;margin-top:4px;line-height:1.5}
 
 /* 紧凑模式整体缩紧 */
 .compact .ph-container{padding:8px 12px}

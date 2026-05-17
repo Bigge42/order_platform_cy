@@ -78,6 +78,23 @@ namespace HDPro.CY.Order.IServices.WZ
             CancellationToken ct = default);
 
         /// <summary>
+        /// 查询指定热力图格子的订单明细。
+        /// </summary>
+        Task<List<WZProductionOutputCellDetailDto>> GetCellDetailsAsync(
+            DateTime productionDate,
+            string valveCategory,
+            string productionLine,
+            int take = 10000,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// 保存人工产线映射规则，后续同步/重新归类会优先使用。
+        /// </summary>
+        Task<int> SaveManualLineRulesAsync(
+            IReadOnlyCollection<WZProductionOutputManualLineRuleDto> rules,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// 重新计算现有未归属明细的产线：不重拉源数据，只回写指定生产日期范围内的未知/冲突明细。
         /// </summary>
         Task<WZProductionOutputRefreshResultDto> ReclassifyExistingDetailsAsync(
@@ -190,5 +207,31 @@ namespace HDPro.CY.Order.IServices.WZ
         public int RawRowCount { get; set; }
         public int LineCandidateCount { get; set; }
         public DateTime? LastSyncTime { get; set; }
+    }
+
+    public sealed class WZProductionOutputCellDetailDto
+    {
+        public DateTime ProductionDate { get; set; }
+        public string BillNo { get; set; } = string.Empty;
+        public string PlanTrackingNo { get; set; } = string.Empty;
+        public string MaterialCode { get; set; } = string.Empty;
+        public string MaterialId { get; set; } = string.Empty;
+        public string MaterialKey { get; set; } = string.Empty;
+        public int? Seq { get; set; }
+        public decimal Quantity { get; set; }
+        public string ClassifyStatus { get; set; } = string.Empty;
+    }
+
+    public sealed class WZProductionOutputManualLineRuleDto
+    {
+        public string BillNo { get; set; } = string.Empty;
+        public string PlanTrackingNo { get; set; } = string.Empty;
+        public string MaterialCode { get; set; } = string.Empty;
+        public string MaterialId { get; set; } = string.Empty;
+        public string MaterialKey { get; set; } = string.Empty;
+        public string ValveCategory { get; set; } = string.Empty;
+        public string ProductionLine { get; set; } = string.Empty;
+        public string Remark { get; set; } = string.Empty;
+        public bool Enable { get; set; } = true;
     }
 }

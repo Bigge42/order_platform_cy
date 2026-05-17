@@ -260,10 +260,10 @@ void EnsureWzProductionOutputDailyRefreshTask()
         task.GroupName = "group";
         task.Method = "post";
         task.TimeOut = 1800;
-        task.CronExpression = "0 0 15 * * ?";
+        task.CronExpression = "0 30 14 * * ?";
         task.ApiUrl = "http://127.0.0.1:9200/api/WZ/ProductionOutput/refresh/daily-increment-task";
         task.PostData = "{}";
-        task.Describe = "每天下午15:00同步当天新增WZ产能数据并累加";
+        task.Describe = "每天下午14:30同步前一天WZ产能数据并完成分类，确保主计划员16:00操作前可查看";
         task.Status = 0;
         task.Modifier = "system";
         task.ModifyDate = now;
