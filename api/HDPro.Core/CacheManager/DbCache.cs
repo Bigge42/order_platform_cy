@@ -17,7 +17,7 @@ namespace HDPro.Core.CacheManager
 {
     public static class DbCache
     {
-        private static List<Sys_DbService> DbServices = null;
+        private static List<Sys_DbService> DbServices = new List<Sys_DbService>();
         private static object _lock_sbcnew = new object();
 
 
@@ -59,7 +59,7 @@ namespace HDPro.Core.CacheManager
         }
         public static List<Sys_DbService> GetList()
         {
-            return DbServices;
+            return DbServices ?? new List<Sys_DbService>();
         }
 
         public static WebResponseContent Reload(WebResponseContent webResponse)
@@ -117,12 +117,15 @@ namespace HDPro.Core.CacheManager
 
         public static Sys_DbService GetDbInfo(Guid dbServiceId)
         {
-            return DbServices.Where(x => x.DbServiceId == dbServiceId).FirstOrDefault();
+            return (DbServices ?? new List<Sys_DbService>())
+                .Where(x => x.DbServiceId == dbServiceId)
+                .FirstOrDefault();
         }
 
         public static IEnumerable<Sys_DbService> GetDbInfo(Func<Sys_DbService, bool> where)
         {
-            return DbServices.Where(where);
+            return (DbServices ?? new List<Sys_DbService>())
+                .Where(where ?? (_ => true));
         }
 
 

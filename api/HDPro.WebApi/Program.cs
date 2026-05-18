@@ -54,6 +54,14 @@ var logger = NLog.LogManager.Setup().LoadConfigurationFromAppSettings().GetCurre
 logger.Debug("应用程序启动初始化");
 
 var builder = WebApplication.CreateBuilder(args);
+void StartupTrace(string message)
+{
+    if (string.Equals(Environment.GetEnvironmentVariable("HDPRO_STARTUP_TRACE"), "1", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine($"[startup] {DateTime.Now:HH:mm:ss} {message}");
+    }
+}
+StartupTrace("builder created");
 
 // 设置全局编码为UTF-8
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -68,13 +76,24 @@ builder.Services.AddHttpClient("WZ", client =>
 builder.Logging.ClearProviders();
 builder.Host.UseNLog();
 
+StartupTrace("before AddModule");
 builder.Services.AddModule(builder.Configuration);
+StartupTrace("after AddModule");
 // 添加ESB服务注册
+StartupTrace("before AddESBServices");
 builder.Services.AddESBServices();
-// 添加后台服务
-builder.Services.AddHostedService<BackgroundMessageService>();
-// 添加预警规则初始化后台服务
-builder.Services.AddHostedService<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesInitializer>();
+StartupTrace("after AddESBServices");
+var skipHostedServices = string.Equals(
+    Environment.GetEnvironmentVariable("HDPRO_SKIP_HOSTED_SERVICES"),
+    "1",
+    StringComparison.OrdinalIgnoreCase);
+if (!skipHostedServices)
+{
+    // 添加后台服务
+    builder.Services.AddHostedService<BackgroundMessageService>();
+    // 添加预警规则初始化后台服务
+    builder.Services.AddHostedService<HDPro.CY.Order.Services.OrderCollaboration.AlertRulesInitializer>();
+}
 // 添加消息服务
 builder.Services.AddSingleton<IMessageService, MessageService>();
 // 添加消息通道
@@ -230,7 +249,9 @@ builder.Services.AddScoped<IMaterialCallWorkOrderSetService, MaterialCallWorkOrd
 builder.Services.AddScoped<IMaterialCallWmsSyncService, MaterialCallWmsSyncService>();
 builder.Services.AddHttpClient(nameof(MaterialCallWmsSyncService));
 
+StartupTrace("before builder.Build");
 var app = builder.Build();
+StartupTrace("after builder.Build");
 
 void EnsureWzProductionOutputDailyRefreshTask()
 {
@@ -260,10 +281,10 @@ void EnsureWzProductionOutputDailyRefreshTask()
         task.GroupName = "group";
         task.Method = "post";
         task.TimeOut = 1800;
-        task.CronExpression = "0 0 15 * * ?";
+        task.CronExpression = "0 30 1 * * ?";
         task.ApiUrl = "http://127.0.0.1:9200/api/WZ/ProductionOutput/refresh/daily-increment-task";
         task.PostData = "{}";
-        task.Describe = "每天下午15:00同步当天新增WZ产能数据并累加";
+        task.Describe = "每天凌晨01:30同步前一天WZ产能数据并完成分类，避开白天操作窗口";
         task.Status = 0;
         task.Modifier = "system";
         task.ModifyDate = now;
@@ -285,10 +306,27 @@ if (app.Environment.IsDevelopment())
 //else
 //{
     // 定时任务，如果不需要定时执行定时任务，请将此处放到else里面
-    EnsureWzProductionOutputDailyRefreshTask();
-    app.UseQuartz(app.Environment);
+    var disableStartupQuartz = string.Equals(
+        Environment.GetEnvironmentVariable("HDPRO_DISABLE_STARTUP_QUARTZ"),
+        "1",
+        StringComparison.OrdinalIgnoreCase);
+    if (!disableStartupQuartz)
+    {
+        EnsureWzProductionOutputDailyRefreshTask();
+        app.UseQuartz(app.Environment);
+    }
 //}
-app.UseLanguagePack().UseMiddleware<LanguageMiddleWare>();
+var skipLanguagePack = string.Equals(
+    Environment.GetEnvironmentVariable("HDPRO_SKIP_LANGUAGE_PACK"),
+    "1",
+    StringComparison.OrdinalIgnoreCase);
+if (!skipLanguagePack)
+{
+    StartupTrace("before UseLanguagePack");
+    app.UseLanguagePack();
+    StartupTrace("after UseLanguagePack");
+}
+app.UseMiddleware<LanguageMiddleWare>();
 app.UseMiddleware<ExceptionHandlerMiddleWare>();
 app.UseDefaultFiles();
 app.UseStaticFiles().UseStaticFiles(new StaticFileOptions
@@ -338,6 +376,7 @@ app.MapControllers();
 
 try
 {
+    StartupTrace("before app.Run");
     logger.Debug("应用程序启动完成");
     app.Run();
 }

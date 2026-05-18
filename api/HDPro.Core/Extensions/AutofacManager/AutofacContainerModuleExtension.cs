@@ -35,10 +35,19 @@ namespace HDPro.Core.Extensions
         //  private static bool _isMysql = false;
         public static IServiceCollection AddModule(this IServiceCollection services, IConfiguration configuration)
         {
+            static void StartupTrace(string message)
+            {
+                if (string.Equals(Environment.GetEnvironmentVariable("HDPRO_STARTUP_TRACE"), "1", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[startup] {DateTime.Now:HH:mm:ss} {message}");
+                }
+            }
             //services.AddSession();
             //services.AddMemoryCache();
             //初始化配置文件
+            StartupTrace("AddModule: before AppSetting.Init");
             AppSetting.Init(services, configuration);
+            StartupTrace("AddModule: after AppSetting.Init");
             Type baseType = typeof(IDependency);
             var compilationLibrary = DependencyContext.Default
                 .RuntimeLibraries
@@ -46,12 +55,14 @@ namespace HDPro.Core.Extensions
                 && x.Type == "project")
                 .ToList();
             var count1 = compilationLibrary.Count;
+            StartupTrace($"AddModule: runtime libraries {count1}");
             List<Assembly> assemblyList = new List<Assembly>();
 
             foreach (var _compilation in compilationLibrary)
             {
                 try
                 {
+                    StartupTrace($"AddModule: load assembly {_compilation.Name}");
                     assemblyList.Add(AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(_compilation.Name)));
                 }
                 catch (Exception ex)
@@ -78,6 +89,7 @@ namespace HDPro.Core.Extensions
             //}
             foreach (var _compilation in compilationLibrary)
             {
+                StartupTrace($"AddModule: scan assembly {_compilation.Name}");
                 var types = AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(_compilation.Name)).GetTypes();
 
                 var implementedInterfaces = types.Where(t => t.IsClass && !t.IsAbstract && t.GetInterfaces().Length > 0)
@@ -113,7 +125,12 @@ namespace HDPro.Core.Extensions
                 AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
             }
             DapperParseGuidTypeHandler.InitParseGuid();
-            DbCache.Init();
+            if (!string.Equals(Environment.GetEnvironmentVariable("HDPRO_SKIP_DBCACHE_INIT"), "1", StringComparison.OrdinalIgnoreCase))
+            {
+                StartupTrace("AddModule: before DbCache.Init");
+                DbCache.Init();
+                StartupTrace("AddModule: after DbCache.Init");
+            }
             //kafka注入
             //if (AppSetting.Kafka.UseConsumer)
             //    builder.RegisterType<KafkaConsumer<string, string>>().As<IKafkaConsumer<string, string>>().SingleInstance();

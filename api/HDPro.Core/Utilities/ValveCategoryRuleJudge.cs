@@ -123,7 +123,7 @@ namespace HDPro.Core.Utilities
                 return specCase;
             }
 
-            return TryJudge(productName);
+            return TryJudge(specModel) ?? TryJudge(productName);
         }
 
         private static bool TryGetSpecialCase(string value, out (string Category, string RuleCode) specialCase)
