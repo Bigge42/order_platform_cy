@@ -509,7 +509,7 @@ namespace HDPro.CY.Order.Services.OrderCollaboration.ESB
                         (deletedCount, skippedCount) = await DoDeleteBusinessDataAsync(dapperContext, deletedDataList, "OCP_SubOrderUnFinishTrack", "FENTRYID");
                         break;
                     case ESBDeletedDataBusinessType.ZJGZ:
-                        (deletedCount, skippedCount) = await DoDeleteBusinessDataAsync(dapperContext, deletedDataList, "OCP_PrdMOTracking", "FENTRYID");
+                        //(deletedCount, skippedCount) = await DoDeleteBusinessDataAsync(dapperContext, deletedDataList, "OCP_PrdMOTracking", "FID");
                         break;
                     case ESBDeletedDataBusinessType.BJGZ:
                         (deletedCount, skippedCount) = await DoDeleteBusinessDataAsync(dapperContext, deletedDataList, "OCP_PartUnFinishTracking", "FENTRYID");
