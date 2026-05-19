@@ -281,10 +281,10 @@ void EnsureWzProductionOutputDailyRefreshTask()
         task.GroupName = "group";
         task.Method = "post";
         task.TimeOut = 1800;
-        task.CronExpression = "0 30 1 * * ?";
+        task.CronExpression = "0 30 4 * * ?";
         task.ApiUrl = "http://127.0.0.1:9200/api/WZ/ProductionOutput/refresh/daily-increment-task";
         task.PostData = "{}";
-        task.Describe = "每天凌晨01:30同步前一天WZ产能数据并完成分类，避开白天操作窗口";
+        task.Describe = "每天凌晨04:30同步前一天WZ产能数据并完成分类，避开白天操作窗口";
         task.Status = 0;
         task.Modifier = "system";
         task.ModifyDate = now;

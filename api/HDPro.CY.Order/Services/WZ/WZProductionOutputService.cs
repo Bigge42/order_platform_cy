@@ -1954,6 +1954,21 @@ BEGIN
         ON [dbo].[WZ_ProductionOutputDetail]([BusinessKey]);
 END;
 
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'BillNo') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'PlanTrackingNo') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'Seq') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'BusinessKey') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM sys.indexes
+       WHERE name = N'IX_WZ_ProductionOutputDetail_BillPlanSeq'
+         AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+   )
+BEGIN
+    CREATE INDEX [IX_WZ_ProductionOutputDetail_BillPlanSeq]
+        ON [dbo].[WZ_ProductionOutputDetail]([BillNo], [PlanTrackingNo], [Seq])
+        INCLUDE ([BusinessKey]);
+END;
+
 IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ClassifyStatus') IS NOT NULL
    AND NOT EXISTS (
        SELECT 1 FROM sys.indexes
@@ -3497,23 +3512,33 @@ CREATE TABLE #WZProductionOutputDetailImport
 CREATE INDEX [IX_WZProductionOutputDetailImport_BusinessKey]
     ON #WZProductionOutputDetailImport([BusinessKey]);
 
+CREATE INDEX [IX_WZProductionOutputDetailImport_EntryId]
+    ON #WZProductionOutputDetailImport([EntryId])
+    INCLUDE ([BusinessKey])
+    WHERE [EntryId] IS NOT NULL;
+
+CREATE INDEX [IX_WZProductionOutputDetailImport_BillPlanSeq]
+    ON #WZProductionOutputDetailImport([BillNo], [PlanTrackingNo], [Seq])
+    INCLUDE ([BusinessKey]);
+
 CREATE TABLE #WZProductionOutputDetailMergeResult([Action] NVARCHAR(10) NOT NULL);
 
 DELETE target
 FROM [dbo].[WZ_ProductionOutputDetail] target
 INNER JOIN #WZProductionOutputDetailImport source
+    ON source.[EntryId] IS NOT NULL
+   AND target.[BusinessKey] = CONCAT(N'E:', CONVERT(NVARCHAR(50), source.[EntryId]))
+   AND target.[BusinessKey] <> source.[BusinessKey];
+
+DELETE target
+FROM [dbo].[WZ_ProductionOutputDetail] target
+INNER JOIN #WZProductionOutputDetailImport source
     ON target.[BusinessKey] <> source.[BusinessKey]
-   AND (
-        (source.[EntryId] IS NOT NULL
-         AND target.[BusinessKey] = CONCAT(N'E:', CONVERT(NVARCHAR(50), source.[EntryId])))
-        OR (
-            target.[BusinessKey] NOT LIKE N'%|M:%'
-            AND target.[BusinessKey] NOT LIKE N'OCP:%'
-            AND ISNULL(target.[BillNo], N'') = ISNULL(source.[BillNo], N'')
-            AND ISNULL(target.[PlanTrackingNo], N'') = ISNULL(source.[PlanTrackingNo], N'')
-            AND ISNULL(target.[Seq], -2147483648) = ISNULL(source.[Seq], -2147483648)
-        )
-   );
+   AND target.[BusinessKey] NOT LIKE N'%|M:%'
+   AND target.[BusinessKey] NOT LIKE N'OCP:%'
+   AND (target.[BillNo] = source.[BillNo] OR (target.[BillNo] IS NULL AND source.[BillNo] IS NULL))
+   AND (target.[PlanTrackingNo] = source.[PlanTrackingNo] OR (target.[PlanTrackingNo] IS NULL AND source.[PlanTrackingNo] IS NULL))
+   AND (target.[Seq] = source.[Seq] OR (target.[Seq] IS NULL AND source.[Seq] IS NULL));
 
 MERGE [dbo].[WZ_ProductionOutputDetail] WITH (HOLDLOCK) AS target
 USING #WZProductionOutputDetailImport AS source
