@@ -364,9 +364,37 @@ namespace HDPro.CY.Order.Controllers.WZ
         public async Task<ActionResult<object>> RefreshDailyIncrementTask(CancellationToken ct = default)
         {
             var startDate = DateTime.Today.AddDays(-1);
-            var endDate = startDate;
-            var count = await _service.RefreshIncrementalAsync(startDate, endDate, ct);
-            return Ok(new { updated = count, range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}", mode = "previous-day-idempotent" });
+            var endDate = DateTime.Today;
+            return await RefreshIncrementalWindowAsync(startDate, endDate, "previous-day-with-next-day-end-idempotent", ct);
+        }
+
+        /// <summary>
+        /// External task: refresh production output by explicit source-date window.
+        /// POST /api/WZ/ProductionOutput/refresh/incremental-task
+        /// body: { "start":"2026-05-18", "end":"2026-05-19" }
+        /// </summary>
+        [ApiTask]
+        [HttpPost("refresh/incremental-task")]
+        public async Task<ActionResult<object>> RefreshIncrementalTask([FromBody] DateRangeDto dto, CancellationToken ct = default)
+        {
+            var startDate = dto?.Start == default ? DateTime.Today.AddDays(-1) : dto.Start.Date;
+            var endDate = dto?.End == default ? startDate.AddDays(1) : dto.End.Date;
+            return await RefreshIncrementalWindowAsync(startDate, endDate, "explicit-source-date-window-idempotent", ct);
+        }
+
+        private async Task<ActionResult<object>> RefreshIncrementalWindowAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string mode,
+            CancellationToken ct)
+        {
+            if (endDate < startDate)
+            {
+                return BadRequest(new { message = "end 不能早于 start", range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}" });
+            }
+
+            var count = await _service.RefreshIncrementalAsync(startDate.Date, endDate.Date, ct);
+            return Ok(new { updated = count, range = $"{startDate:yyyy-MM-dd}~{endDate:yyyy-MM-dd}", mode });
         }
 
         /// <summary>

@@ -703,6 +703,7 @@ namespace HDPro.CY.Order.Services
                 var batch = await context.Set<WZ_OrderCycleBase>()
                     .AsNoTracking()
                     .Where(p => p.Id > lastId
+                        && (p.MaterialCode == null || !p.MaterialCode.Trim().ToUpper().StartsWith("BJ"))
                         && (((p.ValveCategory == null || p.ValveCategory == string.Empty)
                                 && ((p.ProductName != null && p.ProductName != string.Empty)
                                     || (p.GUI_GE_XING_HAO != null && p.GUI_GE_XING_HAO != string.Empty)))
