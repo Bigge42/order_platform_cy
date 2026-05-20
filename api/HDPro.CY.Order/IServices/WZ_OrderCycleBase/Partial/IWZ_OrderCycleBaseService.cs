@@ -25,6 +25,8 @@ namespace HDPro.CY.Order.IServices
 
         Task<CapacityScheduleSummary> CalculateCapacityScheduleDateAsync(CancellationToken cancellationToken = default);
 
+        Task<InitializeSchedulingSummary> InitializeSchedulingAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
+
         string GetAssignedProductionLineSql();
     }
 
@@ -155,5 +157,22 @@ namespace HDPro.CY.Order.IServices
         /// 区间内全部超过 120% 后均匀摊排的订单数
         /// </summary>
         public int BalancedOverflowCount { get; set; }
+    }
+
+    public sealed class InitializeSchedulingSummary
+    {
+        public ValveRuleBatchSummary ValveRule { get; set; }
+
+        public int ValveCategoryUpdated { get; set; }
+
+        public AssignedProductionLineBatchSummary AssignedProductionLine { get; set; }
+
+        public CapacityScheduleSummary CapacitySchedule { get; set; }
+
+        public int PreProductionOutputSynced { get; set; }
+
+        public int RemainingNonBjBlankCapacityScheduleDate { get; set; }
+
+        public List<string> Warnings { get; set; } = new List<string>();
     }
 }

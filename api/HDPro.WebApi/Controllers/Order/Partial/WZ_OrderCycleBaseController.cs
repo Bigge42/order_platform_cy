@@ -227,5 +227,29 @@ namespace HDPro.CY.Order.Controllers
                 return JsonNormal(new WebResponseContent().Error($"计算失败：{ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// 完整执行排产初始化链路
+        /// </summary>
+        /// <param name="batchSize">单批处理数量</param>
+        /// <returns>初始化链路结果摘要</returns>
+        [HttpPost("initialize-scheduling")]
+        [AllowAnonymous]
+        public async Task<IActionResult> InitializeScheduling([FromQuery] int batchSize = 1000)
+        {
+            try
+            {
+                var result = await Service.InitializeSchedulingAsync(batchSize);
+                var hasWarnings = result.Warnings != null && result.Warnings.Count > 0;
+                var message = hasWarnings
+                    ? $"排产初始化完成，但仍有需处理项：{string.Join("；", result.Warnings)}"
+                    : "排产初始化完成";
+                return JsonNormal(new WebResponseContent().OK(message, result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"排产初始化失败：{ex.Message}"));
+            }
+        }
     }
 }

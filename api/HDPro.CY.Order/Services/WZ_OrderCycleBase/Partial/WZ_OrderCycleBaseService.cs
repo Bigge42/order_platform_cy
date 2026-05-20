@@ -288,6 +288,77 @@ namespace HDPro.CY.Order.Services
         }
 
         /// <summary>
+        /// 完整执行排产初始化链路，确保规则服务、品类、产线、优化日期和预排产输出同步在同一次操作内闭环。
+        /// </summary>
+        public async Task<InitializeSchedulingSummary> InitializeSchedulingAsync(int batchSize = 1000, CancellationToken cancellationToken = default)
+        {
+            if (batchSize <= 0)
+            {
+                batchSize = 1000;
+            }
+
+            var summary = new InitializeSchedulingSummary
+            {
+                ValveRule = await BatchCallValveRuleServiceAsync(cancellationToken)
+            };
+            ClearOrderCycleChangeTracker();
+
+            summary.ValveCategoryUpdated = await FillValveCategoryByRuleAsync(batchSize);
+            ClearOrderCycleChangeTracker();
+            summary.AssignedProductionLine = await BatchAssignProductionLineByRuleAsync(batchSize, cancellationToken);
+            ClearOrderCycleChangeTracker();
+            summary.CapacitySchedule = await CalculateCapacityScheduleDateAsync(cancellationToken);
+            ClearOrderCycleChangeTracker();
+            summary.PreProductionOutputSynced = await SyncPreProductionOutputAsync(cancellationToken);
+            ClearOrderCycleChangeTracker();
+            summary.RemainingNonBjBlankCapacityScheduleDate = await CountNonBjBlankCapacityScheduleDateAsync(cancellationToken);
+
+            if (summary.ValveRule?.Failed > 0)
+            {
+                summary.Warnings.Add($"规则服务失败 {summary.ValveRule.Failed} 条");
+            }
+
+            if (summary.AssignedProductionLine?.Failed > 0)
+            {
+                summary.Warnings.Add($"产线规则分配失败 {summary.AssignedProductionLine.Failed} 条");
+            }
+
+            if (summary.CapacitySchedule?.MissingThreshold > 0)
+            {
+                summary.Warnings.Add($"阈值缺失 {summary.CapacitySchedule.MissingThreshold} 条");
+            }
+
+            if (summary.CapacitySchedule?.MissingProductionOutput > 0)
+            {
+                summary.Warnings.Add($"排产优化未命中产能数据 {summary.CapacitySchedule.MissingProductionOutput} 条");
+            }
+
+            if (summary.RemainingNonBjBlankCapacityScheduleDate > 0)
+            {
+                summary.Warnings.Add($"非 BJ 物料排产优化日期仍为空 {summary.RemainingNonBjBlankCapacityScheduleDate} 条");
+            }
+
+            return summary;
+        }
+
+        private void ClearOrderCycleChangeTracker()
+        {
+            _repository?.DbContext?.ChangeTracker.Clear();
+        }
+
+        private async Task<int> CountNonBjBlankCapacityScheduleDateAsync(CancellationToken cancellationToken)
+        {
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            return await context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .CountAsync(p => !p.CapacityScheduleDate.HasValue
+                    && (p.MaterialCode == null || !p.MaterialCode.Trim().ToUpper().StartsWith("BJ")),
+                    cancellationToken);
+        }
+
+        /// <summary>
         /// 基于产线产量与阈值计算产能排产日期
         /// </summary>
         /// <param name="cancellationToken">取消令牌</param>
@@ -311,9 +382,9 @@ namespace HDPro.CY.Order.Services
                     ScheduleDate = p.ScheduleDate,
                     OrderQty = p.OrderQty,
                     ValveCategory = p.ValveCategory,
-                    AssignedProductionLine = p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty
-                        ? p.AssignedProductionLine
-                        : p.ProductionLine,
+                    AssignedProductionLine = p.AssignedProductionLine,
+                    ProductionLine = p.ProductionLine,
+                    NominalDiameter = p.NominalDiameter,
                     StandardDeliveryDate = p.StandardDeliveryDate,
                     ReplyDeliveryDate = p.ReplyDeliveryDate,
                     RequestedDeliveryDate = p.RequestedDeliveryDate
@@ -411,7 +482,7 @@ namespace HDPro.CY.Order.Services
                 }
 
                 var cat = NormalizeCapacityText(order.ValveCategory);
-                var line = NormalizeCapacityText(order.AssignedProductionLine);
+                var line = ResolveCapacityLine(order);
                 if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
                 {
                     summary.MissingProductionOutput++;
@@ -996,6 +1067,26 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().Normalize(NormalizationForm.FormKC);
         }
 
+        private static string ResolveCapacityLine(OrderCapacityCandidate order)
+        {
+            var assignedLine = NormalizeCapacityText(order.AssignedProductionLine);
+            if (!string.IsNullOrWhiteSpace(assignedLine))
+            {
+                return assignedLine;
+            }
+
+            var ruleLine = NormalizeCapacityText(CalcAssignedProductionLine(
+                order.ProductionLine,
+                order.ValveCategory,
+                order.NominalDiameter));
+            if (!string.IsNullOrWhiteSpace(ruleLine))
+            {
+                return ruleLine;
+            }
+
+            return NormalizeCapacityText(order.ProductionLine);
+        }
+
         private static decimal? MergeThreshold(decimal? current, decimal? incoming)
         {
             if (!incoming.HasValue)
@@ -1192,11 +1283,19 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
         private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
         {
-            startDate = order.StandardDeliveryDate?.Date ?? DateTime.MinValue;
+            startDate = order.ScheduleDate?.Date ?? DateTime.MinValue;
             endDate = order.ReplyDeliveryDate?.Date ?? DateTime.MinValue;
-            return order.StandardDeliveryDate.HasValue
-                && order.ReplyDeliveryDate.HasValue
-                && endDate >= startDate;
+            if (!order.ScheduleDate.HasValue || !order.ReplyDeliveryDate.HasValue)
+            {
+                return false;
+            }
+
+            if (endDate < startDate)
+            {
+                startDate = endDate;
+            }
+
+            return true;
         }
 
         private static void EnsureCapacityWindow(
@@ -1398,6 +1497,10 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public string ValveCategory { get; set; } = string.Empty;
 
             public string AssignedProductionLine { get; set; } = string.Empty;
+
+            public string ProductionLine { get; set; } = string.Empty;
+
+            public string NominalDiameter { get; set; } = string.Empty;
 
             public DateTime? StandardDeliveryDate { get; set; }
 
