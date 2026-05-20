@@ -260,6 +260,55 @@ const updateProgressSummary = (summary) => {
     : [summary.logFiles].filter(Boolean);
 };
 
+const normalizeInitializeData = (response) => {
+  const data = response?.data ?? response?.Data ?? {};
+  const warnings = pickValue(data, 'warnings', 'Warnings') || [];
+  const capacitySchedule = pickValue(data, 'capacitySchedule', 'CapacitySchedule') || {};
+  const assignedProductionLine = pickValue(data, 'assignedProductionLine', 'AssignedProductionLine') || {};
+  const valveRule = pickValue(data, 'valveRule', 'ValveRule') || {};
+
+  return {
+    warnings: Array.isArray(warnings) ? warnings : [warnings].filter(Boolean),
+    remainingBlank: toNumber(pickValue(data, 'remainingNonBjBlankCapacityScheduleDate', 'RemainingNonBjBlankCapacityScheduleDate')),
+    capacityUpdated: toNumber(pickValue(capacitySchedule, 'updated', 'Updated')),
+    capacityFailed: toNumber(pickValue(capacitySchedule, 'failed', 'Failed')),
+    missingThreshold: toNumber(pickValue(capacitySchedule, 'missingThreshold', 'MissingThreshold')),
+    missingOutput: toNumber(pickValue(capacitySchedule, 'missingProductionOutput', 'MissingProductionOutput')),
+    assignedFailed: toNumber(pickValue(assignedProductionLine, 'failed', 'Failed')),
+    valveRuleFailed: toNumber(pickValue(valveRule, 'failed', 'Failed')),
+    preProductionOutputSynced: toNumber(pickValue(data, 'preProductionOutputSynced', 'PreProductionOutputSynced'))
+  };
+};
+
+const buildInitializeMessage = (summary) => {
+  const parts = [
+    `优化日期更新 ${summary.capacityUpdated} 条`,
+    `预排产同步 ${summary.preProductionOutputSynced} 条`
+  ];
+
+  if (summary.remainingBlank > 0) {
+    parts.push(`非BJ仍空 ${summary.remainingBlank} 条`);
+  }
+
+  if (summary.missingThreshold > 0) {
+    parts.push(`阈值缺失 ${summary.missingThreshold} 条`);
+  }
+
+  if (summary.missingOutput > 0) {
+    parts.push(`未命中产能 ${summary.missingOutput} 条`);
+  }
+
+  if (summary.assignedFailed > 0) {
+    parts.push(`产线失败 ${summary.assignedFailed} 条`);
+  }
+
+  if (summary.valveRuleFailed > 0) {
+    parts.push(`规则服务失败 ${summary.valveRuleFailed} 条`);
+  }
+
+  return parts.join('，');
+};
+
 const refreshGrid = () => {
   if (gridRef && gridRef.search) {
     gridRef.search();
@@ -364,31 +413,26 @@ const handleInitialize = async () => {
   }
 
   initLoading.value = true;
-  const steps = [
-    { url: '/api/WZ_OrderCycleBase/fill-valve-category-by-rule', label: '阀门品类规则匹配' },
-    { url: '/api/WZ_OrderCycleBase/batch-assign-production-line-by-rule', label: '产线规则分配' },
-    { url: '/api/WZ_OrderCycleBase/calculate-capacity-schedule-date', label: '产能排期计算' },
-    { url: '/api/WZ_OrderCycleBase/sync-pre-production-output', label: '预生产输出同步' }
-  ];
-  const failures = [];
 
   try {
-    for (const step of steps) {
-      try {
-        const response = await proxy.http.post(step.url);
-        if (!response.status) {
-          failures.push(response.message || `${step.label}失败`);
-        }
-      } catch (error) {
-        failures.push(`${step.label}失败`);
-      }
-    }
-
+    const response = await proxy.http.post('/api/WZ_OrderCycleBase/initialize-scheduling');
     refreshGrid();
-
-    if (failures.length === 0) {
-      ElMessage.success('排产初始化完成');
+    const status = response?.status ?? response?.Status;
+    if (status === false) {
+      ElMessage.error(response?.message || response?.Message || '排产初始化失败');
+      return;
     }
+
+    const summary = normalizeInitializeData(response);
+    const message = response?.message || response?.Message || buildInitializeMessage(summary);
+    if (summary.warnings.length || summary.remainingBlank > 0 || summary.missingThreshold > 0 || summary.missingOutput > 0) {
+      ElMessage.warning(message);
+    } else {
+      ElMessage.success(message || '排产初始化完成');
+    }
+  } catch (error) {
+    ElMessage.error('排产初始化异常');
+    refreshGrid();
   } finally {
     initLoading.value = false;
   }
