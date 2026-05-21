@@ -82,6 +82,17 @@
 		UUID: "",
 		verificationCode: ""
 	})
+	const storageApi = {
+		getStorageSync(key) {
+			return uni.getStorageSync(key)
+		},
+		setStorageSync(key, value) {
+			uni.setStorageSync(key, value)
+		},
+		removeStorageSync(key) {
+			uni.removeStorageSync(key)
+		}
+	}
 	const {
 		proxy
 	} = getCurrentInstance();
@@ -133,7 +144,7 @@
 	}
 
 	const restoreRememberedLogin = () => {
-		const remembered = loadRememberedLogin()
+		const remembered = loadRememberedLogin(storageApi)
 		if (!remembered.userName || !remembered.password) {
 			return
 		}
@@ -188,9 +199,9 @@
 					userName: userInfo.value.userName,
 					password: userInfo.value.password,
 					rememberPassword: rememberPassword.value
-				})
+				}, storageApi)
 				if (!rememberPassword.value) {
-					clearRememberedLogin()
+					clearRememberedLogin(storageApi)
 				}
 				await initTenancy();
 				proxy.$toast(proxy.$ts("登录成功"));

@@ -5,7 +5,7 @@ function getStorageApi(storage) {
     return storage
   }
 
-  if (typeof uni !== 'undefined') {
+  if (typeof uni !== 'undefined' && typeof uni.getStorageSync === 'function') {
     return uni
   }
 
@@ -57,4 +57,3 @@ export function clearRememberedLogin(storage) {
 
   api.removeStorageSync(LOGIN_REMEMBER_KEY)
 }
-

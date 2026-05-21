@@ -38,6 +38,20 @@ test('loadRememberedLogin returns stored credentials when present', () => {
   })
 })
 
+test('loadRememberedLogin ignores incomplete global uni storage api', () => {
+  globalThis.uni = {}
+
+  try {
+    assert.deepEqual(loadRememberedLogin(), {
+      userName: '',
+      password: '',
+      rememberPassword: false
+    })
+  } finally {
+    delete globalThis.uni
+  }
+})
+
 test('saveRememberedLogin stores credentials only when rememberPassword is enabled', () => {
   const storage = createStorage()
 
@@ -81,4 +95,3 @@ test('clearRememberedLogin removes cached credentials', () => {
 
   assert.equal(storage.store.has('loginRememberInfo'), false)
 })
-
