@@ -14,18 +14,33 @@ function extractDataBlock(block) {
 
 async function emitPayload(block, onMessage) {
 	const payloadText = extractDataBlock(block)
-	if (!payloadText || payloadText === '[DONE]') {
-		return
+	if (!payloadText) {
+		return false
+	}
+	if (payloadText === '[DONE]') {
+		return true
 	}
 
 	let payload = null
 	try {
 		payload = JSON.parse(payloadText)
 	} catch (error) {
-		return
+		return false
 	}
 
 	await onMessage(payload)
+	return payload.event === 'message_end'
+}
+
+async function cancelReader(reader) {
+	if (!reader || typeof reader.cancel !== 'function') {
+		return
+	}
+
+	try {
+		await reader.cancel()
+	} catch (error) {
+	}
 }
 
 export function isStreamSupported() {
@@ -52,12 +67,19 @@ export async function readEventStream(response, onMessage) {
 		buffer = parts.pop() || ''
 
 		for (const part of parts) {
-			await emitPayload(part, onMessage)
+			const completed = await emitPayload(part, onMessage)
+			if (completed) {
+				await cancelReader(reader)
+				return
+			}
 		}
 	}
 
 	buffer += decoder.decode()
 	if (buffer.trim()) {
-		await emitPayload(buffer, onMessage)
+		const completed = await emitPayload(buffer, onMessage)
+		if (completed) {
+			await cancelReader(reader)
+		}
 	}
 }

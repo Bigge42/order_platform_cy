@@ -224,6 +224,7 @@ import {
   resolveAiAppImageSrc
 } from '@/util/ai-app.js'
 import { isStreamSupported, readEventStream } from '@/util/http-stream.js'
+import { startOptionalTask } from '@/util/optional-task.js'
 
 const { proxy } = getCurrentInstance()
 const appId = ref(0)
@@ -810,7 +811,7 @@ const finalizeAssistantMessage = async (assistantMessage) => {
     rebuildAssistantMessage(assistantMessage)
   }
 
-  await loadSuggestedQuestions(assistantMessage)
+  startOptionalTask(() => loadSuggestedQuestions(assistantMessage))
   scrollToBottom()
 }
 
