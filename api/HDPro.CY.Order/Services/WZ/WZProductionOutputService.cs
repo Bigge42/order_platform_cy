@@ -1839,8 +1839,8 @@ BEGIN
         [MaterialKey] NVARCHAR(100) NULL,
         [MaterialCode] NVARCHAR(100) NULL,
         [MaterialId] NVARCHAR(100) NULL,
-        [SpecModel] NVARCHAR(255) NULL,
-        [ProductModel] NVARCHAR(255) NULL,
+        [SpecModel] NVARCHAR(2000) NULL,
+        [ProductModel] NVARCHAR(2000) NULL,
         [ProductionDate] DATE NOT NULL,
         [ValveCategory] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ValveCategory] DEFAULT(N''),
         [ProductionLine] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_ProductionOutputDetail_ProductionLine] DEFAULT(N''),
@@ -1873,12 +1873,46 @@ END;
 
 IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'SpecModel') IS NULL
 BEGIN
-    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [SpecModel] NVARCHAR(255) NULL;
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [SpecModel] NVARCHAR(2000) NULL;
 END;
 
 IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductModel') IS NULL
 BEGIN
-    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [ProductModel] NVARCHAR(255) NULL;
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ADD [ProductModel] NVARCHAR(2000) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'SpecModel') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'SpecModel') < 4000
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE name = N'IX_WZ_ProductionOutputDetail_CellDetails'
+          AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+    )
+    BEGIN
+        DROP INDEX [IX_WZ_ProductionOutputDetail_CellDetails]
+            ON [dbo].[WZ_ProductionOutputDetail];
+    END;
+
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ALTER COLUMN [SpecModel] NVARCHAR(2000) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductModel') IS NOT NULL
+   AND COL_LENGTH(N'dbo.WZ_ProductionOutputDetail', N'ProductModel') < 4000
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE name = N'IX_WZ_ProductionOutputDetail_CellDetails'
+          AND object_id = OBJECT_ID(N'dbo.WZ_ProductionOutputDetail')
+    )
+    BEGIN
+        DROP INDEX [IX_WZ_ProductionOutputDetail_CellDetails]
+            ON [dbo].[WZ_ProductionOutputDetail];
+    END;
+
+    ALTER TABLE [dbo].[WZ_ProductionOutputDetail] ALTER COLUMN [ProductModel] NVARCHAR(2000) NULL;
 END;
 ", ct);
 
@@ -3477,8 +3511,8 @@ CREATE TABLE #WZProductionOutputDetailImport
     [MaterialKey] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
     [MaterialCode] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
     [MaterialId] NVARCHAR(100) COLLATE DATABASE_DEFAULT NULL,
-    [SpecModel] NVARCHAR(255) COLLATE DATABASE_DEFAULT NULL,
-    [ProductModel] NVARCHAR(255) COLLATE DATABASE_DEFAULT NULL,
+    [SpecModel] NVARCHAR(2000) COLLATE DATABASE_DEFAULT NULL,
+    [ProductModel] NVARCHAR(2000) COLLATE DATABASE_DEFAULT NULL,
     [ProductionDate] DATE NOT NULL,
     [ValveCategory] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
     [ProductionLine] NVARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL,
