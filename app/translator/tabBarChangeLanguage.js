@@ -5,22 +5,18 @@ export default function() {
 	}
 	uni.setTabBarItem({
 		index: 0,
-		text: this.$ts("首页")
-	})
-	uni.setTabBarItem({
-		index: 1,
 		text: this.$ts("菜单")
 	})
 	uni.setTabBarItem({
-		index: 2,
+		index: 1,
 		text: this.$ts("审批流程")
 	})
 	uni.setTabBarItem({
-		index: 3,
+		index: 2,
 		text: this.$ts("AI助手")
 	})
 	uni.setTabBarItem({
-		index: 4,
+		index: 3,
 		text: this.$ts("我的")
 	})
 }

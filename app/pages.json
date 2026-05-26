@@ -1,6 +1,12 @@
 {
 	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
 		{
+			"path": "pages/menu/menu",
+			"style": {
+				"navigationBarTitleText": "菜单"
+			}
+		},
+		{
 			"path": "pages/home/home", //首页
 			"style": {
 				"enablePullDownRefresh": false,
@@ -40,12 +46,6 @@
 			"path": "pages/agreement/agreement",
 			"style": {
 				"navigationBarTitleText": "用户服务协议"
-			}
-		},
-		{
-			"path": "pages/menu/menu",
-			"style": {
-				"navigationBarTitleText": "菜单"
 			}
 		},
 		{
@@ -426,12 +426,6 @@
 		"borderStyle": "white", //"white",//#e8e8e8",// "black",
 		"backgroundColor": "#ffffff",
 		"list": [
-			{
-				"pagePath": "pages/home/home",
-				"iconPath": "static/tabbar/home.png",
-				"selectedIconPath": "static/tabbar/home_active.png",
-				"text": "首页"
-			},
 			{
 				"pagePath": "pages/menu/menu",
 				"iconPath": "static/tabbar/menu.png",

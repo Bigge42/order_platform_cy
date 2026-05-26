@@ -42,6 +42,14 @@
 
 
 	const menu = ref([]);
+	const aiMenuItem = {
+		id: '__ai_assistant',
+		name: 'AI助手',
+		url: '/pages/ai/index',
+		icon: '/static/icon/ai-assistant.png',
+		enable: 1,
+		switchTab: true
+	}
 
 	const {
 		proxy
@@ -60,14 +68,26 @@
 	})
 
 	const getChildren = ((id) => {
-		return menu.value.filter(x => {
+		const children = menu.value.filter(x => {
 			return x.parentId === id && (x.enable == 1 || x.enable === undefined)
 		})
+		const firstMenu = menuList.value[0]
+		const hasAiMenu = children.some(x => x.name === aiMenuItem.name || x.url === aiMenuItem.url)
+		if (firstMenu && id === firstMenu.id && !hasAiMenu) {
+			return [...children, {
+				...aiMenuItem,
+				parentId: id
+			}]
+		}
+		return children
 	})
 
 	const getSrc = (item) => {
 		if (item.isError) {
 			return item.icon;
+		}
+		if (item.icon && item.icon[0] == '/') {
+			return item.icon
 		}
 		//console.log(item.icon)
 		return proxy.http.ipAddress + item.icon
@@ -90,6 +110,15 @@
 		}
 		if (item.url[0] != '/') {
 			item.url = '/' + item.url;
+		}
+		if (item.switchTab) {
+			uni.switchTab({
+				url: item.url,
+				fail: (err) => {
+					proxy.$toast(`跳转异常:${JSON.stringify(err.errMsg)}`);
+				}
+			})
+			return
 		}
 		uni.navigateTo({
 			url: item.url,
