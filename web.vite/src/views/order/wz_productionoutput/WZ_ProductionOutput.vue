@@ -249,6 +249,7 @@ const SIZE = { small: 12, big: 20 }
 const GAP  = { normal: 2, compact: 1 }
 const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
+const LINE_LABEL_WIDTH = { normal: 76, compact: 68, max: 140 }
 const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
 
 /* ===== 工具函数 ===== */
@@ -538,6 +539,16 @@ function compareLineName(a, b){
   if (na && nb && na !== nb) return Number(na) - Number(nb)
   return String(a || '').localeCompare(String(b || ''), 'zh-Hans-CN')
 }
+function estimateLineLabelWidth(lines){
+  const minWidth = state.compact ? LINE_LABEL_WIDTH.compact : LINE_LABEL_WIDTH.normal
+  const maxTextWidth = (lines || []).reduce((max, line) => {
+    const width = Array.from(String(line || '')).reduce((sum, ch) => {
+      return sum + (/[\u4e00-\u9fa5]/.test(ch) ? 10 : 6)
+    }, 0)
+    return Math.max(max, width)
+  }, 0)
+  return Math.min(LINE_LABEL_WIDTH.max, Math.max(minWidth, maxTextWidth))
+}
 function getGithubLine(valve){
   return state.githubLine?.[valve] || null
 }
@@ -632,7 +643,9 @@ function renderAll(){
     const pad = useGithub ? (state.big ? basePad : GITHUB.pad) : basePad
     const labelGap = useGithub ? (state.big ? baseLabelGap : GITHUB.labelGap) : baseLabelGap
     const githubOffset = useGithub ? (days[0].getDay() + 6) % 7 : 0
-    const padX = pad + labelGap
+    const lineLabelWidth = estimateLineLabelWidth(useGithub ? [githubLine] : cat.lines)
+    const labelX = Math.max(pad, lineLabelWidth)
+    const padX = labelX + labelGap
     const weekCols = useGithub ? Math.ceil((daysCount + githubOffset) / GITHUB.rows) : cols
     const githubRows = GITHUB.rows
     const width = padX + pad + weekCols*(cellSize+gap) - gap
@@ -652,7 +665,8 @@ function renderAll(){
     cat.lines.forEach((l,r)=>{
       if (useGithub && l !== githubLine) return
       const rowIndex = useGithub ? 0 : r
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',8); t.setAttribute('y', pad + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
+      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x', labelX); t.setAttribute('y', pad + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
+      t.setAttribute('text-anchor','end')
       t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
       t.style.cursor = 'pointer'
       t.addEventListener('click', ()=> toggleGithubLine(v, l))
