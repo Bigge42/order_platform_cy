@@ -157,6 +157,11 @@ namespace HDPro.CY.Order.IServices
         /// 区间内全部超过 120% 后均匀摊排的订单数
         /// </summary>
         public int BalancedOverflowCount { get; set; }
+
+        /// <summary>
+        /// 按排产日期兜底补齐排产优化日期的订单数
+        /// </summary>
+        public int FallbackScheduleDateCount { get; set; }
     }
 
     public sealed class InitializeSchedulingSummary

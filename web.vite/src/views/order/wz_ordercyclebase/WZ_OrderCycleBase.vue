@@ -271,6 +271,7 @@ const normalizeInitializeData = (response) => {
     warnings: Array.isArray(warnings) ? warnings : [warnings].filter(Boolean),
     remainingBlank: toNumber(pickValue(data, 'remainingNonBjBlankCapacityScheduleDate', 'RemainingNonBjBlankCapacityScheduleDate')),
     capacityUpdated: toNumber(pickValue(capacitySchedule, 'updated', 'Updated')),
+    fallbackScheduleDateCount: toNumber(pickValue(capacitySchedule, 'fallbackScheduleDateCount', 'FallbackScheduleDateCount')),
     capacityFailed: toNumber(pickValue(capacitySchedule, 'failed', 'Failed')),
     missingThreshold: toNumber(pickValue(capacitySchedule, 'missingThreshold', 'MissingThreshold')),
     missingOutput: toNumber(pickValue(capacitySchedule, 'missingProductionOutput', 'MissingProductionOutput')),
@@ -283,6 +284,7 @@ const normalizeInitializeData = (response) => {
 const buildInitializeMessage = (summary) => {
   const parts = [
     `优化日期更新 ${summary.capacityUpdated} 条`,
+    `排产日期兜底 ${summary.fallbackScheduleDateCount} 条`,
     `预排产同步 ${summary.preProductionOutputSynced} 条`
   ];
 

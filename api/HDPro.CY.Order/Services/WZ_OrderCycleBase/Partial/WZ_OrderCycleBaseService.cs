@@ -396,167 +396,180 @@ namespace HDPro.CY.Order.Services
                 Total = orders.Count
             };
 
-            if (orders.Count == 0)
+            if (orders.Count > 0)
             {
-                return summary;
-            }
+                var thresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken);
+                var outputs = await context.Set<WZ_ProductionOutput>()
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
 
-            var thresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken);
-            var outputs = await context.Set<WZ_ProductionOutput>()
-                .AsNoTracking()
-                .ToListAsync(cancellationToken);
+                var capacityMap = new Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket>();
+                var categoryLineDates = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
+                var outputThresholdMap = new Dictionary<(string Cat, string Line), decimal>();
 
-            var capacityMap = new Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket>();
-            var categoryLineDates = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
-            var outputThresholdMap = new Dictionary<(string Cat, string Line), decimal>();
-
-            foreach (var output in outputs)
-            {
-                if (output == null)
+                foreach (var output in outputs)
                 {
-                    continue;
-                }
-
-                var cat = NormalizeCapacityText(output.ValveCategory);
-                var line = NormalizeCapacityText(output.ProductionLine);
-                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                var lineKey = (cat, line);
-                if (output.CurrentThreshold.HasValue && output.CurrentThreshold.Value > 0)
-                {
-                    outputThresholdMap[lineKey] = outputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
-                        ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
-                        : output.CurrentThreshold.Value;
-                }
-
-                var date = output.ProductionDate.Date;
-                var key = (cat, line, date);
-
-                if (!capacityMap.TryGetValue(key, out var bucket))
-                {
-                    bucket = new CapacityBucket
+                    if (output == null)
                     {
-                        Quantity = output.Quantity,
-                        Threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold)
-                    };
-                    capacityMap[key] = bucket;
-                }
-                else
-                {
-                    bucket.Quantity += output.Quantity;
-                    bucket.Threshold = MergeThreshold(
-                        bucket.Threshold,
-                        ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold));
-                }
+                        continue;
+                    }
 
-                if (!categoryLineDates.TryGetValue(lineKey, out var dates))
-                {
-                    dates = new HashSet<DateTime>();
-                    categoryLineDates[lineKey] = dates;
-                }
-
-                dates.Add(date);
-            }
-
-            var capacityDateList = new Dictionary<(string Cat, string Line), List<DateTime>>();
-            foreach (var item in categoryLineDates)
-            {
-                var dates = item.Value.ToList();
-                dates.Sort();
-                capacityDateList[item.Key] = dates;
-            }
-
-            var updates = new List<WZ_OrderCycleBase>();
-
-            foreach (var order in orders)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (!order.ScheduleDate.HasValue || order.OrderQty.GetValueOrDefault() <= 0)
-                {
-                    summary.Skipped++;
-                    continue;
-                }
-
-                var cat = NormalizeCapacityText(order.ValveCategory);
-                var line = ResolveCapacityLine(order);
-                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
-                {
-                    summary.MissingProductionOutput++;
-                    summary.Failed++;
-                    continue;
-                }
-
-                if (!capacityDateList.TryGetValue((cat, line), out var dates))
-                {
-                    dates = new List<DateTime>();
-                    capacityDateList[(cat, line)] = dates;
-                }
-
-                var targetDate = order.ScheduleDate.Value.Date;
-                var decision = ResolveCapacityScheduleDate(order, dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
-                if (!decision.CapacityDate.HasValue)
-                {
-                    if (string.Equals(decision.FailureReason, CapacityFailureReasons.MissingThreshold, StringComparison.Ordinal))
+                    var cat = NormalizeCapacityText(output.ValveCategory);
+                    var line = NormalizeCapacityText(output.ProductionLine);
+                    if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
                     {
-                        summary.MissingThreshold++;
+                        continue;
+                    }
+
+                    var lineKey = (cat, line);
+                    if (output.CurrentThreshold.HasValue && output.CurrentThreshold.Value > 0)
+                    {
+                        outputThresholdMap[lineKey] = outputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
+                            ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
+                            : output.CurrentThreshold.Value;
+                    }
+
+                    var date = output.ProductionDate.Date;
+                    var key = (cat, line, date);
+
+                    if (!capacityMap.TryGetValue(key, out var bucket))
+                    {
+                        bucket = new CapacityBucket
+                        {
+                            Quantity = output.Quantity,
+                            Threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold)
+                        };
+                        capacityMap[key] = bucket;
                     }
                     else
                     {
-                        summary.MissingProductionOutput++;
+                        bucket.Quantity += output.Quantity;
+                        bucket.Threshold = MergeThreshold(
+                            bucket.Threshold,
+                            ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold));
                     }
 
-                    summary.Failed++;
-                    continue;
+                    if (!categoryLineDates.TryGetValue(lineKey, out var dates))
+                    {
+                        dates = new HashSet<DateTime>();
+                        categoryLineDates[lineKey] = dates;
+                    }
+
+                    dates.Add(date);
                 }
 
-                updates.Add(new WZ_OrderCycleBase
+                var capacityDateList = new Dictionary<(string Cat, string Line), List<DateTime>>();
+                foreach (var item in categoryLineDates)
                 {
-                    Id = order.Id,
-                    CapacityScheduleDate = decision.CapacityDate
-                });
+                    var dates = item.Value.ToList();
+                    dates.Sort();
+                    capacityDateList[item.Key] = dates;
+                }
 
-                summary.Updated++;
-                switch (decision.Mode)
+                var updates = new List<WZ_OrderCycleBase>();
+
+                foreach (var order in orders)
                 {
-                    case CapacityScheduleMode.NormalCapacity:
-                        summary.NormalCapacityCount++;
-                        break;
-                    case CapacityScheduleMode.DeliveryAdjusted:
-                        summary.DeliveryAdjustedCount++;
-                        break;
-                    case CapacityScheduleMode.DailyReserve:
-                        summary.DailyReserveCount++;
-                        break;
-                    case CapacityScheduleMode.SaturdayReserve:
-                        summary.SaturdayReserveCount++;
-                        break;
-                    case CapacityScheduleMode.BalancedOverflow:
-                        summary.BalancedOverflowCount++;
-                        break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!order.ScheduleDate.HasValue || order.OrderQty.GetValueOrDefault() <= 0)
+                    {
+                        summary.Skipped++;
+                        continue;
+                    }
+
+                    var targetDate = order.ScheduleDate.Value.Date;
+                    var cat = NormalizeCapacityText(order.ValveCategory);
+                    var line = ResolveCapacityLine(order);
+                    if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                    {
+                        updates.Add(new WZ_OrderCycleBase
+                        {
+                            Id = order.Id,
+                            CapacityScheduleDate = targetDate
+                        });
+                        summary.Updated++;
+                        summary.FallbackScheduleDateCount++;
+                        continue;
+                    }
+
+                    if (!capacityDateList.TryGetValue((cat, line), out var dates))
+                    {
+                        dates = new List<DateTime>();
+                        capacityDateList[(cat, line)] = dates;
+                    }
+
+                    var decision = ResolveCapacityScheduleDate(order, dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
+                    if (!decision.CapacityDate.HasValue)
+                    {
+                        updates.Add(new WZ_OrderCycleBase
+                        {
+                            Id = order.Id,
+                            CapacityScheduleDate = targetDate
+                        });
+
+                        summary.Updated++;
+                        summary.FallbackScheduleDateCount++;
+                        continue;
+                    }
+
+                    updates.Add(new WZ_OrderCycleBase
+                    {
+                        Id = order.Id,
+                        CapacityScheduleDate = decision.CapacityDate
+                    });
+
+                    summary.Updated++;
+                    switch (decision.Mode)
+                    {
+                        case CapacityScheduleMode.NormalCapacity:
+                            summary.NormalCapacityCount++;
+                            break;
+                        case CapacityScheduleMode.DeliveryAdjusted:
+                            summary.DeliveryAdjustedCount++;
+                            break;
+                        case CapacityScheduleMode.DailyReserve:
+                            summary.DailyReserveCount++;
+                            break;
+                        case CapacityScheduleMode.SaturdayReserve:
+                            summary.SaturdayReserveCount++;
+                            break;
+                        case CapacityScheduleMode.BalancedOverflow:
+                            summary.BalancedOverflowCount++;
+                            break;
+                    }
+                }
+
+                if (updates.Count > 0)
+                {
+                    foreach (var entity in updates)
+                    {
+                        context.Attach(entity);
+                        context.Entry(entity).Property(p => p.CapacityScheduleDate).IsModified = true;
+                    }
+
+                    await context.SaveChangesAsync(cancellationToken);
+
+                    foreach (var entity in updates)
+                    {
+                        context.Entry(entity).State = EntityState.Detached;
+                    }
                 }
             }
 
-            if (updates.Count > 0)
-            {
-                foreach (var entity in updates)
-                {
-                    context.Attach(entity);
-                    context.Entry(entity).Property(p => p.CapacityScheduleDate).IsModified = true;
-                }
-
-                await context.SaveChangesAsync(cancellationToken);
-
-                foreach (var entity in updates)
-                {
-                    context.Entry(entity).State = EntityState.Detached;
-                }
-            }
+            var fallbackUpdated = await FillBlankCapacityScheduleDateByScheduleDateAsync(context, cancellationToken);
+            summary.Updated += fallbackUpdated;
+            summary.FallbackScheduleDateCount += fallbackUpdated;
 
             return summary;
+        }
+
+        private static Task<int> FillBlankCapacityScheduleDateByScheduleDateAsync(DbContext context, CancellationToken cancellationToken)
+        {
+            return context.Set<WZ_OrderCycleBase>()
+                .Where(p => p.ScheduleDate.HasValue && !p.CapacityScheduleDate.HasValue)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.CapacityScheduleDate, p => p.ScheduleDate), cancellationToken);
         }
 
         /// <summary>
