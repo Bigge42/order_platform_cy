@@ -252,6 +252,7 @@ const LABEL_GAP = { normal: 10, compact: 6 }
 const LINE_LABEL_WIDTH = { normal: 76, compact: 68, max: 140 }
 const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
 const MONTH_SCALE_MAX_DAYS = 45
+const SALES_AMOUNT_MAX_DAYS = 93
 const WEEKDAY_TEXT = ['日', '一', '二', '三', '四', '五', '六']
 const GITHUB_WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const DATE_AXIS = {
@@ -271,6 +272,13 @@ const SUMMARY_AXIS = {
   cellFill: '#dbeafe',
   cellEmptyFill: '#f8fafc',
   cellBorder: '#e2e8f0'
+}
+const SALES_AMOUNT_AXIS = {
+  labelColor: '#303384',
+  textColor: '#0f172a',
+  subColor: '#64748b',
+  bgFill: '#f8fafc',
+  bgStroke: '#dbe3ee'
 }
 
 /* ===== 工具函数 ===== */
@@ -401,6 +409,8 @@ const state = reactive({
   mode: 'gradient',    // gradient|threshold
   categories: [],      // [{ name, lines: [] }]
   data: {},            // { [valve]: { [line]: number[] } }
+  salesAmount: {},     // { [valve]: { [line]: number[] } }
+  salesAmountDetails: {}, // { [valve]: { [line]: number[] } }
   thresholds: {},      // { [valve]: { [line]: number } }
   githubLine: {},      // { [valve]: string | null }
   big: false,
@@ -472,6 +482,7 @@ const syncRangeText = computed(() => {
 const rawRows = ref([])
 const actualCellBaseline = ref({})
 const actualCellBaselineMeta = ref('')
+const salesAmountLoaded = ref(false)
 
 /* 年份选项（±3 年） */
 const yearOptions = Array.from({length:7}, (_,i)=> state.year - 3 + i)
@@ -605,6 +616,21 @@ function formatAxisQty(value){
   }
   return formatQty(num)
 }
+function formatMoney(value, compact = false){
+  const num = Number(value ?? 0)
+  if (!Number.isFinite(num)) return '0.00'
+  const abs = Math.abs(num)
+  if (compact && abs >= 100000000) {
+    return `${(num / 100000000).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}亿`
+  }
+  if (compact && abs >= 10000) {
+    return `${(num / 10000).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}万`
+  }
+  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+function formatCurrency(value, compact = false){
+  return `￥${formatMoney(value, compact)}`
+}
 function estimateTextWidth(text, fontSize = 10){
   return Array.from(String(text || '')).reduce((sum, ch) => {
     if (/[\u4e00-\u9fa5]/.test(ch)) return sum + fontSize
@@ -674,6 +700,87 @@ function buildDateAxisTicks(days, useGithub, githubOffset, cellSize, gap){
   return ticks
 }
 
+function isSalesAmountScale(daysCount = daysBetween(state.rangeStart, state.rangeEnd).length){
+  return daysCount > 0 && daysCount <= SALES_AMOUNT_MAX_DAYS
+}
+
+function resetSalesAmountData(loaded = false){
+  state.salesAmount = {}
+  state.salesAmountDetails = {}
+  salesAmountLoaded.value = loaded
+}
+
+function applySalesAmountRows(rows){
+  const days = daysBetween(state.rangeStart, state.rangeEnd)
+  if (!isSalesAmountScale(days.length)) {
+    resetSalesAmountData(false)
+    return
+  }
+
+  const idxMap = buildIdxMap(days)
+  const amountMap = {}
+  const detailMap = {}
+  for (const r of rows || []){
+    const v = String(r.valveCategory ?? r.ValveCategory ?? '').trim()
+    const l = String(r.productionLine ?? r.ProductionLine ?? '').trim()
+    const d = getProductionDateStr(r)
+    const amount = Number(r.salesAmount ?? r.SalesAmount ?? 0)
+    const details = Number(r.matchedOrderDetails ?? r.MatchedOrderDetails ?? 0)
+    const i = idxMap.get(d)
+    if (!v || !l || i == null || !Number.isFinite(amount)) continue
+    if (!amountMap[v]) amountMap[v] = {}
+    if (!amountMap[v][l]) amountMap[v][l] = Array(days.length).fill(0)
+    amountMap[v][l][i] += amount
+    if (!detailMap[v]) detailMap[v] = {}
+    if (!detailMap[v][l]) detailMap[v][l] = Array(days.length).fill(0)
+    detailMap[v][l][i] += Number.isFinite(details) ? details : 0
+  }
+
+  state.salesAmount = amountMap
+  state.salesAmountDetails = detailMap
+  salesAmountLoaded.value = true
+}
+
+async function refreshSalesAmountData(){
+  if (!isSalesAmountScale()) {
+    resetSalesAmountData(false)
+    return
+  }
+
+  const qs = new URLSearchParams()
+  qs.set('start', fmtYMD(state.rangeStart))
+  qs.set('end', fmtYMD(state.rangeEnd))
+  if (valveCategory.value?.trim()) qs.set('valveCategory', valveCategory.value.trim())
+  if (productionLine.value?.trim()) qs.set('productionLine', productionLine.value.trim())
+
+  try{
+    const res = await proxy?.http?.get(`/api/WZ/ProductionOutput/sales-amount?${qs.toString()}`, {}, true)
+    applySalesAmountRows(parseRowsResponse(res))
+  }catch(e){
+    console.warn('[WZ_ProductionOutput] sales amount load failed', e)
+    resetSalesAmountData(false)
+  }
+}
+
+function sumMetricMatrix(matrix, valve, lines, daysCount){
+  return (lines || []).reduce((total, line) => {
+    const arr = matrix?.[valve]?.[line] || []
+    for (let i = 0; i < daysCount; i++) {
+      const value = Number(arr[i] || 0)
+      if (Number.isFinite(value)) total += value
+    }
+    return total
+  }, 0)
+}
+
+function sumSalesAmount(valve, lines, daysCount){
+  return sumMetricMatrix(state.salesAmount, valve, lines, daysCount)
+}
+
+function sumSalesAmountDetails(valve, lines, daysCount){
+  return Math.round(sumMetricMatrix(state.salesAmountDetails, valve, lines, daysCount))
+}
+
 /* 渲染（SVG） */
 function renderAll(){
   const days = daysBetween(state.rangeStart, state.rangeEnd)
@@ -738,6 +845,7 @@ function renderAll(){
   // 月份起点
   const monthsStartIndex = []
   days.forEach((d,i)=>{ if(d.getDate()===1) monthsStartIndex.push(i) })
+  const salesAmountVisibleForRange = isSalesAmountScale(daysCount) && salesAmountLoaded.value
 
   // 各阀体图
   for(const cat of state.categories){
@@ -748,7 +856,8 @@ function renderAll(){
 
     const head=document.createElement('div'); head.className='valve-head'
     const modeMeta = currentViewMode.value
-    head.innerHTML = `<div class="name"><span>${v}</span><span class="mode-badge" style="border-color:${modeMeta.color};color:${modeMeta.color}">${modeMeta.label}</span></div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'} · 右侧产线合计 · 底部日合计</div>`
+    const salesAmountMeta = salesAmountVisibleForRange ? ' · 销售金额合计' : ''
+    head.innerHTML = `<div class="name"><span>${v}</span><span class="mode-badge" style="border-color:${modeMeta.color};color:${modeMeta.color}">${modeMeta.label}</span></div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'} · 右侧产线合计 · 底部日合计${salesAmountMeta}</div>`
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
@@ -794,13 +903,26 @@ function renderAll(){
     const bottomSummaryGap = state.compact ? 8 : 10
     const bottomSummaryHeight = state.big ? 58 : state.compact ? 46 : 52
     const bottomSummaryY = gridTop + gridHeight + bottomSummaryGap
+    const salesAmountVisible = salesAmountVisibleForRange
+    const salesAmountTotal = salesAmountVisible ? sumSalesAmount(v, visibleLines, cols) : 0
+    const salesAmountDetails = salesAmountVisible ? sumSalesAmountDetails(v, visibleLines, cols) : 0
+    const salesAmountText = salesAmountVisible ? formatCurrency(salesAmountTotal, true) : ''
+    const salesAmountExactText = salesAmountVisible ? formatCurrency(salesAmountTotal) : ''
+    const salesAmountSubText = salesAmountVisible
+      ? (salesAmountDetails > 0 ? `匹配 ${salesAmountDetails.toLocaleString()} 条销售跟踪明细` : '暂无匹配销售跟踪明细')
+      : ''
+    const salesSummaryHeight = salesAmountVisible ? (state.compact ? 30 : 34) : 0
+    const salesSummaryMinWidth = salesAmountVisible
+      ? estimateTextWidth(`销售金额合计 ${salesAmountText} ${salesAmountSubText}`, 12) + 28
+      : 0
+    const salesSummaryWidth = Math.max(gridWidth, salesSummaryMinWidth)
     const axisMonthY = 13
     const axisDateY = isMonthScale ? gridTop - 24 : gridTop - 12
     const axisWeekdayY = isMonthScale ? gridTop - 10 : null
     const axisTickTop = isMonthScale ? gridTop - 6 : gridTop - 8
     const axisTickBottom = gridTop - 3
-    const width = rowSummaryX + rowSummaryWidth + pad
-    const height= bottomSummaryY + bottomSummaryHeight + pad
+    const width = Math.max(rowSummaryX + rowSummaryWidth + pad, padX + salesSummaryWidth + pad)
+    const height= bottomSummaryY + bottomSummaryHeight + salesSummaryHeight + pad
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
 
     if (isMonthScale) {
@@ -1089,6 +1211,58 @@ function renderAll(){
       svg.appendChild(t)
     })
 
+    if (salesAmountVisible) {
+      const salesSummaryTextY = bottomSummaryY + bottomSummaryHeight + (state.compact ? 16 : 19)
+      const salesSummaryBgY = salesSummaryTextY - (state.compact ? 14 : 16)
+      const salesSummaryBgHeight = state.compact ? 22 : 25
+      const tooltip = `销售金额合计：${salesAmountExactText}\n${salesAmountSubText}`
+      const bg = createSvgEl(svgNS, 'rect', {
+        x: padX,
+        y: salesSummaryBgY,
+        width: salesSummaryWidth,
+        height: salesSummaryBgHeight,
+        rx: 4,
+        ry: 4,
+        fill: SALES_AMOUNT_AXIS.bgFill,
+        stroke: SALES_AMOUNT_AXIS.bgStroke,
+        'stroke-width': 1
+      })
+      bindSvgTooltip(bg, tooltip)
+      svg.appendChild(bg)
+
+      const label = createSvgEl(svgNS, 'text', {
+        x: labelX,
+        y: salesSummaryTextY,
+        'text-anchor': 'end',
+        'font-size': 10,
+        fill: SALES_AMOUNT_AXIS.labelColor
+      })
+      label.textContent = '销售金额'
+      bindSvgTooltip(label, tooltip)
+      svg.appendChild(label)
+
+      const value = createSvgEl(svgNS, 'text', {
+        x: padX + 8,
+        y: salesSummaryTextY,
+        'font-size': 12,
+        'font-weight': 700,
+        fill: SALES_AMOUNT_AXIS.labelColor
+      })
+      value.textContent = salesAmountText
+      bindSvgTooltip(value, tooltip)
+      svg.appendChild(value)
+
+      const sub = createSvgEl(svgNS, 'text', {
+        x: padX + 8 + estimateTextWidth(salesAmountText, 12) + 12,
+        y: salesSummaryTextY,
+        'font-size': 10,
+        fill: SALES_AMOUNT_AXIS.subColor
+      })
+      sub.textContent = salesAmountSubText
+      bindSvgTooltip(sub, tooltip)
+      svg.appendChild(sub)
+    }
+
     // 单元格
     cat.lines.forEach((l,r)=>{
       if (useGithub && l !== githubLine) return
@@ -1286,6 +1460,7 @@ async function loadData(){
     const rows = parseRowsResponse(res)
     viewMode.value = 'actual'
     storeActualBaseline(rows)
+    await refreshSalesAmountData()
     applyRows(rows, '数据加载成功')
   }catch(e){
     console.error(e)
@@ -1368,6 +1543,7 @@ async function loadPreProduction(){
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/merge', payload)
     const rows = parseRowsResponse(res)
     viewMode.value = 'preproduction'
+    await refreshSalesAmountData()
     applyRows(rows, '预排产合并数据加载成功')
   }catch(e){
     console.error(e)
@@ -1389,6 +1565,7 @@ async function loadOptimizedPreProduction(){
     const res = await proxy?.http?.post('/api/WZ/ProductionOutput/preproduction/optimize', payload)
     const rows = parseRowsResponse(res)
     viewMode.value = 'optimized'
+    await refreshSalesAmountData()
     applyRows(rows, '排产优化合并数据加载成功')
   }catch(e){
     console.error(e)

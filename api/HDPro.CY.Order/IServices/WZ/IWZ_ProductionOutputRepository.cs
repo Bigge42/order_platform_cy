@@ -34,6 +34,16 @@ namespace HDPro.CY.Order.IServices.WZ
             CancellationToken ct = default);
 
         /// <summary>
+        /// 查询：按当前产能明细归属汇总销售跟踪订单明细金额。
+        /// </summary>
+        Task<List<WZProductionOutputSalesAmountDto>> GetSalesAmountAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// 批量更新阈值：按阀体与产线持久化阈值，并同步回当前产量缓存
         /// </summary>
         Task<int> UpdateThresholdsAsync(
@@ -174,6 +184,15 @@ namespace HDPro.CY.Order.IServices.WZ
         public string Status { get; set; } = string.Empty;
         public int Rows { get; set; }
         public decimal Quantity { get; set; }
+    }
+
+    public sealed class WZProductionOutputSalesAmountDto
+    {
+        public DateTime ProductionDate { get; set; }
+        public string ValveCategory { get; set; } = string.Empty;
+        public string ProductionLine { get; set; } = string.Empty;
+        public decimal SalesAmount { get; set; }
+        public int MatchedOrderDetails { get; set; }
     }
 
     public sealed class WZProductionOutputSyncHealthDto

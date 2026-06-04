@@ -3840,6 +3840,148 @@ GROUP BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];
                 ct);
         }
 
+        /// <summary>
+        /// 查询：按当前热力图的明细归属，汇总销售跟踪订单明细金额。
+        /// </summary>
+        public async Task<List<WZProductionOutputSalesAmountDto>> GetSalesAmountAsync(
+            string valveCategory,
+            string productionLine,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default)
+        {
+            if (endDate < startDate)
+                throw new ArgumentException("endDate 不能早于 startDate");
+
+            await EnsureProductionOutputDetailTableAsync(ct);
+
+            var rows = new List<WZProductionOutputSalesAmountDto>();
+            var connectionString = _db.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = _db.Database.GetDbConnection().ConnectionString;
+            }
+
+            using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+
+            using (var columnCmd = new SqlCommand(
+                "SELECT CASE WHEN COL_LENGTH(N'dbo.OCP_OrderTracking', N'Amount') IS NULL THEN 0 ELSE 1 END;",
+                conn))
+            {
+                var hasAmountColumn = Convert.ToInt32(await columnCmd.ExecuteScalarAsync(ct) ?? 0) == 1;
+                if (!hasAmountColumn)
+                {
+                    return rows;
+                }
+            }
+
+            using var cmd = new SqlCommand($@"
+WITH normalized AS (
+    SELECT
+        d.[ProductionDate],
+        CASE
+            WHEN ISNULL(d.[ValveCategory], N'') <> N'' THEN d.[ValveCategory]
+            ELSE N'{UnknownValveCategory}'
+        END AS [ValveCategory],
+        CASE
+            WHEN d.[ClassifyStatus] IN ({GetSummarizableStatusSqlList()})
+                 AND ISNULL(d.[ProductionLine], N'') <> N'' THEN d.[ProductionLine]
+            ELSE N'{UnknownProductionLine}'
+        END AS [ProductionLine],
+        d.[EntryId],
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[BillNo], N''))), N'') AS [BillNo],
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[PlanTrackingNo], N''))), N'') AS [PlanTrackingNo],
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N'') AS [MaterialCode],
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialId], N''))), N'') AS [MaterialId],
+        NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialKey], N''))), N'') AS [MaterialKey]
+    FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+    WHERE d.[ProductionDate] >= @StartDate
+      AND d.[ProductionDate] <= @EndDate
+),
+matched AS (
+    SELECT
+        n.[ProductionDate],
+        n.[ValveCategory],
+        n.[ProductionLine],
+        ot.[Id] AS [TrackingId],
+        ISNULL(ot.[Amount], 0) AS [SalesAmount]
+    FROM normalized n
+    CROSS APPLY (
+        SELECT TOP (1)
+            o.[Id],
+            o.[Amount]
+        FROM [dbo].[OCP_OrderTracking] o WITH (NOLOCK)
+        WHERE (
+                n.[EntryId] IS NOT NULL
+                AND o.[SOEntryID] = n.[EntryId]
+              )
+           OR (
+                n.[EntryId] IS NULL
+                AND n.[BillNo] IS NOT NULL
+                AND n.[PlanTrackingNo] IS NOT NULL
+                AND o.[SOBillNo] COLLATE DATABASE_DEFAULT = n.[BillNo]
+                AND o.[MtoNo] COLLATE DATABASE_DEFAULT = n.[PlanTrackingNo]
+                AND (
+                       (n.[MaterialCode] IS NOT NULL AND o.[MaterialNumber] COLLATE DATABASE_DEFAULT = n.[MaterialCode])
+                    OR (TRY_CONVERT(BIGINT, n.[MaterialId]) IS NOT NULL AND o.[MaterialID] = TRY_CONVERT(BIGINT, n.[MaterialId]))
+                    OR (TRY_CONVERT(BIGINT, n.[MaterialKey]) IS NOT NULL AND o.[MaterialID] = TRY_CONVERT(BIGINT, n.[MaterialKey]))
+                    OR (n.[MaterialKey] IS NOT NULL AND TRY_CONVERT(BIGINT, n.[MaterialKey]) IS NULL AND o.[MaterialNumber] COLLATE DATABASE_DEFAULT = n.[MaterialKey])
+                )
+              )
+        ORDER BY
+            CASE WHEN n.[EntryId] IS NOT NULL AND o.[SOEntryID] = n.[EntryId] THEN 0 ELSE 1 END,
+            CASE
+                WHEN n.[MaterialCode] IS NOT NULL AND o.[MaterialNumber] COLLATE DATABASE_DEFAULT = n.[MaterialCode] THEN 0
+                WHEN TRY_CONVERT(BIGINT, n.[MaterialId]) IS NOT NULL AND o.[MaterialID] = TRY_CONVERT(BIGINT, n.[MaterialId]) THEN 1
+                WHEN TRY_CONVERT(BIGINT, n.[MaterialKey]) IS NOT NULL AND o.[MaterialID] = TRY_CONVERT(BIGINT, n.[MaterialKey]) THEN 2
+                ELSE 3
+            END,
+            o.[Id] DESC
+    ) ot
+    WHERE (@ValveCategory = N'' OR n.[ValveCategory] = @ValveCategory)
+      AND (@ProductionLine = N'' OR n.[ProductionLine] = @ProductionLine)
+),
+dedup AS (
+    SELECT
+        [ProductionDate],
+        [ValveCategory],
+        [ProductionLine],
+        [TrackingId],
+        MAX([SalesAmount]) AS [SalesAmount]
+    FROM matched
+    GROUP BY [ProductionDate], [ValveCategory], [ProductionLine], [TrackingId]
+)
+SELECT
+    [ProductionDate],
+    [ValveCategory],
+    [ProductionLine],
+    SUM([SalesAmount]) AS [SalesAmount],
+    COUNT(1) AS [MatchedOrderDetails]
+FROM dedup
+GROUP BY [ProductionDate], [ValveCategory], [ProductionLine]
+ORDER BY [ProductionDate], [ValveCategory], [ProductionLine];", conn);
+
+            AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
+            cmd.Parameters.Add("@ValveCategory", SqlDbType.NVarChar, 50).Value = NormalizeStr(valveCategory);
+            cmd.Parameters.Add("@ProductionLine", SqlDbType.NVarChar, 50).Value = NormalizeStr(productionLine);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                rows.Add(new WZProductionOutputSalesAmountDto
+                {
+                    ProductionDate = Convert.ToDateTime(reader["ProductionDate"]).Date,
+                    ValveCategory = ReadString(reader, "ValveCategory"),
+                    ProductionLine = ReadString(reader, "ProductionLine"),
+                    SalesAmount = ReadDecimal(reader, "SalesAmount"),
+                    MatchedOrderDetails = ReadInt(reader, "MatchedOrderDetails")
+                });
+            }
+
+            return rows;
+        }
+
         private async Task<List<WZ_ProductionOutput>> QueryProductionOutputFromDetailsAsync(
             string valveCategory,
             string productionLine,

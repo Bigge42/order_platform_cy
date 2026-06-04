@@ -66,6 +66,22 @@ namespace HDPro.CY.Order.Controllers.WZ
             return Ok(list);
         }
 
+        /// <summary>
+        /// 查询：按当前产能明细归属汇总销售跟踪订单明细金额。
+        /// GET /api/WZ/ProductionOutput/sales-amount?start=2026-01-01&end=2026-03-31
+        /// </summary>
+        [HttpGet("sales-amount")]
+        public async Task<ActionResult<List<WZProductionOutputSalesAmountDto>>> GetSalesAmount(
+            [FromQuery] string valveCategory,
+            [FromQuery] string productionLine,
+            [FromQuery(Name = "start")] DateTime startDate,
+            [FromQuery(Name = "end")] DateTime endDate,
+            CancellationToken ct = default)
+        {
+            var list = await _service.GetSalesAmountAsync(valveCategory, productionLine, startDate, endDate, ct);
+            return Ok(list);
+        }
+
         public sealed class DateRangeDto
         {
             public DateTime Start { get; set; }
