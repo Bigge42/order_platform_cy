@@ -251,6 +251,13 @@ const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
 const LINE_LABEL_WIDTH = { normal: 76, compact: 68, max: 140 }
 const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
+const DATE_AXIS = {
+  monthColor: '#475569',
+  dateColor: '#64748b',
+  tickColor: '#cbd5e1',
+  monthLineColor: '#dbe3ee',
+  hoverColor: '#303384'
+}
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -557,6 +564,56 @@ function toggleGithubLine(valve, line){
   state.githubLine[valve] = state.githubLine[valve] === line ? null : line
   renderAll()
 }
+function setSvgAttrs(el, attrs){
+  Object.entries(attrs).forEach(([key, value]) => {
+    if (value == null) return
+    el.setAttribute(key, String(value))
+  })
+  return el
+}
+function createSvgEl(svgNS, tag, attrs = {}){
+  return setSvgAttrs(document.createElementNS(svgNS, tag), attrs)
+}
+function shortDateText(date, daysCount){
+  if (daysCount <= 45) return String(date.getDate())
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+function buildDateAxisTicks(days, useGithub, githubOffset, cellSize, gap){
+  const daysCount = days.length
+  const stepPx = cellSize + gap
+  const minGap = useGithub ? 52 : daysCount <= 45 ? stepPx - 0.1 : daysCount <= 100 ? 46 : 76
+  let lastX = -Infinity
+  const ticks = []
+
+  days.forEach((d, k) => {
+    const xIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
+    const xCenter = xIndex * stepPx + cellSize / 2
+    const isRangeStart = k === 0
+    const isMonthStart = d.getDate() === 1
+    const isWeekStart = useGithub ? (k + githubOffset) % GITHUB.rows === 0 : d.getDay() === 1
+    let shouldShow = isRangeStart || isMonthStart
+
+    if (!shouldShow) {
+      if (useGithub) shouldShow = isWeekStart
+      else if (daysCount <= 45) shouldShow = true
+      else if (daysCount <= 100) shouldShow = k % 3 === 0
+      else shouldShow = isWeekStart
+    }
+
+    if (!shouldShow) return
+    if (!isRangeStart && !isMonthStart && xCenter - lastX < minGap) return
+
+    ticks.push({
+      index: k,
+      xIndex,
+      label: shortDateText(d, daysCount),
+      isMonthStart
+    })
+    lastX = xCenter
+  })
+
+  return ticks
+}
 
 /* 渲染（SVG） */
 function renderAll(){
@@ -648,8 +705,15 @@ function renderAll(){
     const padX = labelX + labelGap
     const weekCols = useGithub ? Math.ceil((daysCount + githubOffset) / GITHUB.rows) : cols
     const githubRows = GITHUB.rows
+    const gridRows = useGithub ? githubRows : rows
+    const gridTop = state.big ? 54 : state.compact ? 40 : 44
+    const gridHeight = gridRows * (cellSize + gap) - gap
+    const axisMonthY = 13
+    const axisDateY = gridTop - 12
+    const axisTickTop = gridTop - 8
+    const axisTickBottom = gridTop - 3
     const width = padX + pad + weekCols*(cellSize+gap) - gap
-    const height= pad*2 + (useGithub ? githubRows : rows) * (cellSize+gap) - gap
+    const height= gridTop + pad + gridHeight
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
 
     // 月份文本
@@ -657,15 +721,106 @@ function renderAll(){
       const d=days[k]
       const xIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
       const x=padX + xIndex*(cellSize+gap)
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x',x); t.setAttribute('y',pad-10)
-      t.setAttribute('font-size','10'); t.setAttribute('fill','#475569'); t.textContent=`${d.getMonth()+1}月`
+      const t=createSvgEl(svgNS, 'text', {
+        x,
+        y: axisMonthY,
+        'font-size': 10,
+        fill: DATE_AXIS.monthColor
+      })
+      t.textContent=`${d.getMonth()+1}月`
+      svg.appendChild(t)
+
+      const monthLine=createSvgEl(svgNS, 'line', {
+        x1: x,
+        y1: axisTickTop,
+        x2: x,
+        y2: gridTop + gridHeight,
+        stroke: DATE_AXIS.monthLineColor,
+        'stroke-width': 1
+      })
+      svg.appendChild(monthLine)
+    })
+
+    // 日期横坐标：短日期按范围自适应显示，避免全年视图挤在一起
+    buildDateAxisTicks(days, useGithub, githubOffset, cellSize, gap).forEach(tick=>{
+      const x = padX + tick.xIndex*(cellSize+gap) + cellSize/2
+      const tickLine=createSvgEl(svgNS, 'line', {
+        x1: x,
+        y1: axisTickTop,
+        x2: x,
+        y2: axisTickBottom,
+        stroke: tick.isMonthStart ? DATE_AXIS.monthColor : DATE_AXIS.tickColor,
+        'stroke-width': tick.isMonthStart ? 1.2 : 1
+      })
+      svg.appendChild(tickLine)
+
+      const t=createSvgEl(svgNS, 'text', {
+        x,
+        y: axisDateY,
+        'text-anchor': 'middle',
+        'font-size': 10,
+        fill: tick.isMonthStart ? DATE_AXIS.monthColor : DATE_AXIS.dateColor
+      })
+      t.textContent = tick.label
       svg.appendChild(t)
     })
+
+    const hoverRect = createSvgEl(svgNS, 'rect', {
+      y: gridTop - 2,
+      width: cellSize,
+      height: gridHeight + 4,
+      fill: DATE_AXIS.hoverColor,
+      opacity: 0.08,
+      display: 'none',
+      'pointer-events': 'none'
+    })
+    const hoverLabel = createSvgEl(svgNS, 'g', {
+      display: 'none',
+      'pointer-events': 'none'
+    })
+    const hoverLabelBg = createSvgEl(svgNS, 'rect', {
+      rx: 3,
+      ry: 3,
+      height: 16,
+      fill: DATE_AXIS.hoverColor,
+      opacity: 0.95
+    })
+    const hoverLabelText = createSvgEl(svgNS, 'text', {
+      'font-size': 10,
+      fill: '#ffffff',
+      'text-anchor': 'middle'
+    })
+    hoverLabel.appendChild(hoverLabelBg)
+    hoverLabel.appendChild(hoverLabelText)
+
+    const showHoverGuide = (dayIndex, x) => {
+      const label = fmtYMD(days[dayIndex]).slice(5)
+      const labelWidth = Math.max(38, label.length * 6 + 10)
+      const labelX = Math.min(Math.max(x + cellSize / 2 - labelWidth / 2, padX), width - labelWidth - 4)
+      hoverRect.setAttribute('x', String(x))
+      hoverRect.setAttribute('display', 'block')
+      setSvgAttrs(hoverLabelBg, {
+        x: labelX,
+        y: gridTop - 30,
+        width: labelWidth
+      })
+      setSvgAttrs(hoverLabelText, {
+        x: labelX + labelWidth / 2,
+        y: gridTop - 18
+      })
+      hoverLabelText.textContent = label
+      hoverLabel.setAttribute('display', 'block')
+    }
+    const hideHoverGuide = () => {
+      hoverRect.setAttribute('display', 'none')
+      hoverLabel.setAttribute('display', 'none')
+    }
+
     // 产线文本
     cat.lines.forEach((l,r)=>{
       if (useGithub && l !== githubLine) return
       const rowIndex = useGithub ? 0 : r
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x', labelX); t.setAttribute('y', pad + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
+      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x', labelX); t.setAttribute('y', gridTop + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
       t.setAttribute('text-anchor','end')
       t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
       t.style.cursor = 'pointer'
@@ -684,7 +839,7 @@ function renderAll(){
       for(let k=0;k<cols;k++){
         const weekIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
         const dayIndex = useGithub ? (k + githubOffset) % GITHUB.rows : r
-        const x=padX + weekIndex*(cellSize+gap), y=pad + dayIndex*(cellSize+gap)
+        const x=padX + weekIndex*(cellSize+gap), y=gridTop + dayIndex*(cellSize+gap)
         const val = arr[k] ?? 0
         const thr = ensureThr(v, l)
         const aboveMax = Math.max(0, lineMax-thr), belowMax = Math.max(thr - lineMin, 0)
@@ -705,6 +860,7 @@ function renderAll(){
           openCellDetails(v, l, days[k], val)
         })
         rect.addEventListener('mouseenter', ev=>{
+          showHoverGuide(k, x)
           const tip = document.getElementById('tooltip')
           const lines = [
             `口径：${currentViewMode.value.label}`, `阀体：${v}`, `产线：${l}`, `日期：${fmtYMD(days[k])}`,
@@ -722,6 +878,7 @@ function renderAll(){
           const tip = document.getElementById('tooltip'); tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'
         })
         rect.addEventListener('mouseleave', ()=>{
+          hideHoverGuide()
           const tip = document.getElementById('tooltip'); tip.style.display='none'
         })
 
@@ -740,6 +897,8 @@ function renderAll(){
       }
     })
 
+    svg.appendChild(hoverRect)
+    svg.appendChild(hoverLabel)
     wrapper.appendChild(svg)
     container.appendChild(wrapper)
   }
