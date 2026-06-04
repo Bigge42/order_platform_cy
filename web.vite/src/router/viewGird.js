@@ -709,6 +709,10 @@ let viewgird = [
         name: 'WZ_OrderCycleBase',
         component: () => import('@/views/order//wz_ordercyclebase/WZ_OrderCycleBase.vue')
     }    ,{
+        path: '/WZ_OrderCyclePlanModifyBoard',
+        name: 'WZ_OrderCyclePlanModifyBoard',
+        component: () => import('@/views/order/wz_ordercycleplanmodifyboard/WZ_OrderCyclePlanModifyBoard.vue')
+    }    ,{
         path: '/V_XhckkbRecord_Material',
         name: 'V_XhckkbRecord_Material',
         component: () => import('@/views/order/v_xhckkbrecord_material/V_XhckkbRecord_Material.vue')
