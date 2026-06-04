@@ -251,12 +251,26 @@ const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
 const LINE_LABEL_WIDTH = { normal: 76, compact: 68, max: 140 }
 const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
+const MONTH_SCALE_MAX_DAYS = 45
+const WEEKDAY_TEXT = ['日', '一', '二', '三', '四', '五', '六']
+const GITHUB_WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const DATE_AXIS = {
   monthColor: '#475569',
   dateColor: '#64748b',
   tickColor: '#cbd5e1',
   monthLineColor: '#dbe3ee',
-  hoverColor: '#303384'
+  hoverColor: '#303384',
+  weekdayColor: '#64748b',
+  weekendColor: '#b45309',
+  weekendBg: '#fff7ed'
+}
+const SUMMARY_AXIS = {
+  textColor: '#334155',
+  mutedColor: '#94a3b8',
+  labelColor: '#475569',
+  cellFill: '#dbeafe',
+  cellEmptyFill: '#f8fafc',
+  cellBorder: '#e2e8f0'
 }
 
 /* ===== 工具函数 ===== */
@@ -574,6 +588,51 @@ function setSvgAttrs(el, attrs){
 function createSvgEl(svgNS, tag, attrs = {}){
   return setSvgAttrs(document.createElementNS(svgNS, tag), attrs)
 }
+function isWeekend(date){
+  const day = date.getDay()
+  return day === 0 || day === 6
+}
+function weekdayText(date){
+  return WEEKDAY_TEXT[date.getDay()]
+}
+function formatAxisQty(value){
+  const num = Number(value || 0)
+  if (!Number.isFinite(num)) return '0'
+  const abs = Math.abs(num)
+  if (abs >= 10000) {
+    const digits = abs >= 100000 ? 0 : 1
+    return `${(num / 10000).toLocaleString('zh-CN', { maximumFractionDigits: digits })}万`
+  }
+  return formatQty(num)
+}
+function estimateTextWidth(text, fontSize = 10){
+  return Array.from(String(text || '')).reduce((sum, ch) => {
+    if (/[\u4e00-\u9fa5]/.test(ch)) return sum + fontSize
+    if (/[,\.\-]/.test(ch)) return sum + fontSize * 0.35
+    return sum + fontSize * 0.58
+  }, 0)
+}
+function bindSvgTooltip(el, content){
+  if (!content) return
+  el.addEventListener('mouseenter', ev => {
+    const tip = document.getElementById('tooltip')
+    if (!tip) return
+    tip.textContent = content
+    tip.style.display = 'block'
+    tip.style.left = `${ev.clientX + 12}px`
+    tip.style.top = `${ev.clientY + 12}px`
+  })
+  el.addEventListener('mousemove', ev => {
+    const tip = document.getElementById('tooltip')
+    if (!tip) return
+    tip.style.left = `${ev.clientX + 12}px`
+    tip.style.top = `${ev.clientY + 12}px`
+  })
+  el.addEventListener('mouseleave', () => {
+    const tip = document.getElementById('tooltip')
+    if (tip) tip.style.display = 'none'
+  })
+}
 function shortDateText(date, daysCount){
   if (daysCount <= 45) return String(date.getDate())
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -689,12 +748,14 @@ function renderAll(){
 
     const head=document.createElement('div'); head.className='valve-head'
     const modeMeta = currentViewMode.value
-    head.innerHTML = `<div class="name"><span>${v}</span><span class="mode-badge" style="border-color:${modeMeta.color};color:${modeMeta.color}">${modeMeta.label}</span></div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'}</div>`
+    head.innerHTML = `<div class="name"><span>${v}</span><span class="mode-badge" style="border-color:${modeMeta.color};color:${modeMeta.color}">${modeMeta.label}</span></div><div class="meta">${state.mode==='threshold'?'阈值红绿':'标准渐变'} · ${state.scope==='line'?'按产线':state.scope==='valve'?'按阀体':'全局'} · 右侧产线合计 · 底部日合计</div>`
     wrapper.appendChild(head)
 
     const cols = daysCount, rows = cat.lines.length
     const githubLine = getGithubLine(v)
     const useGithub = Boolean(githubLine)
+    const isMonthScale = !useGithub && daysCount <= MONTH_SCALE_MAX_DAYS
+    const visibleLines = useGithub ? cat.lines.filter(line => line === githubLine) : cat.lines
     const cellSize = useGithub ? (state.big ? SIZE.big : GITHUB.size) : baseCellSize
     const gap = useGithub ? (state.big ? baseGap : GITHUB.gap) : baseGap
     const pad = useGithub ? (state.big ? basePad : GITHUB.pad) : basePad
@@ -706,15 +767,69 @@ function renderAll(){
     const weekCols = useGithub ? Math.ceil((daysCount + githubOffset) / GITHUB.rows) : cols
     const githubRows = GITHUB.rows
     const gridRows = useGithub ? githubRows : rows
-    const gridTop = state.big ? 54 : state.compact ? 40 : 44
+    const gridTop = state.big ? (isMonthScale ? 64 : 54) : state.compact ? (isMonthScale ? 50 : 40) : (isMonthScale ? 56 : 44)
     const gridHeight = gridRows * (cellSize + gap) - gap
+    const gridWidth = weekCols * (cellSize + gap) - gap
+    const gridRight = padX + gridWidth
+    const rowTotals = useGithub ? Array(GITHUB.rows).fill(0) : visibleLines.map(() => 0)
+    const columnTotals = Array(weekCols).fill(0)
+    visibleLines.forEach((line, lineIndex) => {
+      const arr = state.data?.[v]?.[line] || []
+      for (let k = 0; k < cols; k++) {
+        const val = Number(arr[k] || 0)
+        if (!Number.isFinite(val)) continue
+        const weekIndex = useGithub ? Math.floor((k + githubOffset) / GITHUB.rows) : k
+        const rowIndex = useGithub ? (k + githubOffset) % GITHUB.rows : lineIndex
+        rowTotals[rowIndex] += val
+        columnTotals[weekIndex] += val
+      }
+    })
+    const rowTotalLabels = rowTotals.map(formatAxisQty)
+    const rowSummaryGap = state.compact ? 7 : 10
+    const rowSummaryWidth = Math.min(
+      112,
+      Math.max(state.compact ? 48 : 58, ...rowTotalLabels.map(label => estimateTextWidth(label, 10) + 14))
+    )
+    const rowSummaryX = gridRight + rowSummaryGap
+    const bottomSummaryGap = state.compact ? 8 : 10
+    const bottomSummaryHeight = state.big ? 58 : state.compact ? 46 : 52
+    const bottomSummaryY = gridTop + gridHeight + bottomSummaryGap
     const axisMonthY = 13
-    const axisDateY = gridTop - 12
-    const axisTickTop = gridTop - 8
+    const axisDateY = isMonthScale ? gridTop - 24 : gridTop - 12
+    const axisWeekdayY = isMonthScale ? gridTop - 10 : null
+    const axisTickTop = isMonthScale ? gridTop - 6 : gridTop - 8
     const axisTickBottom = gridTop - 3
-    const width = padX + pad + weekCols*(cellSize+gap) - gap
-    const height= gridTop + pad + gridHeight
+    const width = rowSummaryX + rowSummaryWidth + pad
+    const height= bottomSummaryY + bottomSummaryHeight + pad
     const svg=document.createElementNS(svgNS,'svg'); svg.setAttribute('width', width); svg.setAttribute('height', height)
+
+    if (isMonthScale) {
+      days.forEach((d, k) => {
+        const x = padX + k * (cellSize + gap)
+        if (isWeekend(d)) {
+          svg.appendChild(createSvgEl(svgNS, 'rect', {
+            x,
+            y: gridTop - 2,
+            width: cellSize,
+            height: gridHeight + 4,
+            rx: 2,
+            ry: 2,
+            fill: DATE_AXIS.weekendBg
+          }))
+        }
+        if (d.getDay() === 1 && k > 0) {
+          svg.appendChild(createSvgEl(svgNS, 'line', {
+            x1: x - gap / 2,
+            y1: gridTop - 8,
+            x2: x - gap / 2,
+            y2: gridTop + gridHeight,
+            stroke: DATE_AXIS.tickColor,
+            'stroke-width': 1,
+            'stroke-dasharray': '2 2'
+          }))
+        }
+      })
+    }
 
     // 月份文本
     monthsStartIndex.forEach(k=>{
@@ -761,6 +876,23 @@ function renderAll(){
         'font-size': 10,
         fill: tick.isMonthStart ? DATE_AXIS.monthColor : DATE_AXIS.dateColor
       })
+      if (isMonthScale) {
+        const d = days[tick.index]
+        t.textContent = String(d.getDate())
+        t.setAttribute('fill', isWeekend(d) ? DATE_AXIS.weekendColor : DATE_AXIS.dateColor)
+        svg.appendChild(t)
+
+        const weekday = createSvgEl(svgNS, 'text', {
+          x,
+          y: axisWeekdayY,
+          'text-anchor': 'middle',
+          'font-size': 10,
+          fill: isWeekend(d) ? DATE_AXIS.weekendColor : DATE_AXIS.weekdayColor
+        })
+        weekday.textContent = weekdayText(d)
+        svg.appendChild(weekday)
+        return
+      }
       t.textContent = tick.label
       svg.appendChild(t)
     })
@@ -817,14 +949,143 @@ function renderAll(){
     }
 
     // 产线文本
-    cat.lines.forEach((l,r)=>{
-      if (useGithub && l !== githubLine) return
-      const rowIndex = useGithub ? 0 : r
-      const t=document.createElementNS(svgNS,'text'); t.setAttribute('x', labelX); t.setAttribute('y', gridTop + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
-      t.setAttribute('text-anchor','end')
-      t.setAttribute('font-size','10'); t.setAttribute('fill','#64748b'); t.textContent=l
-      t.style.cursor = 'pointer'
-      t.addEventListener('click', ()=> toggleGithubLine(v, l))
+    if (useGithub) {
+      GITHUB_WEEKDAYS.forEach((label, rowIndex) => {
+        const t=document.createElementNS(svgNS,'text')
+        t.setAttribute('x', labelX)
+        t.setAttribute('y', gridTop + rowIndex*(cellSize+gap) + Math.min(9, cellSize-3))
+        t.setAttribute('text-anchor','end')
+        t.setAttribute('font-size','10')
+        t.setAttribute('fill', rowIndex >= 5 ? DATE_AXIS.weekendColor : '#64748b')
+        t.textContent=label
+        t.style.cursor = 'pointer'
+        t.addEventListener('click', ()=> toggleGithubLine(v, githubLine))
+        svg.appendChild(t)
+      })
+    } else {
+      cat.lines.forEach((l,r)=>{
+        const t=document.createElementNS(svgNS,'text')
+        t.setAttribute('x', labelX)
+        t.setAttribute('y', gridTop + r*(cellSize+gap) + Math.min(9, cellSize-3))
+        t.setAttribute('text-anchor','end')
+        t.setAttribute('font-size','10')
+        t.setAttribute('fill','#64748b')
+        t.textContent=l
+        t.style.cursor = 'pointer'
+        t.addEventListener('click', ()=> toggleGithubLine(v, l))
+        svg.appendChild(t)
+      })
+    }
+
+    const rowSummaryHeader = createSvgEl(svgNS, 'text', {
+      x: rowSummaryX + rowSummaryWidth / 2,
+      y: axisWeekdayY || axisDateY,
+      'text-anchor': 'middle',
+      'font-size': 10,
+      fill: SUMMARY_AXIS.labelColor
+    })
+    rowSummaryHeader.textContent = '合计'
+    svg.appendChild(rowSummaryHeader)
+
+    svg.appendChild(createSvgEl(svgNS, 'line', {
+      x1: gridRight + rowSummaryGap / 2,
+      y1: gridTop,
+      x2: gridRight + rowSummaryGap / 2,
+      y2: gridTop + gridHeight,
+      stroke: SUMMARY_AXIS.cellBorder,
+      'stroke-width': 1
+    }))
+
+    const maxRowTotal = Math.max(0, ...rowTotals)
+    rowTotals.forEach((sum, rowIndex) => {
+      const y = gridTop + rowIndex * (cellSize + gap)
+      const barWidth = maxRowTotal > 0 && sum > 0 ? Math.max(2, (rowSummaryWidth - 4) * sum / maxRowTotal) : 0
+      const bg = createSvgEl(svgNS, 'rect', {
+        x: rowSummaryX,
+        y: y - 1,
+        width: rowSummaryWidth,
+        height: cellSize + 2,
+        rx: 3,
+        ry: 3,
+        fill: SUMMARY_AXIS.cellEmptyFill,
+        stroke: SUMMARY_AXIS.cellBorder,
+        'stroke-width': 1
+      })
+      const bar = createSvgEl(svgNS, 'rect', {
+        x: rowSummaryX + 2,
+        y: y + 2,
+        width: barWidth,
+        height: Math.max(2, cellSize - 4),
+        rx: 2,
+        ry: 2,
+        fill: SUMMARY_AXIS.cellFill
+      })
+      const t = createSvgEl(svgNS, 'text', {
+        x: rowSummaryX + rowSummaryWidth - 5,
+        y: y + cellSize / 2 + 3,
+        'text-anchor': 'end',
+        'font-size': 10,
+        fill: SUMMARY_AXIS.textColor
+      })
+      t.textContent = rowTotalLabels[rowIndex] || '0'
+      bindSvgTooltip(bg, `行合计：${formatQty(sum)}`)
+      bindSvgTooltip(bar, `行合计：${formatQty(sum)}`)
+      bindSvgTooltip(t, `行合计：${formatQty(sum)}`)
+      svg.appendChild(bg)
+      svg.appendChild(bar)
+      svg.appendChild(t)
+    })
+
+    svg.appendChild(createSvgEl(svgNS, 'line', {
+      x1: padX,
+      y1: bottomSummaryY - bottomSummaryGap / 2,
+      x2: gridRight,
+      y2: bottomSummaryY - bottomSummaryGap / 2,
+      stroke: SUMMARY_AXIS.cellBorder,
+      'stroke-width': 1
+    }))
+
+    const bottomLabel = createSvgEl(svgNS, 'text', {
+      x: labelX,
+      y: bottomSummaryY + 11,
+      'text-anchor': 'end',
+      'font-size': 10,
+      fill: SUMMARY_AXIS.labelColor
+    })
+    bottomLabel.textContent = useGithub ? '周合计' : '日合计'
+    svg.appendChild(bottomLabel)
+
+    const maxColumnTotal = Math.max(0, ...columnTotals)
+    const columnBarBaseY = bottomSummaryY + (state.big ? 18 : 15)
+    const columnBarMaxHeight = state.big ? 14 : 11
+    columnTotals.forEach((sum, columnIndex) => {
+      const x = padX + columnIndex * (cellSize + gap)
+      const barHeight = maxColumnTotal > 0 && sum > 0 ? Math.max(2, columnBarMaxHeight * sum / maxColumnTotal) : 0
+      const title = useGithub
+        ? `周合计：${formatQty(sum)}`
+        : `${fmtYMD(days[columnIndex])} 日合计：${formatQty(sum)}`
+      const bar = createSvgEl(svgNS, 'rect', {
+        x,
+        y: columnBarBaseY - barHeight,
+        width: cellSize,
+        height: barHeight,
+        rx: 2,
+        ry: 2,
+        fill: sum > 0 ? colorFromValue(sum, maxColumnTotal) : SUMMARY_AXIS.cellEmptyFill
+      })
+      bindSvgTooltip(bar, title)
+      svg.appendChild(bar)
+
+      const t = createSvgEl(svgNS, 'text', {
+        x: x + cellSize / 2,
+        y: bottomSummaryY + bottomSummaryHeight - 4,
+        'text-anchor': 'end',
+        'font-size': 9,
+        fill: sum > 0 ? SUMMARY_AXIS.textColor : SUMMARY_AXIS.mutedColor,
+        transform: `rotate(-55 ${x + cellSize / 2} ${bottomSummaryY + bottomSummaryHeight - 4})`
+      })
+      t.textContent = formatAxisQty(sum)
+      bindSvgTooltip(t, title)
       svg.appendChild(t)
     })
 
