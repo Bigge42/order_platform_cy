@@ -6,10 +6,10 @@ export default function () {
     key: 'Id',
     footer: 'Foots',
     cnName: '计划修改看板',
-    name: 'WZ_OrderCyclePlanModifyBoard',
+    name: 'OCP_OrderTracking',
     newTabEdit: false,
-    url: '/WZ_OrderCycleBase/',
-    sortName: 'Id'
+    url: '/OCP_OrderTracking/',
+    sortName: 'CreateDate'
   }
   const tableName = table.name
   const tableCNName = table.cnName
@@ -18,20 +18,20 @@ export default function () {
   const editFormFields = {}
   const editFormOptions = []
   const searchFormFields = {
-    SalesOrderNo: '',
-    PlanTrackingNo: ''
+    SOBillNo: '',
+    MtoNo: ''
   }
   const searchFormOptions = [
     [
       {
         title: '销售订单号',
-        field: 'SalesOrderNo',
+        field: 'SOBillNo',
         type: 'likeStart',
         comparationList: [{ key: 'likeStart', value: '模糊查询(左包含)' }]
       },
       {
         title: '计划跟踪号',
-        field: 'PlanTrackingNo',
+        field: 'MtoNo',
         type: 'likeStart',
         comparationList: [{ key: 'likeStart', value: '模糊查询(左包含)' }]
       }
@@ -48,36 +48,33 @@ export default function () {
       require: true,
       align: 'left'
     },
-    { field: 'FENTRYID', title: '销售订单明细', type: 'long', sort: true, width: 130, align: 'left' },
-    { field: 'SalesOrderNo', title: '销售订单号', type: 'string', width: 120, align: 'left' },
-    { field: 'PlanTrackingNo', title: '计划跟踪号', type: 'string', width: 120, align: 'left' },
-    { field: 'OrderApprovedDate', title: '订单审核日期', type: 'date', width: 110, align: 'left' },
+    { field: 'SOEntryID', title: '销售订单明细', type: 'long', sort: true, width: 130, align: 'left' },
+    { field: 'SOBillNo', title: '销售订单号', type: 'string', width: 120, align: 'left' },
+    { field: 'MtoNo', title: '计划跟踪号', type: 'string', width: 120, align: 'left' },
+    { field: 'OrderAuditDate', title: '订单审核日期', type: 'date', width: 110, align: 'left' },
     { field: 'ReplyDeliveryDate', title: '回复交货日期', type: 'date', width: 110, align: 'left' },
-    { field: 'RequestedDeliveryDate', title: '要货日期', type: 'date', width: 110, align: 'left' },
-    { field: 'StandardDeliveryDate', title: '标准交货日期', type: 'date', width: 110, align: 'left' },
-    { field: 'ScheduleDate', title: '排产日期', type: 'date', width: 110, align: 'left' },
-    { field: 'CapacityScheduleDate', title: '排产优化日期', type: 'date', width: 150, align: 'left' },
-    { field: 'MaterialCode', title: '物料编码', type: 'string', width: 120, align: 'left' },
+    { field: 'DeliveryDate', title: '要货日期', type: 'date', width: 110, align: 'left' },
+    { field: 'PrdScheduleDate', title: '排产日期', type: 'date', width: 110, align: 'left' },
+    { field: 'PlanConfirmDate', title: '计划确认日期', type: 'date', width: 150, align: 'left' },
+    { field: 'PlanStartDate', title: '计划开工日期', type: 'date', width: 150, align: 'left' },
+    { field: 'MaterialNumber', title: '物料编码', type: 'string', width: 120, align: 'left' },
     { field: 'OrderQty', title: '订单数量', type: 'decimal', width: 110, require: true, align: 'left' },
-    { field: 'GUI_GE_XING_HAO', title: '规格型号', type: 'string', width: 180, align: 'left' },
-    { field: 'ProductName', title: '产品名称', type: 'string', width: 180, align: 'left' },
-    { field: 'NominalDiameter', title: '公称通径', type: 'string', width: 110, align: 'left' },
-    { field: 'NominalPressure', title: '公称压力', type: 'string', width: 110, align: 'left' },
-    { field: 'BodyMaterial', title: '阀体材质', type: 'string', width: 220, align: 'left' },
-    { field: 'InnerMaterial', title: '内件材质', type: 'string', width: 150, align: 'left' },
-    { field: 'FlangeConnection', title: '法兰连接方式', type: 'string', width: 150, align: 'left' },
-    { field: 'BonnetForm', title: '上盖形式', type: 'string', width: 150, align: 'left' },
-    { field: 'SealFaceForm', title: '密封面形式', type: 'string', sort: true, width: 150, align: 'left' },
-    { field: 'FlowCharacteristic', title: '流量特性', type: 'string', width: 150, align: 'left' },
-    { field: 'Actuator', title: '执行机构', type: 'string', width: 150, align: 'left' },
-    { field: 'OutsourcedValveBody', title: '外购阀体', type: 'string', width: 150, align: 'left' },
-    { field: 'ValveCategory1', title: '阀门大类', type: 'string', width: 150, align: 'left' },
-    { field: 'ValveCategory', title: '阀门类别', type: 'string', width: 150, align: 'left' },
-    { field: 'ProductionLine', title: '生产线', type: 'string', width: 110, align: 'left' },
-    { field: 'FixedCycleDays', title: '固定周期(天)', type: 'int', width: 110, align: 'left' },
-    { field: 'SpecialProduct', title: '特品', type: 'string', width: 180, align: 'left' },
-    { field: 'PurchaseFlag', title: '外购标志', type: 'string', width: 110, align: 'left' },
-    { field: 'AssignedProductionLine', title: '产线', type: 'string', width: 110, align: 'left' }
+    { field: 'TopSpecification', title: '规格型号', type: 'string', width: 180, align: 'left' },
+    { field: 'MaterialName', title: '产品名称', type: 'string', width: 180, align: 'left' },
+    { field: 'ProductionModel', title: '产品型号', type: 'string', width: 180, align: 'left' },
+    { field: 'ProjectName', title: '项目名称', type: 'string', width: 150, align: 'left' },
+    { field: 'CustName', title: '客户名称', type: 'string', width: 180, align: 'left' },
+    { field: 'UseUnit', title: '使用单位', type: 'string', width: 180, align: 'left' },
+    { field: 'ContractNo', title: '销售合同号', type: 'string', width: 130, align: 'left' },
+    { field: 'ContractType', title: '合同类型', type: 'string', width: 110, align: 'left' },
+    { field: 'SalesPerson', title: '销售员', type: 'string', width: 110, align: 'left' },
+    { field: 'Urgency', title: '紧急等级', type: 'string', width: 110, align: 'left' },
+    { field: 'BillStatus', title: '订单状态', type: 'string', width: 110, align: 'left' },
+    { field: 'MtoNoStatus', title: '交货情况', type: 'string', width: 110, align: 'left' },
+    { field: 'FinishStatus', title: '订单完成状态', type: 'string', width: 130, align: 'left' },
+    { field: 'InstockQty', title: '入库数量', type: 'decimal', width: 110, align: 'left' },
+    { field: 'UnInstockQty', title: '未完数量', type: 'decimal', width: 110, align: 'left' },
+    { field: 'PrepareMtrl', title: '开工准备', type: 'string', width: 110, align: 'left' }
   ]
   const detail = { columns: [] }
   const details = []

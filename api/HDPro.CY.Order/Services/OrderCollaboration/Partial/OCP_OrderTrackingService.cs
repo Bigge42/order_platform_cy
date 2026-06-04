@@ -85,6 +85,11 @@ namespace HDPro.CY.Order.Services
             //此处是从前台提交的原生的查询条件，这里可以自己过滤
             QueryRelativeList = (List<SearchParameters> parameters) =>
             {
+                if (string.Equals(options?.Value?.ToString(), "planModifyBoardFullOrders", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 // 超级管理员不添加过滤条件
                 if (UserContext.Current.IsSuperAdmin)
                 {

@@ -18,10 +18,11 @@ let extension = {
   buttons: { view: [], box: [], detail: [] },
   methods: {
     onInit() {
-      this.queryFields = ['SalesOrderNo', 'PlanTrackingNo']
+      this.queryFields = ['SOBillNo', 'MtoNo']
     },
     onInited() {},
     searchBefore(param) {
+      param.value = 'planModifyBoardFullOrders'
       return true
     },
     searchAfter(result) {

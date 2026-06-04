@@ -53,12 +53,13 @@ let gridRef
 
 const onInit = async ($vm) => {
   gridRef = $vm
-  gridRef.queryFields = ['SalesOrderNo', 'PlanTrackingNo']
+  gridRef.queryFields = ['SOBillNo', 'MtoNo']
 }
 
 const onInited = async () => {}
 
 const searchBefore = async (param) => {
+  param.value = 'planModifyBoardFullOrders'
   return true
 }
 
