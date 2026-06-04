@@ -19,15 +19,21 @@ using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using HDPro.Core.ManageUser;
 using HDPro.CY.Order.Services.Common;
+using Newtonsoft.Json;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 namespace HDPro.CY.Order.Services
 {
     public partial class OCP_OrderTrackingService
     {
+        private const string PlanModifyBoardFullOrders = "planModifyBoardFullOrders";
         private readonly IOCP_OrderTrackingRepository _repository;//访问数据库
         private readonly ILogger<OCP_OrderTrackingService> _logger;//日志记录器
         private readonly IOCP_LackMtrlResultRepository _lackMtrlResultRepository;//缺料运算结果Repository
@@ -85,7 +91,7 @@ namespace HDPro.CY.Order.Services
             //此处是从前台提交的原生的查询条件，这里可以自己过滤
             QueryRelativeList = (List<SearchParameters> parameters) =>
             {
-                if (string.Equals(options?.Value?.ToString(), "planModifyBoardFullOrders", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(options?.Value?.ToString(), PlanModifyBoardFullOrders, StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }
@@ -139,6 +145,152 @@ namespace HDPro.CY.Order.Services
 
         // 在此处添加OCP_OrderTracking特有的业务逻辑方法
         // 例如：订单状态更新、数据统计、业务规则验证等
+
+        /// <summary>
+        /// 导出计划修改看板，列顺序和标题按前端当前显示列生成。
+        /// </summary>
+        /// <param name="pageData">导出参数</param>
+        /// <returns>导出文件路径</returns>
+        public WebResponseContent ExportPlanModifyBoard(PageDataOptions pageData)
+        {
+            var response = new WebResponseContent();
+            try
+            {
+                pageData ??= new PageDataOptions();
+                pageData.Export = true;
+                pageData.Value = PlanModifyBoardFullOrders;
+
+                var exportColumns = GetPlanModifyBoardExportColumns(pageData);
+                if (!exportColumns.Any())
+                {
+                    return response.Error("未获取到导出列，请刷新页面后重试");
+                }
+
+                pageData.Columns = exportColumns.Select(column => column.Field).ToArray();
+                var list = GetPageData(pageData).rows ?? new List<OCP_OrderTracking>();
+
+                var folder = DateTime.Now.ToString("yyyyMMdd");
+                var savePath = $"Download/ExcelExport/{folder}/".MapPath();
+                var fileName = $"计划修改看板{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+                if (!Directory.Exists(savePath))
+                {
+                    Directory.CreateDirectory(savePath);
+                }
+
+                var fullPath = Path.Combine(savePath, fileName);
+                WritePlanModifyBoardExcel(list, exportColumns, fullPath);
+
+                return response.OK(null, fullPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "导出计划修改看板异常");
+                return response.Error($"导出失败：{ex.Message}");
+            }
+        }
+
+        private static List<PlanModifyBoardExportColumn> GetPlanModifyBoardExportColumns(PageDataOptions pageData)
+        {
+            var exportColumns = new List<PlanModifyBoardExportColumn>();
+            if (pageData?.CustomerParams != null &&
+                pageData.CustomerParams.TryGetValue("planModifyBoardColumns", out var columnJson) &&
+                columnJson != null)
+            {
+                exportColumns = JsonConvert.DeserializeObject<List<PlanModifyBoardExportColumn>>(columnJson.ToString())
+                    ?? new List<PlanModifyBoardExportColumn>();
+            }
+
+            if (!exportColumns.Any() && pageData?.Columns != null)
+            {
+                exportColumns = pageData.Columns
+                    .Where(field => !string.IsNullOrWhiteSpace(field))
+                    .Select(field => new PlanModifyBoardExportColumn
+                    {
+                        Field = field,
+                        Title = field
+                    })
+                    .ToList();
+            }
+
+            var properties = typeof(OCP_OrderTracking).GetProperties()
+                .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+            return exportColumns
+                .Where(column => !string.IsNullOrWhiteSpace(column.Field) && properties.ContainsKey(column.Field))
+                .GroupBy(column => column.Field, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList();
+        }
+
+        private static void WritePlanModifyBoardExcel(
+            List<OCP_OrderTracking> list,
+            List<PlanModifyBoardExportColumn> exportColumns,
+            string fullPath)
+        {
+            var properties = typeof(OCP_OrderTracking).GetProperties()
+                .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("sheet1");
+
+            for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+            {
+                var exportColumn = exportColumns[columnIndex];
+                var cell = worksheet.Cells[1, columnIndex + 1];
+                cell.Value = exportColumn.Title;
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(Color.Gray);
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                var width = exportColumn.Width.HasValue && exportColumn.Width.Value > 0
+                    ? exportColumn.Width.Value / 7D
+                    : 15D;
+                worksheet.Column(columnIndex + 1).Width = Math.Min(Math.Max(width, 10D), 45D);
+            }
+
+            for (var rowIndex = 0; rowIndex < list.Count; rowIndex++)
+            {
+                var row = list[rowIndex];
+                for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+                {
+                    var exportColumn = exportColumns[columnIndex];
+                    var property = properties[exportColumn.Field];
+                    worksheet.Cells[rowIndex + 2, columnIndex + 1].Value =
+                        GetPlanModifyBoardCellValue(property.GetValue(row), exportColumn.Type);
+                }
+            }
+
+            worksheet.Cells[worksheet.Dimension.Address].AutoFilter = true;
+            worksheet.View.FreezePanes(2, 1);
+            package.SaveAs(new FileInfo(fullPath));
+        }
+
+        private static object GetPlanModifyBoardCellValue(object value, string type)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is DateTime dateTime)
+            {
+                return string.Equals(type, "datetime", StringComparison.OrdinalIgnoreCase)
+                    ? dateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    : dateTime.ToString("yyyy-MM-dd");
+            }
+
+            return value;
+        }
+
+        private class PlanModifyBoardExportColumn
+        {
+            public string Field { get; set; }
+            public string Title { get; set; }
+            public double? Width { get; set; }
+            public string Type { get; set; }
+        }
 
         /// <summary>
         /// 获取近14天订单完成统计数据

@@ -14,6 +14,7 @@ using HDPro.CY.Order.IServices;
 using HDPro.Core.Filters;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking;
+using HDPro.Core.Enums;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -35,6 +36,30 @@ namespace HDPro.CY.Order.Controllers
             _httpContextAccessor = httpContextAccessor;
             _coordinator = coordinator;
         }
+
+        /// <summary>
+        /// 计划修改看板导出，权限按新增看板校验，数据来自OCP_OrderTracking。
+        /// </summary>
+        /// <param name="loadData">导出参数</param>
+        /// <returns>Excel文件</returns>
+        [HttpPost("PlanModifyBoardExport")]
+        [ApiActionPermission("WZ_OrderCyclePlanModifyBoard", ActionPermissionOptions.Export)]
+        public IActionResult PlanModifyBoardExport([FromBody] PageDataOptions loadData)
+        {
+            var result = _service.ExportPlanModifyBoard(loadData);
+            if (!result.Status)
+            {
+                return JsonNormal(result);
+            }
+
+            var fullPath = result.Data?.ToString();
+            return File(
+                System.IO.File.ReadAllBytes(fullPath),
+                System.Net.Mime.MediaTypeNames.Application.Octet,
+                System.IO.Path.GetFileName(fullPath)
+            );
+        }
+
         /// <summary>
         /// 手动触发ESB订单数据同步
         /// </summary>

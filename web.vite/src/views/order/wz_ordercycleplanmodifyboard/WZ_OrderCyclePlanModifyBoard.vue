@@ -56,7 +56,12 @@ const onInit = async ($vm) => {
   gridRef.queryFields = ['SOBillNo', 'MtoNo']
 }
 
-const onInited = async () => {}
+const onInited = async () => {
+  const exportButton = gridRef?.buttons?.find((button) => button.value === 'Export')
+  if (exportButton) {
+    exportButton.onClick = handleExport
+  }
+}
 
 const searchBefore = async (param) => {
   param.value = 'planModifyBoardFullOrders'
@@ -109,6 +114,71 @@ const handleRefreshOrders = async () => {
   } finally {
     refreshLoading.value = false
   }
+}
+
+const getVisibleExportColumns = (columnList) => {
+  const exportColumns = []
+  columnList.forEach((column) => {
+    if (column.hidden || column.render) {
+      return
+    }
+    if (column.children?.length) {
+      exportColumns.push(...getVisibleExportColumns(column.children))
+      return
+    }
+    if (!column.field) {
+      return
+    }
+    exportColumns.push({
+      field: column.field,
+      title: column.title || column.field,
+      width: column.width,
+      type: column.type
+    })
+  })
+  return exportColumns
+}
+
+const handleExport = async () => {
+  const exportColumns = getVisibleExportColumns(columns)
+  if (!exportColumns.length) {
+    ElMessage.warning('没有可导出的显示列')
+    return
+  }
+
+  const wheres = proxy.base.getSearchParameters(gridRef, searchFormFields, searchFormOptions) || []
+  const param = {
+    order: gridRef.$refs.table.paginations.order,
+    sort: gridRef.$refs.table.paginations.sort,
+    wheres,
+    value: 'planModifyBoardFullOrders',
+    columns: exportColumns.map((column) => column.field),
+    customerParams: {
+      planModifyBoardColumns: JSON.stringify(exportColumns)
+    }
+  }
+
+  if (!param.wheres.some((where) => where.name === table.key)) {
+    const ids = gridRef
+      .getSelectRows()
+      .map((row) => row[table.key])
+      .join(',')
+    if (ids) {
+      param.wheres.push({
+        name: table.key,
+        value: ids,
+        displayType: 'selectList'
+      })
+    }
+  }
+
+  param.wheres = JSON.stringify(param.wheres)
+  proxy.http.download(
+    '/api/OCP_OrderTracking/PlanModifyBoardExport',
+    param,
+    `${table.cnName}.xlsx`,
+    'loading....'
+  )
 }
 
 defineExpose({})
