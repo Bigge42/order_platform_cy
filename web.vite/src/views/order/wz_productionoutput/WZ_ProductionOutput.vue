@@ -911,7 +911,9 @@ function renderAll(){
     const salesAmountSubText = salesAmountVisible
       ? (salesAmountDetails > 0 ? `匹配 ${salesAmountDetails.toLocaleString()} 条销售跟踪明细` : '暂无匹配销售跟踪明细')
       : ''
-    const salesSummaryHeight = salesAmountVisible ? (state.compact ? 30 : 34) : 0
+    const salesSummaryTopGap = salesAmountVisible ? (state.compact ? 22 : 28) : 0
+    const salesSummaryBandHeight = state.compact ? 30 : 34
+    const salesSummaryHeight = salesAmountVisible ? salesSummaryTopGap + salesSummaryBandHeight : 0
     const salesSummaryMinWidth = salesAmountVisible
       ? estimateTextWidth(`销售金额合计 ${salesAmountText} ${salesAmountSubText}`, 12) + 28
       : 0
@@ -1212,7 +1214,7 @@ function renderAll(){
     })
 
     if (salesAmountVisible) {
-      const salesSummaryTextY = bottomSummaryY + bottomSummaryHeight + (state.compact ? 16 : 19)
+      const salesSummaryTextY = bottomSummaryY + bottomSummaryHeight + salesSummaryTopGap + (state.compact ? 16 : 19)
       const salesSummaryBgY = salesSummaryTextY - (state.compact ? 14 : 16)
       const salesSummaryBgHeight = state.compact ? 22 : 25
       const tooltip = `销售金额合计：${salesAmountExactText}\n${salesAmountSubText}`
