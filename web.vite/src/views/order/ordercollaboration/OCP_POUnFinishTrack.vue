@@ -117,26 +117,6 @@ const batchNegotiationSubmitting = ref(false)
 const messageBoardRef = ref(null)
 const syncTrackingLoading = ref(false)
 
-const purchaseTrackingSyncUrl = 'http://127.0.0.1:9200/api/ESBSync/Task/PurchaseTrackingSync'
-
-const formatDate = (date) => {
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const getSyncDateRange = () => {
-  const today = new Date()
-  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
-  const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-
-  return {
-    StartDate: formatDate(startDate),
-    EndDate: formatDate(endDate)
-  }
-}
-
 let gridRef //对应[表.jsx]文件中this.使用方式一样
 //生成对象属性初始化
 const onInit = async ($vm) => {
@@ -306,12 +286,15 @@ const handleSyncPurchaseTracking = async () => {
     return
   }
 
-  const requestData = getSyncDateRange()
   syncTrackingLoading.value = true
   setSyncButtonDisabled(true)
 
   try {
-    const response = await proxy.http.post(purchaseTrackingSyncUrl, requestData, '采购跟踪同步中...')
+    const response = await proxy.http.post(
+      '/api/OCP_POUnFinishTrack/SyncPurchaseTracking',
+      {},
+      '采购跟踪同步中...'
+    )
     if (response?.status === false) {
       ElMessage.error(response.message || '采购跟踪同步失败')
       return
