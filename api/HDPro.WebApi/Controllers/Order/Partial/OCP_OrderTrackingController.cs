@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using HDPro.Entity.DomainModels;
 using HDPro.CY.Order.IServices;
+using HDPro.CY.Order.IServices.OrderCollaboration;
 using HDPro.Core.Filters;
 using HDPro.Core.Utilities;
 using HDPro.CY.Order.Services.OrderCollaboration.ESB.OrderTracking;
@@ -21,18 +22,21 @@ namespace HDPro.CY.Order.Controllers
     public partial class OCP_OrderTrackingController
     {
         private readonly IOCP_OrderTrackingService _service;//访问业务代码
+        private readonly IOCP_HomeDashboardService _homeDashboardService;
         private readonly OrderTrackingESBSyncCoordinator _coordinator;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         [ActivatorUtilitiesConstructor]
         public OCP_OrderTrackingController(
             IOCP_OrderTrackingService service,
+            IOCP_HomeDashboardService homeDashboardService,
             IHttpContextAccessor httpContextAccessor,
              OrderTrackingESBSyncCoordinator coordinator
         )
         : base(service)
         {
             _service = service;
+            _homeDashboardService = homeDashboardService;
             _httpContextAccessor = httpContextAccessor;
             _coordinator = coordinator;
         }
@@ -101,6 +105,22 @@ namespace HDPro.CY.Order.Controllers
             {
                 return JsonNormal(new WebResponseContent().Error($"同步失败：{ex.Message}"));
             }
+        }
+
+        /// <summary>
+        /// 获取首页订单运营看板汇总数据。
+        /// </summary>
+        [HttpGet("GetHomeDashboard")]
+        [ApiActionPermission("OCP_OrderTracking", ActionPermissionOptions.Search)]
+        public async Task<IActionResult> GetHomeDashboard(
+            string dateRange = "week",
+            string businessType = "all",
+            string customer = "all",
+            string owner = "all",
+            string keyword = null)
+        {
+            var result = await _homeDashboardService.GetHomeDashboardAsync(dateRange, businessType, customer, owner, keyword);
+            return JsonNormal(result);
         }
 
         /// <summary>
