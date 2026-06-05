@@ -1,30 +1,82 @@
 <!-- 订单跟踪 -->
 <template>
-    <view-grid ref="grid"
-        :columns="columns"
-        :detail="detail"
-        :details="details"
-        :editFormFields="editFormFields"
-        :editFormOptions="editFormOptions"
-        :searchFormFields="searchFormFields"
-        :searchFormOptions="searchFormOptions"
-        :table="table"
-        :extend="extend"
-        :onInit="onInit"
-        :onInited="onInited"
-        :searchBefore="searchBefore"
-        :searchAfter="searchAfter"
-        :addBefore="addBefore"
-        :updateBefore="updateBefore"
-        :rowClick="rowClick"
-        :rowChange="rowChange"
-        :selectionChange="selectionChange"
-        :modelOpenBefore="modelOpenBefore"
-        :modelOpenAfter="modelOpenAfter">
-        <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
-        <template #gridHeader>
-        </template>
-    </view-grid>
+    <div class="ocp-order-tracking-page">
+        <view-grid ref="grid"
+            :columns="columns"
+            :detail="detail"
+            :details="details"
+            :editFormFields="editFormFields"
+            :editFormOptions="editFormOptions"
+            :searchFormFields="searchFormFields"
+            :searchFormOptions="searchFormOptions"
+            :table="table"
+            :extend="extend"
+            :onInit="onInit"
+            :onInited="onInited"
+            :searchBefore="searchBefore"
+            :searchAfter="searchAfter"
+            :addBefore="addBefore"
+            :updateBefore="updateBefore"
+            :rowClick="rowClick"
+            :rowChange="rowChange"
+            :selectionChange="selectionChange"
+            :modelOpenBefore="modelOpenBefore"
+            :modelOpenAfter="modelOpenAfter">
+            <!-- 自定义组件数据槽扩展，更多数据槽slot见文档 -->
+            <template #gridHeader>
+                <div class="tracking-workbench">
+                    <div class="tracking-workbench__header">
+                        <div>
+                            <div class="tracking-workbench__title">订单跟踪工作台</div>
+                            <div class="tracking-workbench__subtitle">
+                                销售订单 / 排产计划 / 入库交付协同跟踪
+                            </div>
+                        </div>
+                        <div class="tracking-workbench__actions">
+                            <span class="tracking-workbench__selected">已选 {{ selectedRows.length }} 条</span>
+                            <el-button type="primary" size="small" @click.stop="openMachineTracking">
+                                <i class="el-icon-position"></i>
+                                整机跟踪
+                            </el-button>
+                            <el-button
+                                v-if="hasESBPermission"
+                                type="primary"
+                                plain
+                                size="small"
+                                :loading="syncLoading"
+                                :disabled="syncLoading"
+                                @click.stop="handleManualSync"
+                            >
+                                <i class="el-icon-refresh"></i>
+                                ESB数据同步
+                            </el-button>
+                            <el-button plain size="small" @click.stop="refreshTrackingPage">
+                                <i class="el-icon-refresh-right"></i>
+                                刷新
+                            </el-button>
+                        </div>
+                    </div>
+
+                    <div class="tracking-metrics">
+                        <div
+                            v-for="card in metricCards"
+                            :key="card.key"
+                            class="tracking-metric"
+                            :class="`tracking-metric--${card.tone}`"
+                        >
+                            <div class="tracking-metric__icon">
+                                <i :class="card.icon"></i>
+                            </div>
+                            <div class="tracking-metric__content">
+                                <div class="tracking-metric__label">{{ card.label }}</div>
+                                <div class="tracking-metric__value">{{ card.value }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </view-grid>
+    </div>
 
     <!-- 留言板组件 -->
     <MessageBoard ref="messageBoardRef" />
@@ -61,9 +113,8 @@
     import ReminderDialog from '@/comp/reminder-dialog/index.vue'
     import ReplyDialog from '@/comp/reply-dialog/index.vue'
     import NegotiationDialog from '@/comp/negotiation-dialog/index.vue'
-    import { ref, reactive, getCurrentInstance, watch, onMounted, computed } from "vue";
+    import { ref, reactive, getCurrentInstance, computed } from "vue";
     import { ElMessage } from 'element-plus'
-    import { applyAlertWarningStyle } from '@/utils/alertWarning'
     
     const grid = ref(null);
     const { proxy } = getCurrentInstance()
@@ -93,11 +144,377 @@
     // 选中的行数据
     const selectedRows = ref([])
     
-    // 计算ESB按钮是否禁用
-    const esbButtonDisabled = computed(() => syncLoading.value)
+    // 当前页表格数据，用于顶部概览统计
+    const tableRows = ref([])
+    const tableTotal = ref(0)
+
+    const hasESBPermission = computed(() => {
+        const permissions = proxy.$store.getters.getPermission() || []
+        return permissions.find(x => x.id === 313)?.permission?.includes('ESB_Sync')
+    })
     
     // 计算跟踪按钮是否禁用（未选择数据时禁用）
     const trackingButtonDisabled = computed(() => selectedRows.value.length === 0)
+
+    const metricCards = computed(() => {
+        const rows = tableRows.value || []
+        const total = tableTotal.value || rows.length
+        const alertCount = rows.filter(isAlertRow).length
+        const urgentCount = rows.filter(isUrgentRow).length
+        const unfinishedQty = sumRows(rows, 'UnInstockQty')
+        const unInstockQty = sumRows(rows, 'UnInstockQty')
+        const unJoinCount = rows.filter(row => !isTruthyValue(row.IsJoinTask)).length
+
+        return [
+            {
+                key: 'total',
+                label: '订单总数',
+                value: formatNumber(total, 0),
+                tone: 'primary',
+                icon: 'bi bi-clipboard-data'
+            },
+            {
+                key: 'alert',
+                label: '预警订单',
+                value: formatNumber(alertCount, 0),
+                tone: 'warning',
+                icon: 'bi bi-exclamation-triangle'
+            },
+            {
+                key: 'urgent',
+                label: '紧急订单',
+                value: formatNumber(urgentCount, 0),
+                tone: 'danger',
+                icon: 'bi bi-bell'
+            },
+            {
+                key: 'unfinished',
+                label: '未完数量',
+                value: formatNumber(unfinishedQty),
+                tone: 'blue',
+                icon: 'bi bi-layers'
+            },
+            {
+                key: 'uninstock',
+                label: '未入库',
+                value: formatNumber(unInstockQty),
+                tone: 'success',
+                icon: 'bi bi-house-door'
+            },
+            {
+                key: 'unjoin',
+                label: '未关联任务',
+                value: formatNumber(unJoinCount, 0),
+                tone: 'purple',
+                icon: 'bi bi-link-45deg'
+            }
+        ]
+    })
+
+    function toNumber(value) {
+        const number = Number(value)
+        return Number.isFinite(number) ? number : 0
+    }
+
+    function sumRows(rows, field) {
+        return rows.reduce((total, row) => total + toNumber(row[field]), 0)
+    }
+
+    function formatNumber(value, precision = 2) {
+        const number = toNumber(value)
+        const fixedNumber = precision === 0 ? Math.round(number) : Number(number.toFixed(precision))
+        return fixedNumber.toLocaleString('zh-CN', {
+            minimumFractionDigits: precision === 0 ? 0 : 0,
+            maximumFractionDigits: precision
+        })
+    }
+
+    function formatDateText(value) {
+        if (!value) return '-'
+        if (typeof value === 'string') {
+            return value.includes('T') ? value.split('T')[0] : value.slice(0, 10)
+        }
+        const date = new Date(value)
+        if (Number.isNaN(date.getTime())) return '-'
+        const year = date.getFullYear()
+        const month = `${date.getMonth() + 1}`.padStart(2, '0')
+        const day = `${date.getDate()}`.padStart(2, '0')
+        return `${year}-${month}-${day}`
+    }
+
+    function valueText(value) {
+        return value === undefined || value === null || value === '' ? '-' : `${value}`
+    }
+
+    function isTruthyValue(value) {
+        return value === true || value === 1 || value === '1' || value === '是' || value === '已关联'
+    }
+
+    function includesAny(value, keywords) {
+        const text = valueText(value)
+        return keywords.some(keyword => text.includes(keyword))
+    }
+
+    function isUrgentRow(row) {
+        return includesAny(row?.Urgency, ['紧急', '急', '高', 'A'])
+    }
+
+    function isAlertRow(row) {
+        return row?.ShouldAlert === true ||
+            isUrgentRow(row) ||
+            includesAny(row?.MtoNoStatus, ['逾期', '延期', '超期', '延迟']) ||
+            includesAny(row?.BillStatus, ['待确认', '异常', '冻结'])
+    }
+
+    function getStatusTone(value, fallback = 'info') {
+        const text = valueText(value)
+        if (includesAny(text, ['逾期', '延期', '超期', '异常', '作废', '终止', '紧急'])) return 'danger'
+        if (includesAny(text, ['待确认', '待处理', '冻结'])) return 'warning'
+        if (includesAny(text, ['完成', '正常', '已关联', '已审核'])) return 'success'
+        if (includesAny(text, ['进行', '执行', '排产', '确认'])) return 'primary'
+        return fallback
+    }
+
+    function getTagType(tone) {
+        const tagMap = {
+            primary: '',
+            success: 'success',
+            warning: 'warning',
+            danger: 'danger',
+            info: 'info'
+        }
+        return tagMap[tone] || 'info'
+    }
+
+    function renderTag(value, fallback = 'info') {
+        const tone = getStatusTone(value, fallback)
+        return (
+            <el-tag
+                size="small"
+                effect="light"
+                type={getTagType(tone)}
+                class={['tracking-status-tag', `tracking-status-tag--${tone}`]}
+            >
+                {valueText(value)}
+            </el-tag>
+        )
+    }
+
+    function renderJoinTaskTag(value) {
+        const joined = isTruthyValue(value)
+        return (
+            <el-tag
+                size="small"
+                effect="light"
+                type={joined ? 'success' : 'warning'}
+                class={['tracking-status-tag', joined ? 'tracking-status-tag--success' : 'tracking-status-tag--warning']}
+            >
+                {joined ? '已关联' : '未关联'}
+            </el-tag>
+        )
+    }
+
+    function renderDateCell(row, field) {
+        const warning = isAlertRow(row) && ['DeliveryDate', 'ReplyDeliveryDate'].includes(field)
+        return (
+            <span class={['tracking-date-cell', warning ? 'tracking-date-cell--warning' : '']}>
+                {formatDateText(row[field])}
+            </span>
+        )
+    }
+
+    function renderQuantityCell(row, field) {
+        const value = toNumber(row[field])
+        const orderQty = toNumber(row.OrderQty)
+        const rate = field === 'InstockQty' && orderQty > 0
+            ? Math.min(100, Math.round((value / orderQty) * 100))
+            : null
+
+        return (
+            <div class="tracking-qty-cell">
+                <span>{formatNumber(value)}</span>
+                {rate !== null ? (
+                    <span class="tracking-qty-cell__bar">
+                        <span style={{ width: `${rate}%` }}></span>
+                    </span>
+                ) : null}
+            </div>
+        )
+    }
+
+    function mergeColumnCellStyle(column, cellStyle) {
+        const originalCellStyle = column.cellStyle
+        column.cellStyle = (row, rowIndex, columnIndex, tableData) => {
+            const originalStyle = originalCellStyle
+                ? originalCellStyle(row, rowIndex, columnIndex, tableData)
+                : null
+            const nextStyle = cellStyle(row, rowIndex, columnIndex, tableData)
+            return { ...(originalStyle || {}), ...(nextStyle || {}) }
+        }
+    }
+
+    function applyTrackingWarningStyle() {
+        const keyWarningFields = ['DeliveryDate', 'ReplyDeliveryDate', 'Urgency', 'MtoNoStatus', 'BillStatus', 'UnInstockQty']
+        columns.forEach(column => {
+            mergeColumnCellStyle(column, row => {
+                if (!isAlertRow(row)) return null
+                const isKeyField = keyWarningFields.includes(column.field)
+                return {
+                    backgroundColor: isKeyField ? '#fff4de' : '#fffaf0',
+                    color: isKeyField ? '#d42828' : '#595959'
+                }
+            })
+        })
+    }
+
+    function renderMainText(value, tone = 'default') {
+        return (
+            <span class={['tracking-main-text', `tracking-main-text--${tone}`]}>
+                {valueText(value)}
+            </span>
+        )
+    }
+
+    function configureTrackingColumns() {
+        const preferredOrder = [
+            'ContractNo',
+            'SOBillNo',
+            'MtoNo',
+            'CustName',
+            'MaterialNumber',
+            'MaterialName',
+            'TopSpecification',
+            'Urgency',
+            'DeliveryDate',
+            'ReplyDeliveryDate',
+            'OrderQty',
+            'InstockQty',
+            'UnInstockQty',
+            'MtoNoStatus',
+            'BillStatus',
+            'PrepareMtrl'
+        ]
+        const compactHiddenFields = new Set([
+            'ProjectName',
+            'SalesPerson',
+            'ContractType',
+            'UseUnit',
+            'ProductionModel',
+            'IsJoinTask',
+            'ProScheduleYearMonth',
+            'PlanTaskMonth',
+            'PlanTaskWeek',
+            'ComputedDate',
+            'BidDate',
+            'BomCreateDate',
+            'OrderCreateDate',
+            'OrderAuditDate',
+            'PrdScheduleDate',
+            'PlanConfirmDate',
+            'PlanStartDate',
+            'StartDate',
+            'LastInStockDate',
+            'LastOutStockDate',
+            'OutStockQty'
+        ])
+        const widthMap = {
+            ContractNo: 132,
+            SOBillNo: 136,
+            MtoNo: 136,
+            CustName: 150,
+            MaterialNumber: 150,
+            MaterialName: 180,
+            TopSpecification: 180,
+            Urgency: 96,
+            DeliveryDate: 126,
+            ReplyDeliveryDate: 136,
+            OrderQty: 104,
+            InstockQty: 126,
+            UnInstockQty: 106,
+            MtoNoStatus: 104,
+            BillStatus: 104,
+            PrepareMtrl: 210
+        }
+        const columnMap = new Map(columns.map(column => [column.field, column]))
+        const orderedColumns = preferredOrder
+            .map(field => columnMap.get(field))
+            .filter(Boolean)
+        const remainingColumns = columns.filter(column => !preferredOrder.includes(column.field))
+        columns.splice(0, columns.length, ...orderedColumns, ...remainingColumns)
+
+        columns.forEach(column => {
+            column.showOverflowTooltip = true
+            column.hidden = compactHiddenFields.has(column.field) ? true : column.hidden
+            if (preferredOrder.includes(column.field)) {
+                column.hidden = false
+            }
+            if (widthMap[column.field]) {
+                column.width = widthMap[column.field]
+            }
+            if (['OrderQty', 'InstockQty', 'UnInstockQty', 'Amount'].includes(column.field)) {
+                column.align = 'right'
+                column.summary = true
+                column.numberLength = 2
+            }
+            column.fixed = undefined
+        })
+
+        const contractColumn = columnMap.get('ContractNo')
+        const soColumn = columnMap.get('SOBillNo')
+        const mtoColumn = columnMap.get('MtoNo')
+        const orderQtyColumn = columnMap.get('OrderQty')
+        const instockQtyColumn = columnMap.get('InstockQty')
+        const unInstockQtyColumn = columnMap.get('UnInstockQty')
+        const urgencyColumn = columnMap.get('Urgency')
+        const deliveryDateColumn = columnMap.get('DeliveryDate')
+        const replyDeliveryDateColumn = columnMap.get('ReplyDeliveryDate')
+        const mtoNoStatusColumn = columnMap.get('MtoNoStatus')
+        const billStatusColumn = columnMap.get('BillStatus')
+        const isJoinTaskColumn = columnMap.get('IsJoinTask')
+
+        if (contractColumn) {
+            contractColumn.fixed = 'left'
+            contractColumn.render = (h, { row }) => renderMainText(row.ContractNo, 'contract')
+        }
+        if (soColumn) {
+            soColumn.fixed = 'left'
+            soColumn.render = (h, { row }) => renderMainText(row.SOBillNo, 'order')
+        }
+        if (mtoColumn) {
+            mtoColumn.fixed = 'left'
+            mtoColumn.render = (h, { row }) => renderMainText(row.MtoNo, 'trace')
+        }
+        if (urgencyColumn) {
+            urgencyColumn.render = (h, { row }) => renderTag(row.Urgency, isUrgentRow(row) ? 'danger' : 'success')
+        }
+        if (deliveryDateColumn) {
+            deliveryDateColumn.render = (h, { row }) => renderDateCell(row, 'DeliveryDate')
+        }
+        if (replyDeliveryDateColumn) {
+            replyDeliveryDateColumn.render = (h, { row }) => renderDateCell(row, 'ReplyDeliveryDate')
+        }
+        if (orderQtyColumn) {
+            orderQtyColumn.hidden = false
+            orderQtyColumn.render = (h, { row }) => renderQuantityCell(row, 'OrderQty')
+        }
+        if (instockQtyColumn) {
+            instockQtyColumn.render = (h, { row }) => renderQuantityCell(row, 'InstockQty')
+        }
+        if (unInstockQtyColumn) {
+            unInstockQtyColumn.render = (h, { row }) => renderQuantityCell(row, 'UnInstockQty')
+        }
+        if (mtoNoStatusColumn) {
+            mtoNoStatusColumn.render = (h, { row }) => renderTag(row.MtoNoStatus, 'primary')
+        }
+        if (billStatusColumn) {
+            billStatusColumn.render = (h, { row }) => renderTag(row.BillStatus, 'primary')
+        }
+        if (isJoinTaskColumn) {
+            isJoinTaskColumn.render = (h, { row }) => renderJoinTaskTag(row.IsJoinTask)
+        }
+
+        applyTrackingWarningStyle()
+    }
 
     // 跟踪弹窗确认事件
     const handleTrackingConfirm = () => {
@@ -117,6 +534,47 @@
     const { table, editFormFields, editFormOptions, searchFormFields, searchFormOptions, columns, detail, details } = viewOpts
 
     let gridRef;//对应[表.jsx]文件中this.使用方式一样
+
+    function openMachineTracking() {
+        const currentSelection = updateSelectionManually()
+        const mtoNoList = currentSelection.map(row => row.MtoNo).filter(Boolean)
+        const query = mtoNoList.length > 0 ? { PlanTraceNo: mtoNoList.join(',') } : {}
+
+        proxy.$tabs.open({
+            text: '整机跟踪表',
+            path: '/OCP_PrdMOTracking',
+            query
+        })
+
+        proxy.$tabs.clearCache('OCP_LackMtrlResult_MO_JG')
+    }
+
+    async function handleManualSync() {
+        if (syncLoading.value) {
+            return
+        }
+
+        try {
+            syncLoading.value = true
+            proxy.$message.info('正在同步ESB数据...')
+            const result = await proxy.http.post('/api/OCP_OrderTracking/ManualSyncOrderData')
+            proxy.$message.success('ESB数据同步成功')
+            console.log('ESB数据同步成功:', result)
+            refreshTrackingPage()
+        } catch (error) {
+            console.error('ESB数据同步失败:', error)
+            proxy.$message.error('ESB数据同步失败：' + (error.message || '未知错误'))
+        } finally {
+            syncLoading.value = false
+        }
+    }
+
+    function refreshTrackingPage() {
+        if (gridRef && gridRef.search) {
+            gridRef.search(null, false)
+        }
+    }
+
     //生成对象属性初始化
     const onInit = async ($vm) => {
         gridRef = $vm;
@@ -125,110 +583,13 @@
         //设置默认分页数
         gridRef.pagination.size = 20;
 
-        gridRef.queryFields=['ContractNo', 'SOBillNo', 'MtoNo', 'IsJoinTask', 'Urgency']
+        gridRef.queryFields=['PlanTaskMonth', 'ContractNo', 'SOBillNo', 'MtoNo', 'Urgency']
 
         gridRef.single=true;
-        
-        // 设置主表合计字段
-        columns.forEach(x => {
-            if (x.field == 'InstockQty') {
-                x.summary = true;
-                x.numberLength = 2;
-                x.summaryFormatter = (val, column, rows, summaryData) => {
-                    if (!val) return '0.00';
-                    summaryData[0] = '汇总';
-                    return (val + '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                };
-            }
-            if (x.field == 'UnInstockQty') {
-                x.summary = true;
-                x.numberLength = 2;
-            }
-            if (x.field == 'OrderQty') {
-                x.summary = true;
-                x.numberLength = 2;
-            }
-            if (x.field == 'Amount') {
-                x.summary = true;
-                x.numberLength = 2;
-                x.summaryFormatter = (val, column, rows, summaryData) => {
-                    if (!val) return '0.00';
-                    return '￥' + (val + '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                };
-            }
-        })
-        
-        const btns = [
-            {       
-                name: '整机跟踪',
-                type: 'primary',
-                plain: true,
-                onClick: function () {
-                    const currentSelection = updateSelectionManually()
-
-                    // 获取选中行的MtoNo参数，如果没有选中数据则为空
-                    const mtoNoList = currentSelection.map(row => row.MtoNo).filter(Boolean)
-                    
-                    // 构建查询参数，如果没有选中数据则不传参数
-                    const query = mtoNoList.length > 0 ? { PlanTraceNo: mtoNoList.join(',') } : {}
-                    
-                    proxy.$tabs.open({
-                        text: '整机跟踪表',
-                        path: '/OCP_PrdMOTracking',
-                        query: query
-                    });
-
-                    proxy.$tabs.clearCache('OCP_LackMtrlResult_MO_JG')
-                }
-            }
-        ]
-
-        const permissions = proxy.$store.getters.getPermission();
-        const hasESBPermission = permissions.find(x => x.id === 313)?.permission?.includes('ESB_Sync');
-        if (hasESBPermission) {
-            btns.push({
-                name: "ESB数据同步",
-                type: 'primary',
-                disabled: esbButtonDisabled,
-                onClick: async function () {
-                    // 防止重复点击
-                    if (syncLoading.value) {
-                        return
-                    }
-                    
-                    try {
-                        // 设置loading状态
-                        syncLoading.value = true
-                        
-                        // 显示加载状态
-                        proxy.$message.info('正在同步数据...')
-                        
-                        // 调用API接口
-                        const result = await proxy.http.post('/api/OCP_OrderTracking/ManualSyncOrderData')
-                        
-                        // 成功提示
-                        proxy.$message.success('ESB数据同步成功')
-                        console.log('ESB数据同步成功:', result)
-                        
-                        // 可选：刷新当前页面数据
-                        // gridRef.search()
-                        
-                    } catch (error) {
-                        console.error('ESB数据同步失败:', error)
-                        proxy.$message.error('ESB数据同步失败：' + (error.message || '未知错误'))
-                    } finally {
-                        // 无论成功失败都要重置loading状态
-                        syncLoading.value = false
-                    }
-                }
-            })
-        }
-        gridRef.buttons.push(...btns)
     }
     //生成对象属性初始化后,操作明细表配置用到
     const onInited = async () => {
-        // 应用预警样式(在表格初始化完成后应用)
-        applyAlertWarningStyle(viewOpts.columns)
+        configureTrackingColumns()
 
         // 找到PrepareMtrl列并添加自定义渲染
         const prepareMtrlColumn = columns.find(col => col.field === 'PrepareMtrl');
@@ -293,9 +654,9 @@
                             key={item}
                             type={config.type}
                             link
-                            icon={config.icon}
-                            style={{ margin: '0' }}
-                            onClick={() => {
+                            class="tracking-ready-link"
+                            onClick={($e) => {
+                                $e.stopPropagation()
                                 let query = row.MtoNo ? { MtoNo: row.MtoNo } : {};
                                 if (item === '技术') {
                                     query = row.MtoNo ? { PlanTraceNo: row.MtoNo } : {};
@@ -314,45 +675,66 @@
                 }).filter(Boolean);
                 
                 return (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                        {buttons.length > 0 ? buttons : <span style={{ color: '#999' }}>-</span>}
+                    <div class="tracking-ready-actions">
+                        {buttons.length > 0 ? buttons : <span class="tracking-empty-text">-</span>}
                     </div>
                 );
             };
             // 增加列宽以容纳更多按钮
-            prepareMtrlColumn.width = 120;
+            prepareMtrlColumn.width = 210;
         }
-        
-        // columns.push({
-        //     field: 'action',
-        //     title: '操作',
-        //     width: 200,
-        //     align: 'center',
-        //     fixed: 'right',
-        //     render: (h, { row, column, index }) => {
-        //         return (
-        //         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
-        //             <el-button 
-        //             type="warning" 
-        //             size="small" 
-        //             onClick={($e) => handleUrge(row)}
-        //             >
-        //             催单
-        //             </el-button>
-        //             <el-button 
-        //             type="primary" 
-        //             size="small" 
-        //             style={{ marginLeft: '0px' }}
-        //             onClick={($e) => handleNegotiate(row)}
-        //             >
-        //             协商
-        //             </el-button>
-                    
 
-        //         </div>
-        //         )
-        //     }
-        // })
+        if (!columns.some(column => column.field === 'action')) {
+            columns.push({
+                field: 'action',
+                title: '操作',
+                width: 168,
+                align: 'center',
+                fixed: 'right',
+                render: (h, { row }) => {
+                    return (
+                        <div class="tracking-row-actions">
+                            <el-button
+                                type="success"
+                                link
+                                size="small"
+                                onClick={($e) => {
+                                    $e.stopPropagation()
+                                    handleMessageBoard(row)
+                                }}
+                            >
+                                <i class="el-icon-chat-dot-square"></i>
+                                消息
+                            </el-button>
+                            <el-button
+                                type="warning"
+                                link
+                                size="small"
+                                onClick={($e) => {
+                                    $e.stopPropagation()
+                                    handleUrge(row)
+                                }}
+                            >
+                                <i class="el-icon-bell"></i>
+                                催单
+                            </el-button>
+                            <el-button
+                                type="primary"
+                                link
+                                size="small"
+                                onClick={($e) => {
+                                    $e.stopPropagation()
+                                    handleNegotiate(row)
+                                }}
+                            >
+                                <i class="el-icon-chat-line-round"></i>
+                                协商
+                            </el-button>
+                        </div>
+                    )
+                }
+            })
+        }
     }
     const searchBefore = async (param) => {
         //界面查询前,可以给param.wheres添加查询参数
@@ -360,6 +742,8 @@
         return true;
     }
     const searchAfter = async (rows, result) => {
+        tableRows.value = rows || []
+        tableTotal.value = result?.total || tableRows.value.length
         return true;
     }
     
@@ -403,7 +787,7 @@
         //查询界面点击行事件
         
         // 如果点击的是操作列，不执行选择逻辑
-        if (column && column.field === 'action') {
+        if (column && (column.field === 'action' || column.property === 'action')) {
             return
         }
         
@@ -698,9 +1082,478 @@
 </script>
 
 <style lang="less" scoped>
-.tracking-content {
-    padding: 20px;
-    text-align: center;
-    font-size: 16px;
+.tracking-workbench {
+  margin: 0 0 10px;
+  padding: 16px 18px 14px;
+  background: #fdfdfd;
+  border: 1px solid #e5e9e9;
+  border-radius: 6px;
+}
+
+.tracking-workbench__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.tracking-workbench__title {
+  color: #303384;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tracking-workbench__subtitle {
+  margin-top: 6px;
+  color: #595959;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tracking-workbench__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+
+.tracking-workbench__selected {
+  color: #9c9c9f;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tracking-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.tracking-metric {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #e5e9e9;
+  border-radius: 6px;
+}
+
+.tracking-metric__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  font-size: 20px;
+  background: #eef3fa;
+  color: #0079c1;
+}
+
+.tracking-metric__label {
+  color: #595959;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tracking-metric__value {
+  margin-top: 5px;
+  color: #303384;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tracking-metric--warning {
+  .tracking-metric__icon {
+    background: #fff4de;
+    color: #d98b00;
+  }
+
+  .tracking-metric__value {
+    color: #d98b00;
+  }
+}
+
+.tracking-metric--danger {
+  .tracking-metric__icon {
+    background: #ffe8e8;
+    color: #d42828;
+  }
+
+  .tracking-metric__value {
+    color: #d42828;
+  }
+}
+
+.tracking-metric--blue {
+  .tracking-metric__icon {
+    background: #e8f3ff;
+    color: #046bb6;
+  }
+
+  .tracking-metric__value {
+    color: #046bb6;
+  }
+}
+
+.tracking-metric--success {
+  .tracking-metric__icon {
+    background: #eaf8f1;
+    color: #169b62;
+  }
+
+  .tracking-metric__value {
+    color: #169b62;
+  }
+}
+
+.tracking-metric--purple {
+  .tracking-metric__icon {
+    background: #f0efff;
+    color: #5b45c8;
+  }
+
+  .tracking-metric__value {
+    color: #5b45c8;
+  }
+}
+
+.tracking-status-tag {
+  min-width: 46px;
+  justify-content: center;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.tracking-status-tag--primary {
+  color: #046bb6;
+  border-color: #a8d3f2;
+  background: #eef7ff;
+}
+
+.tracking-status-tag--success {
+  color: #168a55;
+  border-color: #b8dfcd;
+  background: #eefaf4;
+}
+
+.tracking-status-tag--warning {
+  color: #b76b00;
+  border-color: #f2d19b;
+  background: #fff7e8;
+}
+
+.tracking-status-tag--danger {
+  color: #d42828;
+  border-color: #f0b8b8;
+  background: #fff0f0;
+}
+
+.tracking-date-cell {
+  color: #595959;
+  font-weight: 500;
+}
+
+.tracking-date-cell--warning {
+  color: #e60012;
+  font-weight: 700;
+}
+
+.tracking-main-text {
+  color: #303384;
+  font-weight: 600;
+}
+
+.tracking-main-text--order {
+  color: #046bb6;
+}
+
+.tracking-main-text--trace {
+  color: #23277d;
+}
+
+.tracking-qty-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  color: #333333;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tracking-qty-cell__bar {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #e5e9e9;
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #0079c1;
+  }
+}
+
+.tracking-ready-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tracking-ready-link {
+  min-height: 22px;
+  margin: 0 !important;
+  padding: 1px 5px !important;
+  border: 1px solid #a8d3f2;
+  border-radius: 4px;
+  background: #f5fbff;
+  color: #046bb6;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.tracking-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    padding: 2px 3px;
+  }
+}
+
+.tracking-empty-text {
+  color: #9c9c9f;
+}
+
+.ocp-order-tracking-page {
+  :deep(.view-container) {
+    border: 1px solid #e5e9e9;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  :deep(.grid-search) {
+    background: #fdfdfd;
+  }
+
+  :deep(.search-box),
+  :deep(.fiexd-search-box) {
+    padding: 12px 16px 8px;
+    border-bottom: 1px solid #e5e9e9;
+    background: #fdfdfd;
+  }
+
+  :deep(.view-header) {
+    min-height: 44px;
+    padding: 8px 14px;
+    border-bottom: 1px solid #e5e9e9;
+    background: #ffffff;
+  }
+
+  :deep(.desc-text) {
+    color: #303384;
+    font-weight: 700;
+  }
+
+  :deep(.btn-group .el-button--primary) {
+    --el-button-bg-color: #0079c1;
+    --el-button-border-color: #0079c1;
+    --el-button-hover-bg-color: #046bb6;
+    --el-button-hover-border-color: #046bb6;
+  }
+
+  :deep(.grid-container) {
+    padding: 12px;
+    background: #ffffff;
+  }
+
+  :deep(.el-table) {
+    color: #595959;
+    font-size: 13px;
+  }
+
+  :deep(.el-table th.el-table__cell) {
+    background: #f5f8fc;
+    color: #303384;
+    font-weight: 700;
+  }
+
+  :deep(.el-table .el-table__cell) {
+    padding: 7px 0;
+  }
+
+  :deep(.el-table__fixed-right),
+  :deep(.el-table__fixed) {
+    box-shadow: 0 0 0 transparent;
+  }
+
+  :deep(.el-table__footer-wrapper td.el-table__cell) {
+    background: #f5f8fc;
+    color: #303384;
+    font-weight: 700;
+  }
+
+  :deep(.pagination) {
+    padding: 10px 12px 14px;
+    border-top: 1px solid #e5e9e9;
+    background: #ffffff;
+  }
+
+  :deep(.tracking-status-tag) {
+    min-width: 46px;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  :deep(.tracking-status-tag--primary) {
+    color: #046bb6;
+    border-color: #a8d3f2;
+    background: #eef7ff;
+  }
+
+  :deep(.tracking-status-tag--success) {
+    color: #168a55;
+    border-color: #b8dfcd;
+    background: #eefaf4;
+  }
+
+  :deep(.tracking-status-tag--warning) {
+    color: #b76b00;
+    border-color: #f2d19b;
+    background: #fff7e8;
+  }
+
+  :deep(.tracking-status-tag--danger) {
+    color: #d42828;
+    border-color: #f0b8b8;
+    background: #fff0f0;
+  }
+
+  :deep(.tracking-date-cell) {
+    color: #595959;
+    font-weight: 500;
+  }
+
+  :deep(.tracking-date-cell--warning) {
+    color: #e60012;
+    font-weight: 700;
+  }
+
+  :deep(.tracking-main-text) {
+    color: #303384;
+    font-weight: 600;
+  }
+
+  :deep(.tracking-main-text--order) {
+    color: #046bb6;
+  }
+
+  :deep(.tracking-main-text--trace) {
+    color: #23277d;
+  }
+
+  :deep(.tracking-qty-cell) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    width: 100%;
+    color: #333333;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  :deep(.tracking-qty-cell__bar) {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #e5e9e9;
+  }
+
+  :deep(.tracking-qty-cell__bar span) {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #0079c1;
+  }
+
+  :deep(.tracking-ready-actions) {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  :deep(.tracking-ready-link) {
+    min-height: 22px;
+    margin: 0 !important;
+    padding: 1px 5px !important;
+    border: 1px solid #a8d3f2;
+    border-radius: 4px;
+    background: #f5fbff;
+    color: #046bb6;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  :deep(.tracking-row-actions) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  :deep(.tracking-row-actions .el-button) {
+    margin-left: 0;
+    padding: 2px 3px;
+  }
+
+  :deep(.tracking-empty-text) {
+    color: #9c9c9f;
+  }
+}
+
+@media (max-width: 1200px) {
+  .tracking-metrics {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .tracking-workbench__header {
+    flex-direction: column;
+  }
+
+  .tracking-workbench__actions {
+    justify-content: flex-start;
+  }
+
+  .tracking-metrics {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
 }
 </style>
