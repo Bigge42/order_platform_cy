@@ -17,5 +17,12 @@ namespace HDPro.Entity.DomainModels
     public partial class ERP_OrderTracking
     {
         //此处配置字段(字段配置见此model的另一个partial),如果表中没有此字段请加上 [NotMapped]属性，否则会异常
+        /// <summary>
+        /// 排产日期
+        /// </summary>
+        [Display(Name = "F_ORA_DATE1")]
+        [Column(TypeName = "date")]
+        [Editable(true)]
+        public DateTime? F_ORA_DATE1 { get; set; }
     }
 }

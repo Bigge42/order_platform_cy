@@ -55,6 +55,14 @@
         <el-input v-model="productionLine" placeholder="产线(可空)" size="small" style="width:120px" clearable />
 
         <el-button v-if="canSyncData" type="primary" size="small" :loading="syncLoading" @click="syncData">同步数据</el-button>
+        <el-button
+          v-if="canRefreshErpOrderData"
+          type="warning"
+          size="small"
+          :loading="erpRefreshLoading"
+          :disabled="syncLoading"
+          @click="refreshErpOrderData"
+        >刷新订单数据</el-button>
         <el-button type="primary" size="small" @click="loadData">加载数据</el-button>
         <el-button-group class="mode-switch" :style="{ '--mode-color': currentViewMode.color }">
           <el-button size="small" :class="modeButtonClass('actual')" @click="loadData">仅看实际</el-button>
@@ -147,6 +155,34 @@
       <template #footer>
         <el-button @click="syncDialog=false">关闭</el-button>
         <el-button type="primary" :loading="syncLoading" @click="runFullSync">初始化全量同步（近一年）</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="erpRefreshDialog"
+      title="实时ERP订单刷新"
+      width="520px"
+      class="erp-refresh-dialog"
+      :close-on-click-modal="false"
+      :show-close="!erpRefreshLoading"
+    >
+      <div class="erp-progress">
+        <el-progress
+          :percentage="erpRefreshState.progress"
+          :status="erpRefreshProgressStatus"
+          :indeterminate="erpRefreshLoading && erpRefreshState.progress < 90"
+          stroke-width="12"
+        />
+        <div class="erp-stage">{{ erpRefreshState.message }}</div>
+        <div class="erp-meta">
+          <span>排产日期窗口：{{ erpRefreshState.rangeText }}</span>
+          <span v-if="erpRefreshState.lastErpUpdatedAt">ERP更新时间：{{ fmtDateTime(erpRefreshState.lastErpUpdatedAt) }}</span>
+          <span v-if="erpRefreshState.detailRows">合并明细：{{ erpRefreshState.detailRows }} 条</span>
+          <span v-if="erpRefreshState.summaryRows">汇总行：{{ erpRefreshState.summaryRows }} 行</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button :disabled="erpRefreshLoading" @click="erpRefreshDialog=false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -432,6 +468,17 @@ const syncLoading = ref(false)
 const syncDialog = ref(false)
 const syncHistoryLoading = ref(false)
 const syncHistory = ref([])
+const erpRefreshLoading = ref(false)
+const erpRefreshDialog = ref(false)
+const erpRefreshState = reactive({
+  progress: 0,
+  stage: 'idle',
+  message: '',
+  rangeText: '',
+  lastErpUpdatedAt: '',
+  detailRows: 0,
+  summaryRows: 0
+})
 const unknownExportLoading = ref(false)
 const manualRuleImportLoading = ref(false)
 const manualRuleFileInput = ref(null)
@@ -461,21 +508,41 @@ const cellDetailPageText = computed(() => {
   const end = Math.min(start + cellDetailRows.value.length - 1, total)
   return `共 ${total} 条，当前 ${start}-${end}`
 })
-const canSyncData = computed(() => {
+const normalizeUserKey = value => String(value || '').trim().toLowerCase()
+const getCurrentUserKeys = () => {
   const userInfo = store.getters.getUserInfo?.() || {}
-  const names = [
+  return [
     userInfo.userName,
     userInfo.UserName,
+    userInfo.userTrueName,
+    userInfo.UserTrueName,
     userInfo.loginName,
     userInfo.LoginName,
+    userInfo.trueName,
+    userInfo.TrueName,
+    userInfo.realName,
+    userInfo.RealName,
+    userInfo.name,
+    userInfo.Name,
     store.getters.getUserName?.(),
     store.getters.getLoginName?.()
   ]
-  return names.some(name => String(name || '').trim().toLowerCase() === 'cyadmin')
+}
+const canSyncData = computed(() => {
+  return getCurrentUserKeys().some(name => normalizeUserKey(name) === 'cyadmin')
+})
+const canRefreshErpOrderData = computed(() => {
+  const allowedUsers = ['cyadmin', '000629', '辛防']
+  return getCurrentUserKeys().some(name => allowedUsers.includes(normalizeUserKey(name)))
 })
 const syncRangeText = computed(() => {
   const { start, end } = getInterfaceSyncRange()
   return `${start} ~ ${end}`
+})
+const erpRefreshProgressStatus = computed(() => {
+  if (erpRefreshState.stage === 'error') return 'exception'
+  if (erpRefreshState.stage === 'done') return 'success'
+  return undefined
 })
 
 /* 原始返回数据（用于导出） */
@@ -1531,6 +1598,79 @@ async function runFullSync(){
   }
 }
 
+function resetErpRefreshState(rangeText){
+  erpRefreshState.progress = 0
+  erpRefreshState.stage = 'idle'
+  erpRefreshState.message = '准备刷新实时ERP订单数据'
+  erpRefreshState.rangeText = rangeText
+  erpRefreshState.lastErpUpdatedAt = ''
+  erpRefreshState.detailRows = 0
+  erpRefreshState.summaryRows = 0
+}
+
+async function refreshErpOrderData(){
+  if (erpRefreshLoading.value) return
+  if (!canRefreshErpOrderData.value) {
+    ElMessage.warning('只有 cyadmin、000629 或辛防可以刷新订单数据')
+    return
+  }
+
+  const start = fmtYMD(state.rangeStart)
+  const end = fmtYMD(state.rangeEnd)
+  resetErpRefreshState(`${start} ~ ${end}`)
+  erpRefreshDialog.value = true
+  erpRefreshLoading.value = true
+  erpRefreshState.stage = 'erp'
+  erpRefreshState.progress = 18
+  erpRefreshState.message = '正在实时刷新 ERP 订单数据...'
+
+  let mergeTimer = null
+  try{
+    mergeTimer = window.setTimeout(() => {
+      erpRefreshState.stage = 'merge'
+      erpRefreshState.progress = 58
+      erpRefreshState.message = '正在合并排产产能明细...'
+    }, 1200)
+
+    const res = await proxy?.http?.post('/api/WZ/ProductionOutput/refresh/erp-order-tracking', { start, end })
+    const data = res?.data ?? res?.Data ?? res
+    const status = data?.status ?? data?.Status
+
+    if (status === false) {
+      erpRefreshState.stage = 'error'
+      erpRefreshState.progress = 100
+      erpRefreshState.message = data?.message || data?.Message || '实时ERP订单数据刷新失败'
+      erpRefreshState.lastErpUpdatedAt = data?.lastErpUpdatedAt ?? data?.LastErpUpdatedAt ?? ''
+      ElMessage.error(erpRefreshState.message)
+      return
+    }
+
+    const output = data?.output ?? data?.Output ?? {}
+    erpRefreshState.stage = 'reload'
+    erpRefreshState.progress = 88
+    erpRefreshState.message = '正在刷新产能看板...'
+    erpRefreshState.lastErpUpdatedAt = data?.lastErpUpdatedAt ?? data?.LastErpUpdatedAt ?? ''
+    erpRefreshState.detailRows = Number(output?.detailRows ?? output?.DetailRows ?? 0)
+    erpRefreshState.summaryRows = Number(output?.summaryRows ?? output?.SummaryRows ?? 0)
+
+    await loadData()
+
+    erpRefreshState.stage = 'done'
+    erpRefreshState.progress = 100
+    erpRefreshState.message = data?.message || data?.Message || '实时ERP订单数据刷新完成'
+    ElMessage.success(erpRefreshState.message)
+  }catch(e){
+    console.error(e)
+    erpRefreshState.stage = 'error'
+    erpRefreshState.progress = 100
+    erpRefreshState.message = '实时ERP订单数据刷新异常'
+    ElMessage.error('实时ERP订单数据刷新异常')
+  }finally{
+    if (mergeTimer) window.clearTimeout(mergeTimer)
+    erpRefreshLoading.value = false
+  }
+}
+
 async function loadPreProduction(){
   try{
     await ensureActualBaseline().catch(e => console.warn('[WZ_ProductionOutput] actual baseline load failed', e))
@@ -1991,6 +2131,13 @@ svg text{font-family:inherit}
 .sync-window{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px}
 .sync-window .label{font-size:12px;color:#64748b}
 .sync-window .value{font-weight:600;color:#111827}
+
+.erp-refresh-dialog :deep(.el-dialog__header){padding:20px 24px 16px !important;border-bottom:1px solid var(--border)}
+.erp-refresh-dialog :deep(.el-dialog__body){padding:20px 24px 22px !important}
+.erp-refresh-dialog :deep(.el-dialog__footer){padding:16px 24px 20px !important;border-top:1px solid var(--border)}
+.erp-progress{display:flex;flex-direction:column;gap:12px}
+.erp-stage{font-weight:600;color:#111827;font-size:14px}
+.erp-meta{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#64748b}
 
 .cell-detail-dialog :deep(.el-dialog__header){padding:20px 24px 16px !important;border-bottom:1px solid var(--border)}
 .cell-detail-dialog :deep(.el-dialog__body){padding:18px 24px 22px !important}

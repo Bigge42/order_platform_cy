@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using HDPro.Core.EFDbContext;
 using HDPro.Core.Filters;
 using HDPro.Core.ManageUser;
+using HDPro.CY.Order.IServices;
 using HDPro.CY.Order.IServices.WZ;
 using HDPro.Entity.DomainModels;
 using HDPro.Entity.DomainModels.OrderCollaboration;
@@ -23,10 +24,35 @@ namespace HDPro.CY.Order.Controllers.WZ
     public class WZProductionOutputController : ControllerBase
     {
         private readonly IWZProductionOutputService _service;
+        private readonly IERP_OrderTrackingService _erpOrderTrackingService;
+        private readonly ServiceDbContext _db;
 
-        public WZProductionOutputController(IWZProductionOutputService service)
+        public WZProductionOutputController(
+            IWZProductionOutputService service,
+            IERP_OrderTrackingService erpOrderTrackingService,
+            ServiceDbContext dbContext)
         {
             _service = service;
+            _erpOrderTrackingService = erpOrderTrackingService;
+            _db = dbContext;
+        }
+
+        private static bool CanRefreshErpOrderTracking()
+        {
+            var current = UserContext.Current;
+            var userInfo = current?.UserInfo;
+            var allowedUsers = new[] { "cyadmin", "000629", "辛防" };
+            var currentUsers = new[]
+            {
+                current?.UserName,
+                current?.UserTrueName,
+                userInfo?.UserName,
+                userInfo?.UserTrueName
+            };
+
+            return currentUsers.Any(user =>
+                allowedUsers.Any(allowed =>
+                    string.Equals(user?.Trim(), allowed, StringComparison.OrdinalIgnoreCase)));
         }
 
         /// <summary>
@@ -295,6 +321,58 @@ namespace HDPro.CY.Order.Controllers.WZ
 
             var result = await _service.RefreshFromOrderTrackingAsync(dto.Start, dto.End, ct);
             return Ok(result);
+        }
+
+        /// <summary>
+        /// 实时ERP订单刷新：先刷新 ERP_OrderTracking，再按排产日期窗口增量合并WZ明细与汇总。
+        /// POST /api/WZ/ProductionOutput/refresh/erp-order-tracking
+        /// body: { "start":"2026-07-01", "end":"2026-07-31" }
+        /// </summary>
+        [HttpPost("refresh/erp-order-tracking")]
+        public async Task<ActionResult<object>> RefreshFromErpOrderTracking(
+            [FromBody] DateRangeDto dto,
+            CancellationToken ct = default)
+        {
+            if (!CanRefreshErpOrderTracking())
+            {
+                return StatusCode(403, new { message = "只有 cyadmin、000629 或辛防可以刷新实时ERP订单数据", status = false, code = 403 });
+            }
+
+            if (dto == null || dto.End < dto.Start)
+            {
+                return BadRequest(new { message = "end 不能早于 start", status = false });
+            }
+
+            var startedAt = DateTime.Now;
+            var erpResult = await _erpOrderTrackingService.SyncERPOrderTrackingAsync();
+            var lastErpUpdatedAt = await _db.Set<ERP_OrderTracking>()
+                .AsNoTracking()
+                .MaxAsync(x => (DateTime?)x.updated_at, ct);
+
+            if (erpResult?.Status != true)
+            {
+                return Ok(new
+                {
+                    status = false,
+                    message = erpResult?.Message ?? "实时ERP订单数据刷新失败",
+                    erpSyncMessage = erpResult?.Message,
+                    lastErpUpdatedAt,
+                    startedAt,
+                    endedAt = DateTime.Now
+                });
+            }
+
+            var output = await _service.RefreshFromErpOrderTrackingAsync(dto.Start, dto.End, ct);
+            return Ok(new
+            {
+                status = true,
+                message = $"实时ERP订单数据刷新完成，合并明细 {output.DetailRows} 条，汇总 {output.SummaryRows} 行",
+                erpSyncMessage = erpResult.Message,
+                lastErpUpdatedAt,
+                startedAt,
+                endedAt = DateTime.Now,
+                output
+            });
         }
 
         /// <summary>

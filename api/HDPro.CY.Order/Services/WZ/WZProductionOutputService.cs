@@ -511,6 +511,35 @@ namespace HDPro.CY.Order.Services.WZ
             return trackingKey.Length > 0 ? $"OCP:ID:{trackingKey}" : string.Empty;
         }
 
+        private static string BuildErpOrderTrackingBusinessKey(OrderTrackingMaterialRow row)
+        {
+            if (row == null)
+            {
+                return string.Empty;
+            }
+
+            var entryKey = row.EntryId.HasValue && row.EntryId.Value > 0
+                ? row.EntryId.Value.ToString()
+                : string.Empty;
+            if (entryKey.Length > 0)
+            {
+                return $"ERP:E:{entryKey}";
+            }
+
+            var billNo = NormalizeStr(row.SalesOrderNo);
+            var planTrackingNo = NormalizeStr(row.PlanTrackingNo);
+            var materialKey = BuildMaterialKey(row.MaterialCode, MaterialIdToKey(row.MaterialId));
+            if (billNo.Length > 0 || planTrackingNo.Length > 0 || materialKey.Length > 0)
+            {
+                return $"ERP:B:{billNo}|P:{planTrackingNo}|M:{materialKey}";
+            }
+
+            var trackingKey = row.TrackingId.HasValue && row.TrackingId.Value > 0
+                ? row.TrackingId.Value.ToString()
+                : string.Empty;
+            return trackingKey.Length > 0 ? $"ERP:ID:{trackingKey}" : string.Empty;
+        }
+
         private static ParsedProductionOutputRow ParseProductionOutputRow(EsbRow row)
         {
             return new ParsedProductionOutputRow
@@ -1824,6 +1853,17 @@ END
 ", ct);
         }
 
+        private async Task EnsureErpOrderTrackingScheduleDateColumnAsync(CancellationToken ct)
+        {
+            await _db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'[dbo].[ERP_OrderTracking]', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.ERP_OrderTracking', N'F_ORA_DATE1') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[ERP_OrderTracking] ADD [F_ORA_DATE1] DATE NULL;
+END
+", ct);
+        }
+
         private async Task EnsureProductionOutputDetailTableAsync(CancellationToken ct)
         {
             await _db.Database.ExecuteSqlRawAsync(@"
@@ -2371,6 +2411,7 @@ END;
                 .ToList();
 
             var orderRows = new List<OrderTrackingMaterialRow>();
+            await EnsureErpOrderTrackingScheduleDateColumnAsync(ct);
             foreach (var chunk in ChunkList(entryIds, 1000))
             {
                 var rows = await _db.Set<ERP_OrderTracking>()
@@ -2384,6 +2425,7 @@ END;
                         PlanTrackingNo = x.FMTONO,
                         MaterialCode = x.FNUMBER,
                         Quantity = x.FQTY,
+                        ProductionDate = x.F_ORA_DATE1,
                         OrderApprovedDate = x.FAPPROVEDATE,
                         ReplyDeliveryDate = x.F_BLN_HFJHRQ,
                         RequestedDeliveryDate = x.F_ORA_DATETIME
@@ -3200,6 +3242,120 @@ END;
             return (details, orderRows.Count, skippedNoDate, skippedNoKey, summarizable, missingLine, conflict);
         }
 
+        private async Task<(List<ProductionOutputDetailRow> Details, int RawCount, int SkippedNoDate, int SkippedNoKey, int Matched, int MissingLine, int Conflict)>
+            LoadProductionOutputDetailsFromErpOrderTrackingAsync(DateTime startDate, DateTime endDate, CancellationToken ct)
+        {
+            var start = startDate.Date;
+            var endExclusive = endDate.Date.AddDays(1);
+
+            await EnsureErpOrderTrackingScheduleDateColumnAsync(ct);
+
+            var orderRows = await _db.Set<ERP_OrderTracking>()
+                .AsNoTracking()
+                .Where(x => x.F_ORA_DATE1.HasValue
+                    && x.F_ORA_DATE1.Value >= start
+                    && x.F_ORA_DATE1.Value < endExclusive)
+                .Select(x => new OrderTrackingMaterialRow
+                {
+                    TrackingId = x.id,
+                    EntryId = x.FENTRYID,
+                    SalesOrderNo = x.FBILLNO,
+                    PlanTrackingNo = x.FMTONO,
+                    MaterialCode = x.FNUMBER,
+                    Quantity = x.FQTY,
+                    ProductionDate = x.F_ORA_DATE1,
+                    OrderApprovedDate = x.FAPPROVEDATE,
+                    ReplyDeliveryDate = x.F_BLN_HFJHRQ,
+                    RequestedDeliveryDate = x.F_ORA_DATETIME
+                })
+                .ToListAsync(ct);
+
+            var details = new List<ProductionOutputDetailRow>(orderRows.Count);
+            var skippedNoDate = 0;
+            var skippedNoKey = 0;
+            foreach (var row in orderRows)
+            {
+                if (!row.ProductionDate.HasValue)
+                {
+                    skippedNoDate++;
+                    continue;
+                }
+
+                var businessKey = BuildErpOrderTrackingBusinessKey(row);
+                if (businessKey.Length == 0)
+                {
+                    skippedNoKey++;
+                    continue;
+                }
+
+                details.Add(new ProductionOutputDetailRow
+                {
+                    BusinessKey = businessKey,
+                    EntryId = row.EntryId,
+                    BillNo = NormalizeStr(row.SalesOrderNo),
+                    PlanTrackingNo = NormalizeStr(row.PlanTrackingNo),
+                    Seq = null,
+                    MaterialKey = BuildMaterialKey(row.MaterialCode, MaterialIdToKey(row.MaterialId)),
+                    MaterialCode = NormalizeStr(row.MaterialCode),
+                    MaterialId = MaterialIdToKey(row.MaterialId),
+                    SpecModel = NormalizeStr(row.SpecModel),
+                    ProductModel = NormalizeStr(row.ProductModel),
+                    ProductionDate = row.ProductionDate.Value.Date,
+                    ValveCategory = string.Empty,
+                    ProductionLine = string.Empty,
+                    Quantity = row.Quantity,
+                    ClassifyStatus = DetailStatusMissingLine,
+                    RawRowCount = 1,
+                    LineCandidateCount = 0,
+                    SourceStartDate = start,
+                    SourceEndDate = endDate.Date
+                });
+            }
+
+            var materialEnriched = await EnrichDetailMaterialModelsAsync(details, ct);
+            if (materialEnriched > 0)
+            {
+                _logger.LogInformation("【WZ ERP实时口径】已补充物料规格型号 {Rows} 行", materialEnriched);
+            }
+
+            var duplicateKeys = details
+                .GroupBy(x => x.BusinessKey, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .ToList();
+            if (duplicateKeys.Count > 0)
+            {
+                _logger.LogWarning(
+                    "【WZ ERP实时口径】检测到 {DuplicateKeyCount} 个重复业务键，样例：{Samples}",
+                    duplicateKeys.Count,
+                    string.Join("; ", duplicateKeys.Take(10).Select(g => $"{g.Key}:{g.Count()}")));
+            }
+
+            var backfill = await BackfillDetailRowsAsync(details, ct);
+            LogUnresolvedDetailRows(details);
+
+            var summarizable = details.Count(x => IsSummarizableStatus(x.ClassifyStatus));
+            var missingLine = details.Count(x => x.ClassifyStatus == DetailStatusMissingLine);
+            var conflict = details.Count(x => x.ClassifyStatus == DetailStatusConflict);
+
+            _logger.LogInformation(
+                "【WZ ERP实时口径】ERP行 {Raw}，明细 {Details}，可汇总 {Matched}，缺产线 {MissingLine}，产线冲突 {Conflict}，物料规格补齐 {MaterialEnriched}，待补齐 {BackfillCandidates}，人工规则补齐 {FilledByManual}，WZ_OrderCycleBase补齐 {FilledByOrderCycle}，同步产线补齐 {FilledBySyncLine}，规则补齐 {FilledByRule}，无日期跳过 {NoDate}，无业务键跳过 {NoKey}",
+                orderRows.Count,
+                details.Count,
+                summarizable,
+                missingLine,
+                conflict,
+                materialEnriched,
+                backfill.Candidates,
+                backfill.FilledByManual,
+                backfill.FilledByOrderCycle,
+                backfill.FilledBySyncLine,
+                backfill.FilledByRule,
+                skippedNoDate,
+                skippedNoKey);
+
+            return (details, orderRows.Count, skippedNoDate, skippedNoKey, summarizable, missingLine, conflict);
+        }
+
         private static WZProductionOutputRefreshResultDto BuildRefreshResult(
             IReadOnlyList<ProductionOutputDetailRow> details,
             DateTime startDate,
@@ -3561,7 +3717,7 @@ DELETE target
 FROM [dbo].[WZ_ProductionOutputDetail] target
 INNER JOIN #WZProductionOutputDetailImport source
     ON source.[EntryId] IS NOT NULL
-   AND target.[BusinessKey] = CONCAT(N'E:', CONVERT(NVARCHAR(50), source.[EntryId]))
+   AND target.[EntryId] = source.[EntryId]
    AND target.[BusinessKey] <> source.[BusinessKey];
 
 DELETE target
@@ -3760,6 +3916,56 @@ GROUP BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];
                     result.SummaryRows = summaryRows;
                     _logger.LogInformation(
                         "【WZ OCP口径刷新完成】明细 {Details}，汇总行 {SummaryRows}，明细数量 {DetailQuantity}，汇总数量 {SummaryQuantity}",
+                        result.DetailRows,
+                        result.SummaryRows,
+                        result.DetailQuantity,
+                        result.SummaryQuantity);
+                    return result;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 刷新：按 ERP 实时订单跟踪排产日期窗口增量合并 WZ 明细和汇总。
+        /// </summary>
+        public async Task<WZProductionOutputRefreshResultDto> RefreshFromErpOrderTrackingAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default)
+        {
+            await _refreshGate.WaitAsync(ct);
+            try
+            {
+                if (endDate < startDate)
+                    throw new ArgumentException("endDate 不能早于 startDate");
+
+                await EnsureThresholdTableAsync(ct);
+                await EnsureProductionOutputDetailTableAsync(ct);
+                await EnsureErpOrderTrackingScheduleDateColumnAsync(ct);
+
+                _logger.LogInformation("【WZ ERP实时口径刷新】排产日期窗口：{S} ~ {E}", startDate.Date, endDate.Date);
+                var load = await LoadProductionOutputDetailsFromErpOrderTrackingAsync(startDate.Date, endDate.Date, ct);
+
+                using var tx = await _db.Database.BeginTransactionAsync(ct);
+                try
+                {
+                    await UpsertProductionOutputDetailsAsync(load.Details, ct);
+                    var summaryRows = await RebuildProductionOutputSummaryAsync(ct);
+
+                    await tx.CommitAsync(ct);
+                    var result = BuildRefreshResult(load.Details, startDate.Date, endDate.Date, "ERP_OrderTracking.refresh", load.RawCount);
+                    result.SummaryRows = summaryRows;
+                    _logger.LogInformation(
+                        "【WZ ERP实时口径刷新完成】明细 {Details}，汇总行 {SummaryRows}，明细数量 {DetailQuantity}，汇总数量 {SummaryQuantity}",
                         result.DetailRows,
                         result.SummaryRows,
                         result.DetailQuantity,

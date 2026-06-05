@@ -147,6 +147,14 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// 刷新：按 ERP 实时订单跟踪的排产日期窗口增量合并 WZ 明细，并重算产能汇总。
+        /// </summary>
+        Task<WZProductionOutputRefreshResultDto> RefreshFromErpOrderTrackingAsync(
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct = default);
     }
 
     public sealed class WZProductionOutputRefreshResultDto

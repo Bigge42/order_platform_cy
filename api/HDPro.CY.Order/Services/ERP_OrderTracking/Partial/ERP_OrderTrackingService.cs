@@ -216,6 +216,7 @@ namespace HDPro.CY.Order.Services
                         FQTY = qty,
                         FMTONO = mtoNo,
                         FAPPROVEDATE = ParseErpDate(item.FAPPROVEDATE),
+                        F_ORA_DATE1 = ParseErpDate(item.F_ORA_DATE1),
                         F_ORA_DATETIME = ParseErpDate(item.F_ORA_DATETIME),
                         F_BLN_HFJHRQ = ParseErpDate(item.F_BLN_HFJHRQ),
                         created_at = DateTime.UtcNow,
@@ -229,6 +230,11 @@ namespace HDPro.CY.Order.Services
                     try
                     {
                         _repository.DbContext.ChangeTracker.Clear();
+                        _repository.DbContext.Database.ExecuteSqlRaw(@"
+IF COL_LENGTH(N'dbo.ERP_OrderTracking', N'F_ORA_DATE1') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[ERP_OrderTracking] ADD [F_ORA_DATE1] DATE NULL;
+END");
                         _repository.DbContext.Database.ExecuteSqlRaw("DELETE FROM ERP_OrderTracking");
 
                         if (toInsert.Any())
@@ -294,6 +300,7 @@ namespace HDPro.CY.Order.Services
         {
             public string FAPPROVEDATE { get; set; }
             public long FENTRYID { get; set; }
+            public string F_ORA_DATE1 { get; set; }
             public string F_ORA_DATETIME { get; set; }
             public string FNUMBER { get; set; }
             public object FQTY { get; set; }
