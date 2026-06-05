@@ -115,6 +115,27 @@ const batchNegotiationSubmitting = ref(false)
 
 // 留言板ref
 const messageBoardRef = ref(null)
+const syncTrackingLoading = ref(false)
+
+const purchaseTrackingSyncUrl = 'http://127.0.0.1:9200/api/ESBSync/Task/PurchaseTrackingSync'
+
+const formatDate = (date) => {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getSyncDateRange = () => {
+  const today = new Date()
+  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+
+  return {
+    StartDate: formatDate(startDate),
+    EndDate: formatDate(endDate)
+  }
+}
 
 let gridRef //对应[表.jsx]文件中this.使用方式一样
 //生成对象属性初始化
@@ -141,6 +162,15 @@ const onInit = async ($vm) => {
 }
 //生成对象属性初始化后,操作明细表配置用到
 const onInited = async () => {
+  // 添加采购跟踪同步按钮
+  gridRef.buttons.push({
+    name: '同步采购跟踪',
+    icon: 'el-icon-refresh',
+    type: 'success',
+    disabled: syncTrackingLoading.value,
+    onClick: handleSyncPurchaseTracking
+  })
+
   // 添加批量催单按钮
   gridRef.buttons.push({
     name: '批量催单',
@@ -262,6 +292,40 @@ const modelOpenBefore = async (row) => {
 }
 const modelOpenAfter = (row) => {
   //弹出框打开后方法,设置表单默认值,按钮操作等
+}
+
+const setSyncButtonDisabled = (disabled) => {
+  const syncButton = gridRef?.buttons?.find((button) => button.name === '同步采购跟踪')
+  if (syncButton) {
+    syncButton.disabled = disabled
+  }
+}
+
+const handleSyncPurchaseTracking = async () => {
+  if (syncTrackingLoading.value) {
+    return
+  }
+
+  const requestData = getSyncDateRange()
+  syncTrackingLoading.value = true
+  setSyncButtonDisabled(true)
+
+  try {
+    const response = await proxy.http.post(purchaseTrackingSyncUrl, requestData, '采购跟踪同步中...')
+    if (response?.status === false) {
+      ElMessage.error(response.message || '采购跟踪同步失败')
+      return
+    }
+
+    ElMessage.success(response?.message || '采购跟踪同步完成')
+    gridRef.search()
+  } catch (error) {
+    console.error('采购跟踪同步失败:', error)
+    ElMessage.error('采购跟踪同步异常，请稍后重试')
+  } finally {
+    syncTrackingLoading.value = false
+    setSyncButtonDisabled(false)
+  }
 }
 
 // 催单操作
