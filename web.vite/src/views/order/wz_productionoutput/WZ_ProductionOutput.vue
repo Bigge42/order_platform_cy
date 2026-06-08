@@ -370,11 +370,6 @@ const getProductionDateStr = rec => {
   // 不做复杂时区解析，直接取前 10 位，足够与索引匹配
   return String(v).slice(0,10)
 }
-const getYearMonth = rec => {
-  const v = rec?.ProductionDate ?? rec?.productionDate ?? ''
-  // 导出时按“YYYY-MM”
-  return String(v).slice(0,7)
-}
 const cellKeySeparator = '\u001F'
 function buildCellKey(valve, line, date){
   const d = typeof date === 'string' ? date : fmtYMD(date)
@@ -672,6 +667,9 @@ function isWeekend(date){
 }
 function weekdayText(date){
   return WEEKDAY_TEXT[date.getDay()]
+}
+function fullWeekdayText(date){
+  return `星期${weekdayText(date)}`
 }
 function formatAxisQty(value){
   const num = Number(value || 0)
@@ -1799,24 +1797,47 @@ function applyRows(rows, successMessage){
   }
 }
 
-/* 导出数据（CSV，UTF-8 BOM，Excel可直接打开） */
+function formatExportQty(value){
+  const num = Number(value ?? 0)
+  if (!Number.isFinite(num)) return '0'
+  if (Number.isInteger(num)) return String(num)
+  return String(Number(num.toFixed(6)))
+}
+
+function buildProductionOutputMatrixRows(days){
+  const headerDate = [csvCell('阀体种类'), csvCell('生产线'), ...days.map(d => csvCell(fmtYMD(d)))]
+  const headerWeek = [csvCell(''), csvCell(''), ...days.map(d => csvCell(fullWeekdayText(d)))]
+  const bodyRows = []
+
+  for (const cat of state.categories || []) {
+    const valve = cat.name
+    for (const line of cat.lines || []) {
+      const values = days.map((_, index) => {
+        const value = state.data?.[valve]?.[line]?.[index] ?? 0
+        return formatExportQty(value)
+      })
+      bodyRows.push([csvCell(valve), csvCell(line), ...values].join(','))
+    }
+  }
+
+  return [headerDate.join(','), headerWeek.join(','), ...bodyRows]
+}
+
+/* 导出数据（产线 × 日期矩阵 CSV，UTF-8 BOM，Excel可直接打开） */
 function exportData(){
-  if (!rawRows.value?.length) {
+  if (!rawRows.value?.length || !state.categories?.length) {
     ElMessage.warning('没有可导出的数据，请先“加载数据”')
     return
   }
-  const headers = ['排产年月','阀体种类','生产线','排产量']
-  const lines = rawRows.value.map(r => {
-    const ym = getYearMonth(r).replaceAll('"','""')
-    const vc = String(r.valveCategory ?? r.ValveCategory ?? '').replaceAll('"','""')
-    const pl = String(r.productionLine ?? r.ProductionLine ?? '').replaceAll('"','""')
-    const qt = Number(r.quantity ?? r.Quantity ?? 0)
-    return `"${ym}","${vc}","${pl}",${qt}`
-  })
-  const csv = [headers.join(','), ...lines].join('\r\n')
+  const days = daysBetween(state.rangeStart, state.rangeEnd)
+  if (!days.length) {
+    ElMessage.warning('日期范围无效，无法导出')
+    return
+  }
+  const csv = buildProductionOutputMatrixRows(days).join('\r\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const start = fmtYMD(state.rangeStart), end = fmtYMD(state.rangeEnd)
-  const fileName = `产线排产_${start}_${end}.csv`
+  const fileName = `产线产量矩阵_${currentViewMode.value.label}_${start}_${end}.csv`
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
