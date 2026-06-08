@@ -94,6 +94,11 @@
         <div class="value">{{ stats.peak.value }}</div>
         <div class="sub">{{ stats.peak.sub }}</div>
       </div>
+      <div class="ph-card stat sales-stat">
+        <div class="label">可视范围总销售额</div>
+        <div class="value">{{ stats.salesAmountText }}</div>
+        <div class="sub">{{ stats.salesAmountSub }}</div>
+      </div>
     </section>
 
     <!-- 主图（每个阀体一个 SVG 热力图） -->
@@ -287,8 +292,8 @@ const PAD  = { normal: 32, compact: 24 }
 const LABEL_GAP = { normal: 10, compact: 6 }
 const LINE_LABEL_WIDTH = { normal: 76, compact: 68, max: 140 }
 const GITHUB = { size: 9, gap: 2, pad: 22, labelGap: 16, rows: 7 }
-const MONTH_SCALE_MAX_DAYS = 45
-const SALES_AMOUNT_MAX_DAYS = 93
+const DETAILED_DATE_AXIS_MAX_DAYS = 100
+const SALES_AMOUNT_MAX_DAYS = 100
 const WEEKDAY_TEXT = ['日', '一', '二', '三', '四', '五', '六']
 const GITHUB_WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const DATE_AXIS = {
@@ -587,7 +592,9 @@ const stats = reactive({
   total: 0,
   avg: 0,
   peak: { value: 0, sub: '-' },
-  rangeText: ''
+  rangeText: '',
+  salesAmountText: '-',
+  salesAmountSub: '加载数据后显示'
 })
 const lineCountText = computed(()=>{
   const n = state.categories.reduce((acc,c)=> acc + c.lines.length, 0)
@@ -725,13 +732,13 @@ function bindSvgTooltip(el, content){
   })
 }
 function shortDateText(date, daysCount){
-  if (daysCount <= 45) return String(date.getDate())
+  if (daysCount <= DETAILED_DATE_AXIS_MAX_DAYS) return String(date.getDate())
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 function buildDateAxisTicks(days, useGithub, githubOffset, cellSize, gap){
   const daysCount = days.length
   const stepPx = cellSize + gap
-  const minGap = useGithub ? 52 : daysCount <= 45 ? stepPx - 0.1 : daysCount <= 100 ? 46 : 76
+  const minGap = useGithub ? 52 : daysCount <= DETAILED_DATE_AXIS_MAX_DAYS ? stepPx - 0.1 : 76
   let lastX = -Infinity
   const ticks = []
 
@@ -745,8 +752,7 @@ function buildDateAxisTicks(days, useGithub, githubOffset, cellSize, gap){
 
     if (!shouldShow) {
       if (useGithub) shouldShow = isWeekStart
-      else if (daysCount <= 45) shouldShow = true
-      else if (daysCount <= 100) shouldShow = k % 3 === 0
+      else if (daysCount <= DETAILED_DATE_AXIS_MAX_DAYS) shouldShow = true
       else shouldShow = isWeekStart
     }
 
@@ -911,6 +917,23 @@ function renderAll(){
   const monthsStartIndex = []
   days.forEach((d,i)=>{ if(d.getDate()===1) monthsStartIndex.push(i) })
   const salesAmountVisibleForRange = isSalesAmountScale(daysCount) && salesAmountLoaded.value
+  if (salesAmountVisibleForRange) {
+    const totalSalesAmount = state.categories.reduce((sum, cat) => {
+      return sum + sumSalesAmount(cat.name, cat.lines, daysCount)
+    }, 0)
+    const totalSalesAmountDetails = state.categories.reduce((sum, cat) => {
+      return sum + sumSalesAmountDetails(cat.name, cat.lines, daysCount)
+    }, 0)
+    stats.salesAmountText = formatCurrency(totalSalesAmount, true)
+    stats.salesAmountSub = totalSalesAmountDetails > 0
+      ? `匹配 ${totalSalesAmountDetails.toLocaleString()} 条销售跟踪明细`
+      : '暂无匹配销售跟踪明细'
+  } else {
+    stats.salesAmountText = '-'
+    stats.salesAmountSub = daysCount > SALES_AMOUNT_MAX_DAYS
+      ? `仅支持 ${SALES_AMOUNT_MAX_DAYS} 天内范围`
+      : '加载数据后显示'
+  }
 
   // 各阀体图
   for(const cat of state.categories){
@@ -928,7 +951,7 @@ function renderAll(){
     const cols = daysCount, rows = cat.lines.length
     const githubLine = getGithubLine(v)
     const useGithub = Boolean(githubLine)
-    const isMonthScale = !useGithub && daysCount <= MONTH_SCALE_MAX_DAYS
+    const isMonthScale = !useGithub && daysCount <= DETAILED_DATE_AXIS_MAX_DAYS
     const visibleLines = useGithub ? cat.lines.filter(line => line === githubLine) : cat.lines
     const cellSize = useGithub ? (state.big ? SIZE.big : GITHUB.size) : baseCellSize
     const gap = useGithub ? (state.big ? baseGap : GITHUB.gap) : baseGap
@@ -2118,11 +2141,12 @@ onMounted(()=>{ renderAll() })
 .mode-switch :deep(.el-button.is-mode-active){border-color:var(--mode-color);color:var(--mode-color);background:#fdfdfd;font-weight:600;box-shadow:inset 0 0 0 1px var(--mode-color)}
 .mode-current{height:24px;display:inline-flex;align-items:center;border:1px solid;border-radius:4px;padding:0 8px;background:#fff;font-size:12px;font-weight:600}
 
-.ph-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px 16px 0}
+.ph-grid3{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px 16px 0}
 .ph-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 6px rgba(15,23,42,.04);padding:14px}
 .stat .label{font-size:12px;color:var(--muted)}
 .stat .value{font-size:22px;font-weight:700;margin-top:4px}
 .stat .sub{font-size:12px;color:var(--slate400);margin-top:2px}
+.sales-stat .value{color:#303384}
 
 .ph-charts{display:flex;flex-direction:column;gap:16px;padding:0 16px 16px}
 .valve .name{font-weight:600;font-size:13px;color:#111827;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -2174,4 +2198,11 @@ svg text{font-family:inherit}
 .compact .ph-grid3{gap:8px;padding:10px 12px 0}
 .compact .ph-card{padding:10px;border-radius:12px}
 .compact .ph-charts{gap:12px;padding:0 12px 12px}
+
+@media (max-width: 1200px){
+  .ph-grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width: 640px){
+  .ph-grid3{grid-template-columns:1fr}
+}
 </style>
