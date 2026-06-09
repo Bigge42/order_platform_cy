@@ -21,11 +21,16 @@ using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.IServices;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 namespace HDPro.CY.Order.Services
 {
@@ -77,6 +82,147 @@ namespace HDPro.CY.Order.Services
             // 在此处添加WZ_OrderCycleBase特有的数据验证逻辑
 
             return response;
+        }
+
+        public override WebResponseContent Export(PageDataOptions pageData)
+        {
+            var response = new WebResponseContent();
+            try
+            {
+                pageData ??= new PageDataOptions();
+                pageData.Export = true;
+
+                var exportColumns = GetOrderCycleBaseExportColumns(pageData);
+                if (!exportColumns.Any())
+                {
+                    return response.Error("未获取到导出列，请刷新页面后重试");
+                }
+
+                pageData.Columns = exportColumns.Select(column => column.Field).ToArray();
+                var list = GetPageData(pageData).rows ?? new List<WZ_OrderCycleBase>();
+
+                var folder = DateTime.Now.ToString("yyyyMMdd");
+                var savePath = $"Download/ExcelExport/{folder}/".MapPath();
+                var fileName = $"排产智能体优化看板{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+                if (!Directory.Exists(savePath))
+                {
+                    Directory.CreateDirectory(savePath);
+                }
+
+                var fullPath = Path.Combine(savePath, fileName);
+                WriteOrderCycleBaseExcel(list, exportColumns, fullPath);
+                return response.OK(null, fullPath);
+            }
+            catch (Exception ex)
+            {
+                return response.Error($"导出失败：{ex.Message}");
+            }
+        }
+
+        private static List<OrderCycleBaseExportColumn> GetOrderCycleBaseExportColumns(PageDataOptions pageData)
+        {
+            var properties = typeof(WZ_OrderCycleBase).GetProperties()
+                .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+            var fields = pageData?.Columns != null && pageData.Columns.Length > 0
+                ? pageData.Columns
+                : properties.Values
+                    .Where(property => property.GetCustomAttributes(typeof(DisplayAttribute), true).Any())
+                    .Select(property => property.Name)
+                    .ToArray();
+
+            return fields
+                .Where(field => !string.IsNullOrWhiteSpace(field)
+                    && properties.ContainsKey(field)
+                    && !string.Equals(field, nameof(WZ_OrderCycleBase.CapacityScheduleDateOverThreshold), StringComparison.OrdinalIgnoreCase))
+                .GroupBy(field => field, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var property = properties[group.First()];
+                    return new OrderCycleBaseExportColumn
+                    {
+                        Field = property.Name,
+                        Title = property.GetCustomAttributes(typeof(DisplayAttribute), true)
+                            .OfType<DisplayAttribute>()
+                            .FirstOrDefault()
+                            ?.Name ?? property.Name,
+                        Type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType
+                    };
+                })
+                .ToList();
+        }
+
+        private static void WriteOrderCycleBaseExcel(
+            List<WZ_OrderCycleBase> list,
+            List<OrderCycleBaseExportColumn> exportColumns,
+            string fullPath)
+        {
+            var properties = typeof(WZ_OrderCycleBase).GetProperties()
+                .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("sheet1");
+
+            for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+            {
+                var exportColumn = exportColumns[columnIndex];
+                var cell = worksheet.Cells[1, columnIndex + 1];
+                cell.Value = exportColumn.Title;
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(Color.Gray);
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                worksheet.Column(columnIndex + 1).Width = 16D;
+            }
+
+            for (var rowIndex = 0; rowIndex < list.Count; rowIndex++)
+            {
+                var row = list[rowIndex];
+                for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+                {
+                    var exportColumn = exportColumns[columnIndex];
+                    var property = properties[exportColumn.Field];
+                    var cell = worksheet.Cells[rowIndex + 2, columnIndex + 1];
+                    var value = property.GetValue(row);
+                    SetOrderCycleBaseCellValue(cell, value, exportColumn.Type);
+
+                    if (string.Equals(exportColumn.Field, nameof(WZ_OrderCycleBase.CapacityScheduleDate), StringComparison.OrdinalIgnoreCase)
+                        && row.CapacityScheduleDateOverThreshold)
+                    {
+                        cell.Style.Font.Color.SetColor(Color.FromArgb(208, 48, 80));
+                        cell.Style.Font.Bold = true;
+                        cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 241, 240));
+                    }
+                }
+            }
+
+            if (worksheet.Dimension != null)
+            {
+                worksheet.Cells[worksheet.Dimension.Address].AutoFilter = true;
+                worksheet.View.FreezePanes(2, 1);
+            }
+
+            package.SaveAs(new FileInfo(fullPath));
+        }
+
+        private static void SetOrderCycleBaseCellValue(ExcelRange cell, object value, Type type)
+        {
+            if (value == null)
+            {
+                cell.Value = null;
+                return;
+            }
+
+            if (type == typeof(DateTime) && value is DateTime dateTime)
+            {
+                cell.Value = dateTime;
+                cell.Style.Numberformat.Format = "yyyy-mm-dd";
+                return;
+            }
+
+            cell.Value = value;
         }
 
         /// <summary>
@@ -560,6 +706,7 @@ namespace HDPro.CY.Order.Services
             var fallbackUpdated = await FillBlankCapacityScheduleDateByScheduleDateAsync(context, cancellationToken);
             summary.Updated += fallbackUpdated;
             summary.FallbackScheduleDateCount += fallbackUpdated;
+            summary.OverThresholdCount = await UpdateCapacityScheduleDateOverThresholdFlagsAsync(context, cancellationToken);
 
             return summary;
         }
@@ -570,6 +717,114 @@ namespace HDPro.CY.Order.Services
                 .Where(p => p.ScheduleDate.HasValue && !p.CapacityScheduleDate.HasValue)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(p => p.CapacityScheduleDate, p => p.ScheduleDate), cancellationToken);
+        }
+
+        private static async Task<int> UpdateCapacityScheduleDateOverThresholdFlagsAsync(DbContext context, CancellationToken cancellationToken)
+        {
+            var orders = await context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(p => p.CapacityScheduleDate.HasValue && p.OrderQty.HasValue && p.OrderQty.Value > 0)
+                .Select(p => new OrderCapacityCandidate
+                {
+                    Id = p.Id,
+                    CapacityScheduleDate = p.CapacityScheduleDate,
+                    OrderQty = p.OrderQty,
+                    ValveCategory = p.ValveCategory,
+                    AssignedProductionLine = p.AssignedProductionLine,
+                    ProductionLine = p.ProductionLine,
+                    NominalDiameter = p.NominalDiameter
+                })
+                .ToListAsync(cancellationToken);
+
+            var thresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken);
+            var outputs = await context.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            var outputThresholdMap = new Dictionary<(string Cat, string Line), decimal>();
+            var dateQuantityMap = new Dictionary<(string Cat, string Line, DateTime Date), decimal>();
+
+            foreach (var output in outputs)
+            {
+                var cat = NormalizeCapacityText(output.ValveCategory);
+                var line = NormalizeCapacityText(output.ProductionLine);
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var lineKey = (cat, line);
+                if (output.CurrentThreshold.HasValue && output.CurrentThreshold.Value > 0)
+                {
+                    outputThresholdMap[lineKey] = outputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
+                        ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
+                        : output.CurrentThreshold.Value;
+                }
+
+                var dateKey = (cat, line, output.ProductionDate.Date);
+                dateQuantityMap[dateKey] = dateQuantityMap.TryGetValue(dateKey, out var quantity)
+                    ? quantity + output.Quantity
+                    : output.Quantity;
+            }
+
+            var orderGroups = new Dictionary<(string Cat, string Line, DateTime Date), List<OrderCapacityCandidate>>();
+            foreach (var order in orders)
+            {
+                if (!order.CapacityScheduleDate.HasValue)
+                {
+                    continue;
+                }
+
+                var cat = NormalizeCapacityText(order.ValveCategory);
+                var line = ResolveCapacityLine(order);
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var key = (cat, line, order.CapacityScheduleDate.Value.Date);
+                if (!orderGroups.TryGetValue(key, out var group))
+                {
+                    group = new List<OrderCapacityCandidate>();
+                    orderGroups[key] = group;
+                }
+
+                group.Add(order);
+            }
+
+            var overThresholdIds = new List<int>();
+            foreach (var group in orderGroups)
+            {
+                var key = group.Key;
+                var threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, key.Cat, key.Line, null);
+                if (!threshold.HasValue || threshold.Value <= 0)
+                {
+                    continue;
+                }
+
+                var baseQuantity = dateQuantityMap.TryGetValue(key, out var quantity) ? quantity : 0M;
+                var orderQuantity = group.Value.Sum(order => order.OrderQty.GetValueOrDefault());
+                if (baseQuantity + orderQuantity > threshold.Value * DailyReserveCapacityRatio)
+                {
+                    overThresholdIds.AddRange(group.Value.Select(order => order.Id));
+                }
+            }
+
+            await context.Set<WZ_OrderCycleBase>()
+                .Where(p => p.CapacityScheduleDateOverThreshold)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.CapacityScheduleDateOverThreshold, false), cancellationToken);
+
+            for (var index = 0; index < overThresholdIds.Count; index += 1000)
+            {
+                var batchIds = overThresholdIds.Skip(index).Take(1000).ToList();
+                await context.Set<WZ_OrderCycleBase>()
+                    .Where(p => batchIds.Contains(p.Id))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.CapacityScheduleDateOverThreshold, true), cancellationToken);
+            }
+
+            return overThresholdIds.Count;
         }
 
         /// <summary>
@@ -1505,6 +1760,8 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             public DateTime? ScheduleDate { get; set; }
 
+            public DateTime? CapacityScheduleDate { get; set; }
+
             public decimal? OrderQty { get; set; }
 
             public string ValveCategory { get; set; } = string.Empty;
@@ -1593,6 +1850,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                     FailureReason = failureReason
                 };
             }
+        }
+
+        private sealed class OrderCycleBaseExportColumn
+        {
+            public string Field { get; set; } = string.Empty;
+
+            public string Title { get; set; } = string.Empty;
+
+            public Type Type { get; set; } = typeof(string);
         }
 
         private sealed class ValveRuleRequest

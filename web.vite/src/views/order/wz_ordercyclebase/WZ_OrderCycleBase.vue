@@ -272,6 +272,7 @@ const normalizeInitializeData = (response) => {
     remainingBlank: toNumber(pickValue(data, 'remainingNonBjBlankCapacityScheduleDate', 'RemainingNonBjBlankCapacityScheduleDate')),
     capacityUpdated: toNumber(pickValue(capacitySchedule, 'updated', 'Updated')),
     fallbackScheduleDateCount: toNumber(pickValue(capacitySchedule, 'fallbackScheduleDateCount', 'FallbackScheduleDateCount')),
+    overThresholdCount: toNumber(pickValue(capacitySchedule, 'overThresholdCount', 'OverThresholdCount')),
     capacityFailed: toNumber(pickValue(capacitySchedule, 'failed', 'Failed')),
     missingThreshold: toNumber(pickValue(capacitySchedule, 'missingThreshold', 'MissingThreshold')),
     missingOutput: toNumber(pickValue(capacitySchedule, 'missingProductionOutput', 'MissingProductionOutput')),
@@ -285,6 +286,7 @@ const buildInitializeMessage = (summary) => {
   const parts = [
     `优化日期更新 ${summary.capacityUpdated} 条`,
     `排产日期兜底 ${summary.fallbackScheduleDateCount} 条`,
+    `超阈值标红 ${summary.overThresholdCount} 条`,
     `预排产同步 ${summary.preProductionOutputSynced} 条`
   ];
 

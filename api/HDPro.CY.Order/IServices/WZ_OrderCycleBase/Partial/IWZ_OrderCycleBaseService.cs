@@ -159,6 +159,11 @@ namespace HDPro.CY.Order.IServices
         public int BalancedOverflowCount { get; set; }
 
         /// <summary>
+        /// 排产优化日期最终负载超过120%产能阈值的订单数
+        /// </summary>
+        public int OverThresholdCount { get; set; }
+
+        /// <summary>
         /// 按排产日期兜底补齐排产优化日期的订单数
         /// </summary>
         public int FallbackScheduleDateCount { get; set; }

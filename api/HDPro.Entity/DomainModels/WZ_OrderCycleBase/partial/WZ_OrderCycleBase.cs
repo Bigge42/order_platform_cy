@@ -42,5 +42,13 @@ namespace HDPro.Entity.DomainModels
         [Column(TypeName = "date")]
         [Editable(true)]
         public DateTime? CapacityScheduleDate { get; set; }
+
+        /// <summary>
+        /// 排产优化日期是否超过120%产能阈值
+        /// </summary>
+        [Display(Name = "排产优化日期超阈值")]
+        [Column(TypeName = "bit")]
+        [Editable(true)]
+        public bool CapacityScheduleDateOverThreshold { get; set; }
     }
 }
