@@ -185,6 +185,7 @@ namespace HDPro.CY.Order.Services
             for (var rowIndex = 0; rowIndex < list.Count; rowIndex++)
             {
                 var row = list[rowIndex];
+                var isDeliveryLaterThanStandard = IsReplyDeliveryDateLaterThanStandard(row);
                 for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
                 {
                     var exportColumn = exportColumns[columnIndex];
@@ -193,6 +194,12 @@ namespace HDPro.CY.Order.Services
                     var value = property.GetValue(row);
                     SetOrderCycleBaseCellValue(cell, value, exportColumn.Type);
 
+                    if (isDeliveryLaterThanStandard)
+                    {
+                        ApplyRedWarningCellStyle(cell);
+                        continue;
+                    }
+
                     if (!string.Equals(exportColumn.Field, nameof(WZ_OrderCycleBase.CapacityScheduleDate), StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
@@ -200,17 +207,11 @@ namespace HDPro.CY.Order.Services
 
                     if (row.CapacityScheduleDateOverThreshold)
                     {
-                        cell.Style.Font.Color.SetColor(Color.FromArgb(208, 48, 80));
-                        cell.Style.Font.Bold = true;
-                        cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 241, 240));
+                        ApplyRedWarningCellStyle(cell);
                     }
                     else if (IsSunday(row.CapacityScheduleDate))
                     {
-                        cell.Style.Font.Color.SetColor(Color.FromArgb(140, 90, 0));
-                        cell.Style.Font.Bold = true;
-                        cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 247, 214));
+                        ApplySundayReserveCellStyle(cell);
                     }
                 }
             }
@@ -222,6 +223,29 @@ namespace HDPro.CY.Order.Services
             }
 
             package.SaveAs(new FileInfo(fullPath));
+        }
+
+        private static bool IsReplyDeliveryDateLaterThanStandard(WZ_OrderCycleBase row)
+        {
+            return row?.ReplyDeliveryDate.HasValue == true
+                && row.StandardDeliveryDate.HasValue
+                && row.ReplyDeliveryDate.Value.Date < row.StandardDeliveryDate.Value.Date;
+        }
+
+        private static void ApplyRedWarningCellStyle(ExcelRange cell)
+        {
+            cell.Style.Font.Color.SetColor(Color.FromArgb(208, 48, 80));
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 241, 240));
+        }
+
+        private static void ApplySundayReserveCellStyle(ExcelRange cell)
+        {
+            cell.Style.Font.Color.SetColor(Color.FromArgb(140, 90, 0));
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 247, 214));
         }
 
         private static void SetOrderCycleBaseCellValue(ExcelRange cell, object value, Type type)
@@ -1169,11 +1193,14 @@ END;";
                 }
 
                 var capacityDateList = new Dictionary<(string Cat, string Line), List<DateTime>>();
+                var capacityDateSets = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
                 foreach (var item in categoryLineDates)
                 {
-                    var dates = item.Value.ToList();
+                    var dateSet = item.Value;
+                    var dates = dateSet.ToList();
                     dates.Sort();
                     capacityDateList[item.Key] = dates;
+                    capacityDateSets[item.Key] = dateSet;
                 }
 
                 var updates = new List<WZ_OrderCycleBase>();
@@ -1203,13 +1230,20 @@ END;";
                         continue;
                     }
 
-                    if (!capacityDateList.TryGetValue((cat, line), out var dates))
+                    var capacityLineKey = (cat, line);
+                    if (!capacityDateList.TryGetValue(capacityLineKey, out var dates))
                     {
                         dates = new List<DateTime>();
-                        capacityDateList[(cat, line)] = dates;
+                        capacityDateList[capacityLineKey] = dates;
                     }
 
-                    var decision = ResolveCapacityScheduleDate(order, dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
+                    if (!capacityDateSets.TryGetValue(capacityLineKey, out var knownDates))
+                    {
+                        knownDates = new HashSet<DateTime>();
+                        capacityDateSets[capacityLineKey] = knownDates;
+                    }
+
+                    var decision = ResolveCapacityScheduleDate(order, dates, knownDates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
                     if (!decision.CapacityDate.HasValue)
                     {
                         updates.Add(new WZ_OrderCycleBase
@@ -1253,21 +1287,7 @@ END;";
                     }
                 }
 
-                if (updates.Count > 0)
-                {
-                    foreach (var entity in updates)
-                    {
-                        context.Attach(entity);
-                        context.Entry(entity).Property(p => p.CapacityScheduleDate).IsModified = true;
-                    }
-
-                    await context.SaveChangesAsync(cancellationToken);
-
-                    foreach (var entity in updates)
-                    {
-                        context.Entry(entity).State = EntityState.Detached;
-                    }
-                }
+                await UpdateCapacityScheduleDatesAsync(context, updates, cancellationToken);
             }
 
             var fallbackUpdated = await FillBlankCapacityScheduleDateByScheduleDateAsync(context, cancellationToken);
@@ -1284,6 +1304,38 @@ END;";
                 .Where(p => p.ScheduleDate.HasValue && !p.CapacityScheduleDate.HasValue)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(p => p.CapacityScheduleDate, p => p.ScheduleDate), cancellationToken);
+        }
+
+        private const int CapacityScheduleUpdateBatchSize = 1000;
+
+        private static async Task UpdateCapacityScheduleDatesAsync(DbContext context, List<WZ_OrderCycleBase> updates, CancellationToken cancellationToken)
+        {
+            if (updates == null || updates.Count == 0)
+            {
+                return;
+            }
+
+            var updateGroups = updates
+                .Where(p => p.CapacityScheduleDate.HasValue)
+                .GroupBy(p => p.CapacityScheduleDate.Value.Date);
+
+            foreach (var group in updateGroups)
+            {
+                var capacityScheduleDate = (DateTime?)group.Key;
+                var ids = group
+                    .Select(p => p.Id)
+                    .Distinct()
+                    .ToList();
+
+                for (var index = 0; index < ids.Count; index += CapacityScheduleUpdateBatchSize)
+                {
+                    var batchIds = ids.Skip(index).Take(CapacityScheduleUpdateBatchSize).ToList();
+                    await context.Set<WZ_OrderCycleBase>()
+                        .Where(p => batchIds.Contains(p.Id))
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(p => p.CapacityScheduleDate, capacityScheduleDate), cancellationToken);
+                }
+            }
         }
 
         private static async Task<int> UpdateCapacityScheduleDateOverThresholdFlagsAsync(DbContext context, CancellationToken cancellationToken)
@@ -2294,6 +2346,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         private static CapacityScheduleDecision ResolveCapacityScheduleDate(
             OrderCapacityCandidate order,
             List<DateTime> dates,
+            HashSet<DateTime> knownDates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
             IReadOnlyDictionary<(string Cat, string Line), decimal> thresholdMap,
             IReadOnlyDictionary<(string Cat, string Line), decimal> outputThresholdMap,
@@ -2312,7 +2365,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
-            EnsureCapacityWindow(dates, capacityMap, thresholdMap, outputThresholdMap, cat, line, startDate, endDate);
+            EnsureCapacityWindow(dates, knownDates, capacityMap, thresholdMap, outputThresholdMap, cat, line, startDate, endDate);
             if (dates.Count == 0)
             {
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
@@ -2450,6 +2503,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
         private static void EnsureCapacityWindow(
             List<DateTime> dates,
+            HashSet<DateTime> knownDates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
             IReadOnlyDictionary<(string Cat, string Line), decimal> thresholdMap,
             IReadOnlyDictionary<(string Cat, string Line), decimal> outputThresholdMap,
@@ -2464,7 +2518,8 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return;
             }
 
-            var knownDates = new HashSet<DateTime>(dates);
+            knownDates ??= new HashSet<DateTime>(dates);
+            var addedDate = false;
             for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
             {
                 var key = (cat, line, date);
@@ -2480,10 +2535,14 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 if (knownDates.Add(date))
                 {
                     dates.Add(date);
+                    addedDate = true;
                 }
             }
 
-            dates.Sort();
+            if (addedDate)
+            {
+                dates.Sort();
+            }
         }
 
         private static CapacityAssignAttempt TryFindLatestAssignableDate(

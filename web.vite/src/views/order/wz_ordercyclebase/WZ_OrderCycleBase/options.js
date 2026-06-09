@@ -2,31 +2,60 @@
 // *Contact：461857658@qq.com
 // *代码由框架生成,任何更改都可能导致被代码生成器覆盖
 export default function(){
-    const isSundayCapacityDate = (value) => {
+    const redWarningCellStyle = {color:'#d03050',fontWeight:'700',backgroundColor:'#fff1f0'};
+    const sundayReserveCellStyle = {color:'#8c5a00',fontWeight:'700',backgroundColor:'#fff7d6'};
+    const toDateOnlyTime = (value) => {
         if (!value) {
-            return false;
+            return null;
         }
 
         const text = String(value).slice(0, 10);
         const match = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
         if (match) {
-            const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-            return date.getDay() === 0;
+            return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime();
         }
 
         const date = new Date(value);
-        return !Number.isNaN(date.getTime()) && date.getDay() === 0;
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    };
+    const isReplyDeliveryDateLaterThanStandard = ({ ReplyDeliveryDate, StandardDeliveryDate } = {}) => {
+        const replyTime = toDateOnlyTime(ReplyDeliveryDate);
+        const standardTime = toDateOnlyTime(StandardDeliveryDate);
+        return replyTime !== null && standardTime !== null && replyTime < standardTime;
+    };
+    const isSundayCapacityDate = (value) => {
+        const dateOnlyTime = toDateOnlyTime(value);
+        if (dateOnlyTime === null) {
+            return false;
+        }
+
+        return new Date(dateOnlyTime).getDay() === 0;
     };
     const getCapacityScheduleDateCellStyle = ({ CapacityScheduleDateOverThreshold, CapacityScheduleDate }) => {
         if (CapacityScheduleDateOverThreshold) {
-            return {color:'#d03050',fontWeight:'700',backgroundColor:'#fff1f0'};
+            return redWarningCellStyle;
         }
 
         if (isSundayCapacityDate(CapacityScheduleDate)) {
-            return {color:'#8c5a00',fontWeight:'700',backgroundColor:'#fff7d6'};
+            return sundayReserveCellStyle;
         }
 
         return {};
+    };
+    const applyReplyDeliveryWarningRowStyle = (column) => {
+        const originalCellStyle = column.cellStyle;
+        column.cellStyle = (row, rowIndex, columnIndex, tableData) => {
+            if (isReplyDeliveryDateLaterThanStandard(row)) {
+                return redWarningCellStyle;
+            }
+
+            return originalCellStyle
+                ? originalCellStyle(row, rowIndex, columnIndex, tableData) || {}
+                : {};
+        };
     };
     const table = {
         key: 'Id',
@@ -81,6 +110,7 @@ export default function(){
     if (capacityScheduleDateColumn) {
         capacityScheduleDateColumn.cellStyle = getCapacityScheduleDateCellStyle;
     }
+    columns.forEach(applyReplyDeliveryWarningRowStyle);
     const detail ={columns:[]};
     const details = [];
 
