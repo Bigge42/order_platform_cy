@@ -172,6 +172,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "HDPro.core.api", Version = "v1" });
+    c.CustomSchemaIds(type => type.FullName?.Replace("+", ".") ?? type.Name);
     var security = new Dictionary<string, IEnumerable<string>> { { AppSetting.Secret.Issuer, new string[] { } }};
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
     {

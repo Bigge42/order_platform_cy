@@ -18,6 +18,7 @@ using HDPro.Core.Filters;
 using HDPro.CY.Order.Services;
 using HDPro.Core.EFDbContext;
 using HDPro.Entity.DomainModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HDPro.CY.Order.Controllers
 {
@@ -152,6 +153,65 @@ namespace HDPro.CY.Order.Controllers
             {
                 return JsonNormal(new WebResponseContent().Error($"规则服务调用失败：{ex.Message}"));
             }
+        }
+
+        /// <summary>
+        /// 启动智能体优化后台任务，前端通过 taskId 轮询进度。
+        /// </summary>
+        [HttpPost("start-valve-rule-service-task")]
+        [AllowAnonymous]
+        public IActionResult StartValveRuleServiceTask()
+        {
+            var taskId = Guid.NewGuid().ToString("N");
+            var progress = Service.CreateValveRuleTaskProgress(taskId);
+            var scopeFactory = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+
+            _ = Task.Run(async () =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                var service = scope.ServiceProvider.GetRequiredService<IWZ_OrderCycleBaseService>();
+                try
+                {
+                    await service.BatchCallValveRuleServiceAsync(CancellationToken.None, taskId);
+                }
+                catch (Exception ex)
+                {
+                    service.MarkValveRuleTaskProgressFailed(taskId, $"规则服务调用失败：{ex.Message}");
+                }
+            });
+
+            return JsonNormal(new
+            {
+                status = true,
+                message = "智能体优化任务已启动",
+                data = progress
+            });
+        }
+
+        /// <summary>
+        /// 查询智能体优化后台任务进度。
+        /// </summary>
+        [HttpGet, HttpPost, Route("valve-rule-service-task-progress")]
+        [AllowAnonymous]
+        public IActionResult GetValveRuleServiceTaskProgress([FromQuery] string taskId)
+        {
+            var progress = Service.GetValveRuleTaskProgress(taskId);
+            if (progress == null)
+            {
+                return JsonNormal(new
+                {
+                    status = false,
+                    message = "未找到智能体优化任务进度",
+                    data = (object)null
+                });
+            }
+
+            return JsonNormal(new
+            {
+                status = true,
+                message = progress.Message,
+                data = progress
+            });
         }
 
         /// <summary>

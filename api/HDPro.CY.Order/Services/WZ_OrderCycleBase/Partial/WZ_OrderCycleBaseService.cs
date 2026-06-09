@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.IServices;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
@@ -39,6 +40,8 @@ namespace HDPro.CY.Order.Services
 {
     public partial class WZ_OrderCycleBaseService
     {
+        private static readonly ConcurrentDictionary<string, ValveRuleTaskProgress> ValveRuleTaskProgressStore = new ConcurrentDictionary<string, ValveRuleTaskProgress>(StringComparer.OrdinalIgnoreCase);
+
         private readonly IWZ_OrderCycleBaseRepository _repository;//访问数据库
         private readonly IERP_OrderTrackingRepository _orderTrackingRepository;
         private readonly IOCP_MaterialRepository _materialRepository;
@@ -584,23 +587,23 @@ CREATE TABLE #WZ_OrderCycleSchedulePredictionReviewImport
 (
     [PredictionResultId] BIGINT NULL,
     [OrderCycleBaseId] INT NULL,
-    [InputFingerprint] NVARCHAR(64) NOT NULL,
-    [RequestBatchNo] NVARCHAR(64) NULL,
-    [ProductName] NVARCHAR(200) NULL,
-    [SpecModel] NVARCHAR(200) NULL,
-    [ValveCategory] NVARCHAR(2000) NULL,
-    [NominalDiameter] NVARCHAR(50) NULL,
-    [NominalPressure] NVARCHAR(50) NULL,
-    [ProductionLine] NVARCHAR(50) NULL,
+    [InputFingerprint] NVARCHAR(64) COLLATE DATABASE_DEFAULT NOT NULL,
+    [RequestBatchNo] NVARCHAR(64) COLLATE DATABASE_DEFAULT NULL,
+    [ProductName] NVARCHAR(200) COLLATE DATABASE_DEFAULT NULL,
+    [SpecModel] NVARCHAR(200) COLLATE DATABASE_DEFAULT NULL,
+    [ValveCategory] NVARCHAR(2000) COLLATE DATABASE_DEFAULT NULL,
+    [NominalDiameter] NVARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
+    [NominalPressure] NVARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
+    [ProductionLine] NVARCHAR(50) COLLATE DATABASE_DEFAULT NULL,
     [FixedCycleDays] INT NULL,
     [PredictedScheduleDate] DATE NULL,
     [StandardDeliveryDate] DATE NULL,
     [ConfidenceScore] DECIMAL(18,6) NULL,
     [MatchedRuleCount] INT NULL,
-    [UsedFieldsJson] NVARCHAR(MAX) NULL,
-    [CandidateSuggestionsJson] NVARCHAR(MAX) NULL,
-    [FailureReason] NVARCHAR(200) NULL,
-    [FailureMessage] NVARCHAR(500) NULL
+    [UsedFieldsJson] NVARCHAR(MAX) COLLATE DATABASE_DEFAULT NULL,
+    [CandidateSuggestionsJson] NVARCHAR(MAX) COLLATE DATABASE_DEFAULT NULL,
+    [FailureReason] NVARCHAR(200) COLLATE DATABASE_DEFAULT NULL,
+    [FailureMessage] NVARCHAR(500) COLLATE DATABASE_DEFAULT NULL
 );";
 
                 await using (var command = new SqlCommand(createTempSql, sqlConnection, sqlTransaction))
@@ -630,7 +633,7 @@ CREATE TABLE #WZ_OrderCycleSchedulePredictionReviewMergeResult([Action] NVARCHAR
 
 MERGE [dbo].[WZ_OrderCycleSchedulePredictionReview] WITH (HOLDLOCK) AS target
 USING #WZ_OrderCycleSchedulePredictionReviewImport AS source
-ON target.[InputFingerprint] = source.[InputFingerprint]
+ON target.[InputFingerprint] = source.[InputFingerprint] COLLATE DATABASE_DEFAULT
 WHEN MATCHED THEN UPDATE SET
     [PredictionResultId] = source.[PredictionResultId],
     [OrderCycleBaseId] = source.[OrderCycleBaseId],
@@ -899,9 +902,9 @@ END;";
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ValveCategory), Title = "阀门类别", Type = typeof(string) },
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.NominalDiameter), Title = "公称通径", Type = typeof(string) },
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.NominalPressure), Title = "公称压力", Type = typeof(string) },
-                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ProductionLine), Title = "生产线", Type = typeof(string) },
-                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.FixedCycleDays), Title = "固定周期", Type = typeof(int) },
-                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.PredictedScheduleDate), Title = "推测排产日期", Type = typeof(DateTime) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ProductionLine), Title = "最高可能生产线", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.FixedCycleDays), Title = "最高可能固定周期", Type = typeof(int) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.PredictedScheduleDate), Title = "最高可能排产日期", Type = typeof(DateTime) },
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.StandardDeliveryDate), Title = "标准交货日期", Type = typeof(DateTime) },
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ConfidenceScore), Title = "置信度", Type = typeof(decimal) },
                 new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.UsedFieldsJson), Title = "使用字段", Type = typeof(string) },
@@ -1301,11 +1304,155 @@ END;";
         /// </summary>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>成功回填的行数</returns>
-        public async Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default)
+        public ValveRuleTaskProgress CreateValveRuleTaskProgress(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                taskId = Guid.NewGuid().ToString("N");
+            }
+
+            var now = DateTime.Now;
+            var progress = new ValveRuleTaskProgress
+            {
+                TaskId = taskId,
+                Status = "running",
+                Stage = "等待开始",
+                Message = "智能体优化任务已创建",
+                StartedAt = now,
+                UpdatedAt = now
+            };
+
+            ValveRuleTaskProgressStore[taskId] = progress;
+            return CloneValveRuleTaskProgress(progress);
+        }
+
+        public ValveRuleTaskProgress GetValveRuleTaskProgress(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                return null;
+            }
+
+            return ValveRuleTaskProgressStore.TryGetValue(taskId, out var progress)
+                ? CloneValveRuleTaskProgress(progress)
+                : null;
+        }
+
+        public ValveRuleTaskProgress MarkValveRuleTaskProgressFailed(string taskId, string message)
+        {
+            return PublishValveRuleTaskProgress(taskId, progress =>
+            {
+                progress.Status = "failed";
+                progress.Stage = "执行失败";
+                progress.Message = string.IsNullOrWhiteSpace(message) ? "智能体优化失败" : message;
+                progress.Error = message;
+                progress.FinishedAt = DateTime.Now;
+                progress.Percent = progress.Percent > 0 ? progress.Percent : 100;
+            });
+        }
+
+        private static ValveRuleTaskProgress PublishValveRuleTaskProgress(string taskId, Action<ValveRuleTaskProgress> update)
+        {
+            if (string.IsNullOrWhiteSpace(taskId) || update == null)
+            {
+                return null;
+            }
+
+            var now = DateTime.Now;
+            var progress = ValveRuleTaskProgressStore.AddOrUpdate(
+                taskId,
+                _ =>
+                {
+                    var created = new ValveRuleTaskProgress
+                    {
+                        TaskId = taskId,
+                        Status = "running",
+                        StartedAt = now
+                    };
+                    update(created);
+                    NormalizeValveRuleTaskProgress(created, now);
+                    return created;
+                },
+                (_, existing) =>
+                {
+                    var next = CloneValveRuleTaskProgress(existing);
+                    update(next);
+                    NormalizeValveRuleTaskProgress(next, now);
+                    return next;
+                });
+
+            return CloneValveRuleTaskProgress(progress);
+        }
+
+        private static void NormalizeValveRuleTaskProgress(ValveRuleTaskProgress progress, DateTime updatedAt)
+        {
+            progress.UpdatedAt = updatedAt;
+            progress.LogFiles ??= new List<string>();
+            if (progress.Total > 0)
+            {
+                progress.Processed = Math.Max(0, Math.Min(progress.Processed, progress.Total));
+                progress.Percent = Math.Max(progress.Percent, (int)Math.Round(progress.Processed * 100D / progress.Total));
+            }
+
+            if (string.Equals(progress.Status, "success", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(progress.Status, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                progress.Percent = 100;
+                progress.FinishedAt ??= updatedAt;
+            }
+            else
+            {
+                progress.Percent = Math.Max(0, Math.Min(progress.Percent, 99));
+            }
+        }
+
+        private static ValveRuleTaskProgress CloneValveRuleTaskProgress(ValveRuleTaskProgress source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new ValveRuleTaskProgress
+            {
+                TaskId = source.TaskId,
+                Status = source.Status,
+                Stage = source.Stage,
+                Message = source.Message,
+                Total = source.Total,
+                Processed = source.Processed,
+                Succeeded = source.Succeeded,
+                Failed = source.Failed,
+                Updated = source.Updated,
+                BatchCount = source.BatchCount,
+                TotalBatchCount = source.TotalBatchCount,
+                Percent = source.Percent,
+                LogFiles = source.LogFiles == null ? new List<string>() : new List<string>(source.LogFiles),
+                Error = source.Error,
+                StartedAt = source.StartedAt,
+                UpdatedAt = source.UpdatedAt,
+                FinishedAt = source.FinishedAt
+            };
+        }
+
+        public async Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(
+            CancellationToken cancellationToken = default,
+            string progressTaskId = null)
         {
             if (_httpClientFactory == null)
             {
                 throw new InvalidOperationException("HttpClientFactory 未注册，无法调用规则服务");
+            }
+
+            if (!string.IsNullOrWhiteSpace(progressTaskId))
+            {
+                PublishValveRuleTaskProgress(progressTaskId, progress =>
+                {
+                    progress.Status = "running";
+                    progress.Stage = "读取待优化数据";
+                    progress.Message = "正在查询可优化订单";
+                    progress.Percent = 1;
+                });
             }
 
             var context = _repository.DbContext;
@@ -1316,6 +1463,15 @@ END;";
 
             if (entities.Count == 0)
             {
+                PublishValveRuleTaskProgress(progressTaskId, progress =>
+                {
+                    progress.Status = "success";
+                    progress.Stage = "无待优化数据";
+                    progress.Message = "没有需要提交到智能体优化的数据";
+                    progress.Total = 0;
+                    progress.Processed = 0;
+                    progress.Percent = 100;
+                });
                 return new ValveRuleBatchSummary();
             }
 
@@ -1328,6 +1484,17 @@ END;";
             {
                 Total = entities.Count
             };
+            var totalBatchCount = (int)Math.Ceiling(entities.Count / (double)batchSize);
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "准备调用规则服务";
+                progress.Message = $"共 {entities.Count} 条，预计 {totalBatchCount} 批";
+                progress.Total = entities.Count;
+                progress.TotalBatchCount = totalBatchCount;
+                progress.Percent = 2;
+            });
 
             for (var i = 0; i < entities.Count; i += batchSize)
             {
@@ -1340,6 +1507,20 @@ END;";
                 }
 
                 summary.BatchCount++;
+                PublishValveRuleTaskProgress(progressTaskId, progress =>
+                {
+                    progress.Status = "running";
+                    progress.Stage = "调用规则服务";
+                    progress.Message = $"正在处理第 {summary.BatchCount}/{totalBatchCount} 批";
+                    progress.Total = summary.Total;
+                    progress.Processed = Math.Min(i, summary.Total);
+                    progress.Succeeded = summary.Succeeded;
+                    progress.Failed = summary.Failed;
+                    progress.Updated = summary.Updated;
+                    progress.BatchCount = summary.BatchCount;
+                    progress.TotalBatchCount = totalBatchCount;
+                    progress.LogFiles = new List<string>(summary.LogFiles);
+                });
 
                 var entityMap = batchEntities.ToDictionary(p => p.Id, p => p);
                 var updatedEntities = new List<WZ_OrderCycleBase>();
@@ -1429,9 +1610,40 @@ END;";
                     await context.SaveChangesAsync(cancellationToken);
                     summary.Updated += updatedEntities.Count;
                 }
+
+                PublishValveRuleTaskProgress(progressTaskId, progress =>
+                {
+                    progress.Status = "running";
+                    progress.Stage = "批次完成";
+                    progress.Message = $"第 {summary.BatchCount}/{totalBatchCount} 批完成";
+                    progress.Total = summary.Total;
+                    progress.Processed = Math.Min(i + batchEntities.Count, summary.Total);
+                    progress.Succeeded = summary.Succeeded;
+                    progress.Failed = summary.Failed;
+                    progress.Updated = summary.Updated;
+                    progress.BatchCount = summary.BatchCount;
+                    progress.TotalBatchCount = totalBatchCount;
+                    progress.LogFiles = new List<string>(summary.LogFiles);
+                });
             }
 
             summary.Failed = Math.Max(summary.Failed, summary.Total - summary.Succeeded);
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "success";
+                progress.Stage = "执行完成";
+                progress.Message = $"智能体优化完成，成功 {summary.Succeeded} 条，更新 {summary.Updated} 条";
+                progress.Total = summary.Total;
+                progress.Processed = summary.Total;
+                progress.Succeeded = summary.Succeeded;
+                progress.Failed = summary.Failed;
+                progress.Updated = summary.Updated;
+                progress.BatchCount = summary.BatchCount;
+                progress.TotalBatchCount = totalBatchCount;
+                progress.LogFiles = new List<string>(summary.LogFiles);
+                progress.Percent = 100;
+            });
 
             return summary;
         }
@@ -1469,6 +1681,8 @@ END;";
                 requests.Add(new ValveRuleRequest
                 {
                     Id = item.Id.ToString(),
+                    SourceScheduleDate = item.ScheduleDate,
+                    NeedSchedulePrediction = !item.ScheduleDate.HasValue,
                     OrderApprovedDate = item.OrderApprovedDate,
                     ReplyDeliveryDate = item.ReplyDeliveryDate,
                     RequestedDeliveryDate = item.RequestedDeliveryDate,
@@ -2345,6 +2559,12 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         {
             [JsonProperty("id")]
             public string Id { get; set; }
+
+            [JsonProperty("SourceScheduleDate")]
+            public DateTime? SourceScheduleDate { get; set; }
+
+            [JsonProperty("NeedSchedulePrediction")]
+            public bool NeedSchedulePrediction { get; set; }
 
             [JsonProperty("OrderApprovedDate")]
             public DateTime? OrderApprovedDate { get; set; }

@@ -15,7 +15,15 @@ namespace HDPro.CY.Order.IServices
     {
         Task<int> SyncFromOrderTrackingAsync(DateTime? approvedDateStart, DateTime? approvedDateEnd, CancellationToken cancellationToken = default);
 
-        Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(CancellationToken cancellationToken = default);
+        Task<ValveRuleBatchSummary> BatchCallValveRuleServiceAsync(
+            CancellationToken cancellationToken = default,
+            string progressTaskId = null);
+
+        ValveRuleTaskProgress CreateValveRuleTaskProgress(string taskId);
+
+        ValveRuleTaskProgress GetValveRuleTaskProgress(string taskId);
+
+        ValveRuleTaskProgress MarkValveRuleTaskProgressFailed(string taskId, string message);
 
         Task<int> FillValveCategoryByRuleAsync(int batchSize = 1000);
 
@@ -67,6 +75,43 @@ namespace HDPro.CY.Order.IServices
         /// 规则服务返回的日志文件路径集合
         /// </summary>
         public List<string> LogFiles { get; set; } = new List<string>();
+    }
+
+    public sealed class ValveRuleTaskProgress
+    {
+        public string TaskId { get; set; }
+
+        public string Status { get; set; }
+
+        public string Stage { get; set; }
+
+        public string Message { get; set; }
+
+        public int Total { get; set; }
+
+        public int Processed { get; set; }
+
+        public int Succeeded { get; set; }
+
+        public int Failed { get; set; }
+
+        public int Updated { get; set; }
+
+        public int BatchCount { get; set; }
+
+        public int TotalBatchCount { get; set; }
+
+        public int Percent { get; set; }
+
+        public List<string> LogFiles { get; set; } = new List<string>();
+
+        public string Error { get; set; }
+
+        public DateTime StartedAt { get; set; }
+
+        public DateTime UpdatedAt { get; set; }
+
+        public DateTime? FinishedAt { get; set; }
     }
 
     public sealed class AssignedProductionLineBatchSummary

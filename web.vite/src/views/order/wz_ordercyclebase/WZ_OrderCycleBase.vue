@@ -69,11 +69,22 @@
                    :status="progressStatus"
                    stroke-width="14"></el-progress>
       <el-descriptions :column="1" border>
+        <el-descriptions-item label="状态">{{ progressStatusText }}</el-descriptions-item>
+        <el-descriptions-item label="阶段">{{ progressSummary.stage || '-' }}</el-descriptions-item>
         <el-descriptions-item label="总数">{{ progressSummary.total }}</el-descriptions-item>
+        <el-descriptions-item label="已处理">{{ progressSummary.processed }}</el-descriptions-item>
         <el-descriptions-item label="成功">{{ progressSummary.succeeded }}</el-descriptions-item>
         <el-descriptions-item label="失败">{{ progressSummary.failed }}</el-descriptions-item>
         <el-descriptions-item label="已更新">{{ progressSummary.updated }}</el-descriptions-item>
-        <el-descriptions-item label="分批次数">{{ progressSummary.batchCount }}</el-descriptions-item>
+        <el-descriptions-item label="分批进度">
+          {{ progressSummary.batchCount }} / {{ progressSummary.totalBatchCount || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="progressSummary.message" label="结果">
+          {{ progressSummary.message }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="progressSummary.error" label="异常">
+          {{ progressSummary.error }}
+        </el-descriptions-item>
         <el-descriptions-item v-if="progressSummary.logFiles.length" label="日志">
           <div class="log-list">
             <div v-for="(log, index) in progressSummary.logFiles" :key="index">{{ log }}</div>
@@ -117,7 +128,7 @@
 <script setup lang="jsx">
 import extend from "@/extension/order//wz_ordercyclebase/WZ_OrderCycleBase.jsx";
 import viewOptions from './WZ_OrderCycleBase/options.js'
-import { ref, reactive, getCurrentInstance, computed } from "vue";
+import { ref, reactive, getCurrentInstance, computed, onBeforeUnmount } from "vue";
 import { ElMessage } from 'element-plus'
 const grid = ref(null);
 const { proxy } = getCurrentInstance()
@@ -136,19 +147,32 @@ const syncForm = reactive({
   approvedDateRange: []
 });
 const progressSummary = reactive({
+  taskId: '',
+  status: '',
+  stage: '',
+  message: '',
   total: 0,
+  processed: 0,
   succeeded: 0,
   failed: 0,
   updated: 0,
   batchCount: 0,
-  logFiles: []
+  totalBatchCount: 0,
+  percent: 0,
+  logFiles: [],
+  error: '',
+  updatedAt: ''
 });
+let optimizePollTimer = null;
 
 const progressPercent = computed(() => {
+  if (progressSummary.percent > 0) {
+    return Math.min(100, progressSummary.percent);
+  }
   if (progressSummary.total === 0) {
     return ruleLoading.value ? 20 : 0;
   }
-  const processed = progressSummary.succeeded + progressSummary.failed;
+  const processed = progressSummary.processed || progressSummary.succeeded + progressSummary.failed;
   if (processed <= 0) {
     return ruleLoading.value ? 20 : 0;
   }
@@ -156,13 +180,29 @@ const progressPercent = computed(() => {
 });
 
 const progressStatus = computed(() => {
-  if (ruleLoading.value) {
+  if (progressSummary.status === 'failed') {
+    return 'exception';
+  }
+  if (ruleLoading.value && progressSummary.status !== 'success') {
     return 'warning';
   }
   if (progressSummary.failed > 0 && progressSummary.succeeded === 0) {
     return 'exception';
   }
   return 'success';
+});
+
+const progressStatusText = computed(() => {
+  if (progressSummary.status === 'success') {
+    return '已完成';
+  }
+  if (progressSummary.status === 'failed') {
+    return '失败';
+  }
+  if (ruleLoading.value || progressSummary.status === 'running') {
+    return '执行中';
+  }
+  return '未开始';
 });
 
 let gridRef;//对应[表.jsx]文件中this.使用方式一样
@@ -218,12 +258,21 @@ const getDefaultApprovedDateRange = () => {
 };
 
 const resetProgressSummary = () => {
+  progressSummary.taskId = '';
+  progressSummary.status = '';
+  progressSummary.stage = '';
+  progressSummary.message = '';
   progressSummary.total = 0;
+  progressSummary.processed = 0;
   progressSummary.succeeded = 0;
   progressSummary.failed = 0;
   progressSummary.updated = 0;
   progressSummary.batchCount = 0;
+  progressSummary.totalBatchCount = 0;
+  progressSummary.percent = 0;
   progressSummary.logFiles = [];
+  progressSummary.error = '';
+  progressSummary.updatedAt = '';
 };
 
 const pickValue = (source, ...keys) => {
@@ -246,25 +295,91 @@ const toNumber = (value) => {
 const normalizeOptimizeData = (response) => {
   const data = response?.data ?? response?.Data ?? response;
   return {
+    taskId: pickValue(data, 'taskId', 'TaskId') || '',
+    status: pickValue(data, 'status', 'Status') || '',
+    stage: pickValue(data, 'stage', 'Stage') || '',
+    message: pickValue(data, 'message', 'Message') || response?.message || response?.Message || '',
     total: toNumber(pickValue(data, 'total', 'Total')),
+    processed: toNumber(pickValue(data, 'processed', 'Processed')),
     succeeded: toNumber(pickValue(data, 'succeeded', 'Succeeded')),
     failed: toNumber(pickValue(data, 'failed', 'Failed')),
     updated: toNumber(pickValue(data, 'updated', 'Updated')),
     batchCount: toNumber(pickValue(data, 'batchCount', 'BatchCount')),
-    logFiles: pickValue(data, 'logFiles', 'LogFiles') || []
+    totalBatchCount: toNumber(pickValue(data, 'totalBatchCount', 'TotalBatchCount')),
+    percent: toNumber(pickValue(data, 'percent', 'Percent')),
+    logFiles: pickValue(data, 'logFiles', 'LogFiles') || [],
+    error: pickValue(data, 'error', 'Error') || '',
+    updatedAt: pickValue(data, 'updatedAt', 'UpdatedAt') || ''
   };
 };
 
 const updateProgressSummary = (summary) => {
+  progressSummary.taskId = summary.taskId || progressSummary.taskId;
+  progressSummary.status = summary.status || progressSummary.status;
+  progressSummary.stage = summary.stage || progressSummary.stage;
+  progressSummary.message = summary.message || progressSummary.message;
   progressSummary.total = summary.total;
+  progressSummary.processed = summary.processed;
   progressSummary.succeeded = summary.succeeded;
   progressSummary.failed = summary.failed;
   progressSummary.updated = summary.updated;
   progressSummary.batchCount = summary.batchCount;
+  progressSummary.totalBatchCount = summary.totalBatchCount;
+  progressSummary.percent = summary.percent;
   progressSummary.logFiles = Array.isArray(summary.logFiles)
     ? summary.logFiles
     : [summary.logFiles].filter(Boolean);
+  progressSummary.error = summary.error || '';
+  progressSummary.updatedAt = summary.updatedAt || '';
 };
+
+const clearOptimizePoll = () => {
+  if (optimizePollTimer) {
+    clearInterval(optimizePollTimer);
+    optimizePollTimer = null;
+  }
+};
+
+const finishOptimizeTask = (summary) => {
+  clearOptimizePoll();
+  ruleLoading.value = false;
+  updateProgressSummary(summary);
+  refreshGrid();
+
+  if (summary.status === 'failed') {
+    ElMessage.error(summary.error || summary.message || '智能体优化失败');
+    return;
+  }
+
+  const successMsg = `优化完成，成功 ${summary.succeeded} 条，更新 ${summary.updated} 条`;
+  ElMessage.success(summary.message || successMsg);
+};
+
+const pollOptimizeProgress = async (taskId) => {
+  if (!taskId) {
+    return;
+  }
+
+  const response = await proxy.http.post(
+    `/api/WZ_OrderCycleBase/valve-rule-service-task-progress?taskId=${taskId}`,
+    {},
+    false
+  );
+  const status = response?.status ?? response?.Status;
+  if (status === false) {
+    return;
+  }
+
+  const summary = normalizeOptimizeData(response);
+  updateProgressSummary(summary);
+  if (summary.status === 'success' || summary.status === 'failed') {
+    finishOptimizeTask(summary);
+  }
+};
+
+onBeforeUnmount(() => {
+  clearOptimizePoll();
+});
 
 const normalizeInitializeData = (response) => {
   const data = response?.data ?? response?.Data ?? {};
@@ -391,29 +506,43 @@ const handleOptimize = async () => {
     return;
   }
 
+  clearOptimizePoll();
   resetProgressSummary();
   progressVisible.value = true;
   ruleLoading.value = true;
 
   try {
-    const response = await proxy.http.post('/api/WZ_OrderCycleBase/batch-call-valve-rule-service');
+    const response = await proxy.http.post('/api/WZ_OrderCycleBase/start-valve-rule-service-task', {}, false);
     const status = response?.status ?? response?.Status;
     if (status === false) {
       ElMessage.error(response?.message || response?.Message || '智能体优化失败');
+      ruleLoading.value = false;
       refreshGrid();
       return;
     }
 
-    updateProgressSummary(normalizeOptimizeData(response));
-    refreshGrid();
+    const summary = normalizeOptimizeData(response);
+    updateProgressSummary(summary);
+    const taskId = summary.taskId || progressSummary.taskId;
+    if (!taskId) {
+      ruleLoading.value = false;
+      ElMessage.error('智能体优化任务启动失败：未返回任务编号');
+      return;
+    }
 
-    const successMsg = `优化完成，成功 ${progressSummary.succeeded} 条，更新 ${progressSummary.updated} 条`;
-    ElMessage.success(response?.message || response?.Message || successMsg);
+    await pollOptimizeProgress(taskId);
+    if (!ruleLoading.value) {
+      return;
+    }
+
+    optimizePollTimer = setInterval(() => {
+      pollOptimizeProgress(taskId).catch(() => {});
+    }, 1000);
   } catch (error) {
+    clearOptimizePoll();
+    ruleLoading.value = false;
     ElMessage.error('智能体优化异常');
     refreshGrid();
-  } finally {
-    ruleLoading.value = false;
   }
 };
 
