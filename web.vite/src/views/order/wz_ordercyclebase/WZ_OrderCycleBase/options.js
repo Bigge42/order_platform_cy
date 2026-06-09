@@ -2,6 +2,32 @@
 // *Contact：461857658@qq.com
 // *代码由框架生成,任何更改都可能导致被代码生成器覆盖
 export default function(){
+    const isSundayCapacityDate = (value) => {
+        if (!value) {
+            return false;
+        }
+
+        const text = String(value).slice(0, 10);
+        const match = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
+        if (match) {
+            const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+            return date.getDay() === 0;
+        }
+
+        const date = new Date(value);
+        return !Number.isNaN(date.getTime()) && date.getDay() === 0;
+    };
+    const getCapacityScheduleDateCellStyle = ({ CapacityScheduleDateOverThreshold, CapacityScheduleDate }) => {
+        if (CapacityScheduleDateOverThreshold) {
+            return {color:'#d03050',fontWeight:'700',backgroundColor:'#fff1f0'};
+        }
+
+        if (isSundayCapacityDate(CapacityScheduleDate)) {
+            return {color:'#8c5a00',fontWeight:'700',backgroundColor:'#fff7d6'};
+        }
+
+        return {};
+    };
     const table = {
         key: 'Id',
         footer: "Foots",
@@ -51,6 +77,10 @@ export default function(){
                        {field:'SpecialProduct',title:'特品',type:'string',width:180,align:'left'},
                        {field:'PurchaseFlag',title:'外购标志',type:'string',width:110,align:'left'},
                        {field:'AssignedProductionLine',title:'产线',type:'string',width:110,align:'left'}];
+    const capacityScheduleDateColumn = columns.find(column => column.field === 'CapacityScheduleDate');
+    if (capacityScheduleDateColumn) {
+        capacityScheduleDateColumn.cellStyle = getCapacityScheduleDateCellStyle;
+    }
     const detail ={columns:[]};
     const details = [];
 

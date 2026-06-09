@@ -214,6 +214,11 @@ namespace HDPro.CY.Order.IServices
         public int SaturdayReserveCount { get; set; }
 
         /// <summary>
+        /// Sunday 120% reserve capacity count.
+        /// </summary>
+        public int SundayReserveCount { get; set; }
+
+        /// <summary>
         /// 区间内全部超过 120% 后均匀摊排的订单数
         /// </summary>
         public int BalancedOverflowCount { get; set; }

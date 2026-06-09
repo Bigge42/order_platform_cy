@@ -1828,18 +1828,20 @@ function formatExportQty(value){
 }
 
 function buildProductionOutputMatrixRows(days){
-  const headerDate = [csvCell('阀体种类'), csvCell('生产线'), ...days.map(d => csvCell(fmtYMD(d)))]
-  const headerWeek = [csvCell(''), csvCell(''), ...days.map(d => csvCell(fullWeekdayText(d)))]
+  const headerDate = [csvCell('阀体种类'), csvCell('生产线'), csvCell('阈值'), ...days.map(d => csvCell(fmtYMD(d)))]
+  const headerWeek = [csvCell(''), csvCell(''), csvCell(''), ...days.map(d => csvCell(fullWeekdayText(d)))]
   const bodyRows = []
 
   for (const cat of state.categories || []) {
     const valve = cat.name
     for (const line of cat.lines || []) {
+      const threshold = state.thresholds?.[valve]?.[line]
+      const thresholdValue = typeof threshold === 'number' ? threshold : 20
       const values = days.map((_, index) => {
         const value = state.data?.[valve]?.[line]?.[index] ?? 0
         return formatExportQty(value)
       })
-      bodyRows.push([csvCell(valve), csvCell(line), ...values].join(','))
+      bodyRows.push([csvCell(valve), csvCell(line), csvCell(formatExportQty(thresholdValue)), ...values].join(','))
     }
   }
 

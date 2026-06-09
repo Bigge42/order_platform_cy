@@ -193,13 +193,24 @@ namespace HDPro.CY.Order.Services
                     var value = property.GetValue(row);
                     SetOrderCycleBaseCellValue(cell, value, exportColumn.Type);
 
-                    if (string.Equals(exportColumn.Field, nameof(WZ_OrderCycleBase.CapacityScheduleDate), StringComparison.OrdinalIgnoreCase)
-                        && row.CapacityScheduleDateOverThreshold)
+                    if (!string.Equals(exportColumn.Field, nameof(WZ_OrderCycleBase.CapacityScheduleDate), StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (row.CapacityScheduleDateOverThreshold)
                     {
                         cell.Style.Font.Color.SetColor(Color.FromArgb(208, 48, 80));
                         cell.Style.Font.Bold = true;
                         cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
                         cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 241, 240));
+                    }
+                    else if (IsSunday(row.CapacityScheduleDate))
+                    {
+                        cell.Style.Font.Color.SetColor(Color.FromArgb(140, 90, 0));
+                        cell.Style.Font.Bold = true;
+                        cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 247, 214));
                     }
                 }
             }
@@ -1232,6 +1243,9 @@ END;";
                             break;
                         case CapacityScheduleMode.SaturdayReserve:
                             summary.SaturdayReserveCount++;
+                            break;
+                        case CapacityScheduleMode.SundayReserve:
+                            summary.SundayReserveCount++;
                             break;
                         case CapacityScheduleMode.BalancedOverflow:
                             summary.BalancedOverflowCount++;
@@ -2273,6 +2287,9 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         }
 
         private const decimal DailyReserveCapacityRatio = 1.2M;
+        private const int LongDeliveryGapThresholdDays = 35;
+        private const int ReplyLeadWindowMinDays = 25;
+        private const int ReplyLeadWindowMaxDays = 35;
 
         private static CapacityScheduleDecision ResolveCapacityScheduleDate(
             OrderCapacityCandidate order,
@@ -2310,7 +2327,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 endDate,
                 quantity,
                 1M,
-                _ => true);
+                IsWorkday);
             if (normalAttempt.CapacityDate.HasValue)
             {
                 var mode = normalAttempt.CapacityDate.Value == targetDate.Date
@@ -2328,7 +2345,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 endDate,
                 quantity,
                 DailyReserveCapacityRatio,
-                date => date.DayOfWeek != DayOfWeek.Saturday);
+                IsWorkday);
             if (dailyReserveAttempt.CapacityDate.HasValue)
             {
                 return CapacityScheduleDecision.Success(dailyReserveAttempt.CapacityDate.Value, CapacityScheduleMode.DailyReserve);
@@ -2349,6 +2366,21 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Success(saturdayReserveAttempt.CapacityDate.Value, CapacityScheduleMode.SaturdayReserve);
             }
 
+            var sundayReserveAttempt = TryFindLatestAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                startDate,
+                endDate,
+                quantity,
+                DailyReserveCapacityRatio,
+                IsSunday);
+            if (sundayReserveAttempt.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(sundayReserveAttempt.CapacityDate.Value, CapacityScheduleMode.SundayReserve);
+            }
+
             var balancedAttempt = TryAssignBalancedOverflowDate(
                 dates,
                 capacityMap,
@@ -2366,7 +2398,24 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 normalAttempt.FailureReason,
                 dailyReserveAttempt.FailureReason,
                 saturdayReserveAttempt.FailureReason,
+                sundayReserveAttempt.FailureReason,
                 balancedAttempt.FailureReason));
+        }
+
+        private static bool IsWorkday(DateTime date)
+        {
+            return date.DayOfWeek != DayOfWeek.Saturday
+                && date.DayOfWeek != DayOfWeek.Sunday;
+        }
+
+        private static bool IsSunday(DateTime? date)
+        {
+            return date.HasValue && IsSunday(date.Value);
+        }
+
+        private static bool IsSunday(DateTime date)
+        {
+            return date.DayOfWeek == DayOfWeek.Sunday;
         }
 
         private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
@@ -2380,7 +2429,20 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             if (endDate < startDate)
             {
-                startDate = endDate;
+                endDate = startDate;
+                return true;
+            }
+
+            if ((endDate - startDate).TotalDays > LongDeliveryGapThresholdDays)
+            {
+                var targetStartDate = endDate.AddDays(-ReplyLeadWindowMaxDays);
+                var targetEndDate = endDate.AddDays(-ReplyLeadWindowMinDays);
+
+                if (targetEndDate >= startDate)
+                {
+                    startDate = targetStartDate > startDate ? targetStartDate : startDate;
+                    endDate = targetEndDate;
+                }
             }
 
             return true;
@@ -2612,6 +2674,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             DeliveryAdjusted,
             DailyReserve,
             SaturdayReserve,
+            SundayReserve,
             BalancedOverflow
         }
 
