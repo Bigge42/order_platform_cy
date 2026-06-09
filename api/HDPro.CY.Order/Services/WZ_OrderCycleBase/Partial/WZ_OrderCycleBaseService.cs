@@ -442,12 +442,25 @@ namespace HDPro.CY.Order.Services
         /// <summary>
         /// 完整执行排产初始化链路，确保规则服务、品类、产线、优化日期和预排产输出同步在同一次操作内闭环。
         /// </summary>
-        public async Task<InitializeSchedulingSummary> InitializeSchedulingAsync(int batchSize = 1000, CancellationToken cancellationToken = default)
+        public async Task<InitializeSchedulingSummary> InitializeSchedulingAsync(
+            int batchSize = 1000,
+            CancellationToken cancellationToken = default,
+            string progressTaskId = null)
         {
             if (batchSize <= 0)
             {
                 batchSize = 1000;
             }
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "调用规则服务";
+                progress.Message = "正在计算标准交货日期和排产日期";
+                progress.Total = 6;
+                progress.Processed = 0;
+                progress.Percent = 5;
+            });
 
             var summary = new InitializeSchedulingSummary
             {
@@ -455,14 +468,67 @@ namespace HDPro.CY.Order.Services
             };
             ClearOrderCycleChangeTracker();
 
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "回填阀门品类";
+                progress.Message = "正在按规则补齐阀门品类";
+                progress.Total = 6;
+                progress.Processed = 1;
+                progress.Percent = 30;
+            });
             summary.ValveCategoryUpdated = await FillValveCategoryByRuleAsync(batchSize);
             ClearOrderCycleChangeTracker();
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "分配产线";
+                progress.Message = "正在按规则分配产线";
+                progress.Total = 6;
+                progress.Processed = 2;
+                progress.Updated = summary.ValveCategoryUpdated;
+                progress.Percent = 45;
+            });
             summary.AssignedProductionLine = await BatchAssignProductionLineByRuleAsync(batchSize, cancellationToken);
             ClearOrderCycleChangeTracker();
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "产能排产";
+                progress.Message = "正在按产线产能池计算排产优化日期";
+                progress.Total = 6;
+                progress.Processed = 3;
+                progress.Updated = summary.ValveCategoryUpdated + (summary.AssignedProductionLine?.Updated ?? 0);
+                progress.Percent = 60;
+            });
             summary.CapacitySchedule = await CalculateCapacityScheduleDateAsync(cancellationToken);
             ClearOrderCycleChangeTracker();
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "同步预排产输出";
+                progress.Message = "正在同步预排产输出数据";
+                progress.Total = 6;
+                progress.Processed = 4;
+                progress.Updated = summary.CapacitySchedule?.Updated ?? 0;
+                progress.Percent = 78;
+            });
             summary.PreProductionOutputSynced = await SyncPreProductionOutputAsync(cancellationToken);
             ClearOrderCycleChangeTracker();
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "running";
+                progress.Stage = "收尾检查";
+                progress.Message = "正在检查未补齐数据和异常提示";
+                progress.Total = 6;
+                progress.Processed = 5;
+                progress.Updated = summary.CapacitySchedule?.Updated ?? 0;
+                progress.Percent = 92;
+            });
             summary.RemainingNonBjBlankCapacityScheduleDate = await CountNonBjBlankCapacityScheduleDateAsync(cancellationToken);
 
             if (summary.ValveRule?.Failed > 0)
@@ -489,6 +555,21 @@ namespace HDPro.CY.Order.Services
             {
                 summary.Warnings.Add($"非 BJ 物料排产优化日期仍为空 {summary.RemainingNonBjBlankCapacityScheduleDate} 条");
             }
+
+            PublishValveRuleTaskProgress(progressTaskId, progress =>
+            {
+                progress.Status = "success";
+                progress.Stage = "初始化完成";
+                progress.Message = summary.Warnings.Count > 0
+                    ? $"排产初始化完成，仍有需处理项：{string.Join("；", summary.Warnings)}"
+                    : "排产初始化完成";
+                progress.Total = 6;
+                progress.Processed = 6;
+                progress.Succeeded = 6;
+                progress.Failed = 0;
+                progress.Updated = summary.CapacitySchedule?.Updated ?? 0;
+                progress.Percent = 100;
+            });
 
             return summary;
         }
@@ -1351,6 +1432,49 @@ END;";
             });
         }
 
+        public ValveRuleTaskProgress CreateInitializeSchedulingTaskProgress(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                taskId = Guid.NewGuid().ToString("N");
+            }
+
+            var now = DateTime.Now;
+            var progress = new ValveRuleTaskProgress
+            {
+                TaskId = taskId,
+                Status = "running",
+                Stage = "等待开始",
+                Message = "排产初始化任务已创建",
+                Total = 6,
+                Processed = 0,
+                Percent = 1,
+                StartedAt = now,
+                UpdatedAt = now
+            };
+
+            ValveRuleTaskProgressStore[taskId] = progress;
+            return CloneValveRuleTaskProgress(progress);
+        }
+
+        public ValveRuleTaskProgress GetInitializeSchedulingTaskProgress(string taskId)
+        {
+            return GetValveRuleTaskProgress(taskId);
+        }
+
+        public ValveRuleTaskProgress MarkInitializeSchedulingTaskProgressFailed(string taskId, string message)
+        {
+            return PublishValveRuleTaskProgress(taskId, progress =>
+            {
+                progress.Status = "failed";
+                progress.Stage = "执行失败";
+                progress.Message = string.IsNullOrWhiteSpace(message) ? "排产初始化失败" : message;
+                progress.Error = message;
+                progress.FinishedAt = DateTime.Now;
+                progress.Percent = progress.Percent > 0 ? progress.Percent : 100;
+            });
+        }
+
         private static ValveRuleTaskProgress PublishValveRuleTaskProgress(string taskId, Action<ValveRuleTaskProgress> update)
         {
             if (string.IsNullOrWhiteSpace(taskId) || update == null)
@@ -2131,6 +2255,23 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return index < dates.Count ? index : -1;
         }
 
+        private static int FindLastDateIndex(List<DateTime> dates, DateTime targetDate)
+        {
+            if (dates == null || dates.Count == 0)
+            {
+                return -1;
+            }
+
+            var index = dates.BinarySearch(targetDate);
+            if (index >= 0)
+            {
+                return index;
+            }
+
+            index = ~index - 1;
+            return index >= 0 ? index : -1;
+        }
+
         private const decimal DailyReserveCapacityRatio = 1.2M;
 
         private static CapacityScheduleDecision ResolveCapacityScheduleDate(
@@ -2160,15 +2301,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
-            var targetAttempt = targetDate >= startDate && targetDate <= endDate
-                ? TryAssignCapacityDate(capacityMap, cat, line, targetDate, quantity, 1M)
-                : CapacityAssignAttempt.Fail(CapacityFailureReasons.OutOfCapacityWindow);
-            if (targetAttempt.CapacityDate.HasValue)
-            {
-                return CapacityScheduleDecision.Success(targetAttempt.CapacityDate.Value, CapacityScheduleMode.NormalCapacity);
-            }
-
-            var adjustedAttempt = TryFindFirstAssignableDate(
+            var normalAttempt = TryFindLatestAssignableDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2178,12 +2311,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 quantity,
                 1M,
                 _ => true);
-            if (adjustedAttempt.CapacityDate.HasValue)
+            if (normalAttempt.CapacityDate.HasValue)
             {
-                return CapacityScheduleDecision.Success(adjustedAttempt.CapacityDate.Value, CapacityScheduleMode.DeliveryAdjusted);
+                var mode = normalAttempt.CapacityDate.Value == targetDate.Date
+                    ? CapacityScheduleMode.NormalCapacity
+                    : CapacityScheduleMode.DeliveryAdjusted;
+                return CapacityScheduleDecision.Success(normalAttempt.CapacityDate.Value, mode);
             }
 
-            var dailyReserveAttempt = TryFindFirstAssignableDate(
+            var dailyReserveAttempt = TryFindLatestAssignableDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2198,7 +2334,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Success(dailyReserveAttempt.CapacityDate.Value, CapacityScheduleMode.DailyReserve);
             }
 
-            var saturdayReserveAttempt = TryFindFirstAssignableDate(
+            var saturdayReserveAttempt = TryFindLatestAssignableDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2227,8 +2363,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             }
 
             return CapacityScheduleDecision.Fail(PickFailureReason(
-                targetAttempt.FailureReason,
-                adjustedAttempt.FailureReason,
+                normalAttempt.FailureReason,
                 dailyReserveAttempt.FailureReason,
                 saturdayReserveAttempt.FailureReason,
                 balancedAttempt.FailureReason));
@@ -2236,9 +2371,9 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
         private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
         {
-            startDate = order.ScheduleDate?.Date ?? DateTime.MinValue;
+            startDate = order.StandardDeliveryDate?.Date ?? DateTime.MinValue;
             endDate = order.ReplyDeliveryDate?.Date ?? DateTime.MinValue;
-            if (!order.ScheduleDate.HasValue || !order.ReplyDeliveryDate.HasValue)
+            if (!order.StandardDeliveryDate.HasValue || !order.ReplyDeliveryDate.HasValue)
             {
                 return false;
             }
@@ -2289,7 +2424,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             dates.Sort();
         }
 
-        private static CapacityAssignAttempt TryFindFirstAssignableDate(
+        private static CapacityAssignAttempt TryFindLatestAssignableDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
             string cat,
@@ -2300,17 +2435,17 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             decimal capacityRatio,
             Func<DateTime, bool> datePredicate)
         {
-            var index = FindFirstDateIndex(dates, startDate.Date);
+            var index = FindLastDateIndex(dates, endDate.Date);
             if (index < 0)
             {
                 return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
             var failureReason = CapacityFailureReasons.ThresholdExceeded;
-            for (var i = index; i < dates.Count; i++)
+            for (var i = index; i >= 0; i--)
             {
                 var date = dates[i].Date;
-                if (date > endDate.Date)
+                if (date < startDate.Date)
                 {
                     break;
                 }
@@ -2400,14 +2535,14 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 }
 
                 var projectedLoadRate = (bucket.Quantity + quantity) / bucket.Threshold.Value;
-                var isEarlierTie = selectedDate.HasValue
+                var isLaterTie = selectedDate.HasValue
                     && selectedLoadRate.HasValue
                     && projectedLoadRate == selectedLoadRate.Value
-                    && date < selectedDate.Value;
+                    && date > selectedDate.Value;
 
                 if (!selectedLoadRate.HasValue
                     || projectedLoadRate < selectedLoadRate.Value
-                    || isEarlierTie)
+                    || isLaterTie)
                 {
                     selectedLoadRate = projectedLoadRate;
                     selectedBucket = bucket;

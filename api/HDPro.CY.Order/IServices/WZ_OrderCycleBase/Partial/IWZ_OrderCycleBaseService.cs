@@ -25,6 +25,12 @@ namespace HDPro.CY.Order.IServices
 
         ValveRuleTaskProgress MarkValveRuleTaskProgressFailed(string taskId, string message);
 
+        ValveRuleTaskProgress CreateInitializeSchedulingTaskProgress(string taskId);
+
+        ValveRuleTaskProgress GetInitializeSchedulingTaskProgress(string taskId);
+
+        ValveRuleTaskProgress MarkInitializeSchedulingTaskProgressFailed(string taskId, string message);
+
         Task<int> FillValveCategoryByRuleAsync(int batchSize = 1000);
 
         Task<AssignedProductionLineBatchSummary> BatchAssignProductionLineByRuleAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
@@ -33,7 +39,10 @@ namespace HDPro.CY.Order.IServices
 
         Task<CapacityScheduleSummary> CalculateCapacityScheduleDateAsync(CancellationToken cancellationToken = default);
 
-        Task<InitializeSchedulingSummary> InitializeSchedulingAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
+        Task<InitializeSchedulingSummary> InitializeSchedulingAsync(
+            int batchSize = 1000,
+            CancellationToken cancellationToken = default,
+            string progressTaskId = null);
 
         Task<SchedulePredictionReceiveSummary> ReceiveSchedulePredictionReviewAsync(
             IReadOnlyCollection<SchedulePredictionReviewReceiveDto> items,

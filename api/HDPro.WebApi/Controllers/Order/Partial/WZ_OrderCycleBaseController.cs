@@ -317,6 +317,65 @@ namespace HDPro.CY.Order.Controllers
         }
 
         /// <summary>
+        /// 启动排产初始化后台任务，前端通过 taskId 轮询进度。
+        /// </summary>
+        [HttpPost("start-initialize-scheduling-task")]
+        [AllowAnonymous]
+        public IActionResult StartInitializeSchedulingTask([FromQuery] int batchSize = 1000)
+        {
+            var taskId = Guid.NewGuid().ToString("N");
+            var progress = Service.CreateInitializeSchedulingTaskProgress(taskId);
+            var scopeFactory = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+
+            _ = Task.Run(async () =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                var service = scope.ServiceProvider.GetRequiredService<IWZ_OrderCycleBaseService>();
+                try
+                {
+                    await service.InitializeSchedulingAsync(batchSize, CancellationToken.None, taskId);
+                }
+                catch (Exception ex)
+                {
+                    service.MarkInitializeSchedulingTaskProgressFailed(taskId, $"排产初始化失败：{ex.Message}");
+                }
+            });
+
+            return JsonNormal(new
+            {
+                status = true,
+                message = "排产初始化任务已启动",
+                data = progress
+            });
+        }
+
+        /// <summary>
+        /// 查询排产初始化后台任务进度。
+        /// </summary>
+        [HttpGet, HttpPost, Route("initialize-scheduling-task-progress")]
+        [AllowAnonymous]
+        public IActionResult GetInitializeSchedulingTaskProgress([FromQuery] string taskId)
+        {
+            var progress = Service.GetInitializeSchedulingTaskProgress(taskId);
+            if (progress == null)
+            {
+                return JsonNormal(new
+                {
+                    status = false,
+                    message = "未找到排产初始化任务进度",
+                    data = (object)null
+                });
+            }
+
+            return JsonNormal(new
+            {
+                status = true,
+                message = progress.Message,
+                data = progress
+            });
+        }
+
+        /// <summary>
         /// 接收 10.101 汇总后的空排产日期预测核对数据。
         /// </summary>
         [HttpPost("receive-schedule-prediction-review")]

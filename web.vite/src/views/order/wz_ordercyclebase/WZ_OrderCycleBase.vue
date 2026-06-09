@@ -59,13 +59,13 @@
 
   <el-dialog v-model="progressVisible"
              class="wz-progress-dialog"
-             title="智能体优化进度"
+             :title="progressDialogTitle"
              width="520px"
              :body-style="{ padding: '16px 20px' }"
              :close-on-click-modal="false">
     <div class="wz-progress-dialog__content">
       <el-progress :percentage="progressPercent"
-                   :indeterminate="ruleLoading && progressSummary.total === 0"
+                   :indeterminate="progressRunning && progressSummary.total === 0"
                    :status="progressStatus"
                    stroke-width="14"></el-progress>
       <el-descriptions :column="1" border>
@@ -93,7 +93,7 @@
       </el-descriptions>
     </div>
     <template #footer>
-      <el-button @click="progressVisible = false" :disabled="ruleLoading">关闭</el-button>
+      <el-button @click="progressVisible = false" :disabled="progressRunning">关闭</el-button>
     </template>
   </el-dialog>
 
@@ -142,6 +142,7 @@ const refreshLoading = ref(false);
 const dictSyncLoading = ref(false);
 const predictionExportLoading = ref(false);
 const progressVisible = ref(false);
+const progressTaskType = ref('');
 const syncDialogVisible = ref(false);
 const syncForm = reactive({
   approvedDateRange: []
@@ -164,17 +165,27 @@ const progressSummary = reactive({
   updatedAt: ''
 });
 let optimizePollTimer = null;
+let initializePollTimer = null;
+
+const progressRunning = computed(() => ruleLoading.value || initLoading.value);
+
+const progressDialogTitle = computed(() => {
+  if (progressTaskType.value === 'initialize') {
+    return '排产初始化进度';
+  }
+  return '智能体优化进度';
+});
 
 const progressPercent = computed(() => {
   if (progressSummary.percent > 0) {
     return Math.min(100, progressSummary.percent);
   }
   if (progressSummary.total === 0) {
-    return ruleLoading.value ? 20 : 0;
+    return progressRunning.value ? 20 : 0;
   }
   const processed = progressSummary.processed || progressSummary.succeeded + progressSummary.failed;
   if (processed <= 0) {
-    return ruleLoading.value ? 20 : 0;
+    return progressRunning.value ? 20 : 0;
   }
   return Math.min(100, Math.round((processed / progressSummary.total) * 100));
 });
@@ -183,7 +194,7 @@ const progressStatus = computed(() => {
   if (progressSummary.status === 'failed') {
     return 'exception';
   }
-  if (ruleLoading.value && progressSummary.status !== 'success') {
+  if (progressRunning.value && progressSummary.status !== 'success') {
     return 'warning';
   }
   if (progressSummary.failed > 0 && progressSummary.succeeded === 0) {
@@ -199,7 +210,7 @@ const progressStatusText = computed(() => {
   if (progressSummary.status === 'failed') {
     return '失败';
   }
-  if (ruleLoading.value || progressSummary.status === 'running') {
+  if (progressRunning.value || progressSummary.status === 'running') {
     return '执行中';
   }
   return '未开始';
@@ -340,6 +351,13 @@ const clearOptimizePoll = () => {
   }
 };
 
+const clearInitializePoll = () => {
+  if (initializePollTimer) {
+    clearInterval(initializePollTimer);
+    initializePollTimer = null;
+  }
+};
+
 const finishOptimizeTask = (summary) => {
   clearOptimizePoll();
   ruleLoading.value = false;
@@ -377,62 +395,46 @@ const pollOptimizeProgress = async (taskId) => {
   }
 };
 
+const finishInitializeTask = (summary) => {
+  clearInitializePoll();
+  initLoading.value = false;
+  updateProgressSummary(summary);
+  refreshGrid();
+
+  if (summary.status === 'failed') {
+    ElMessage.error(summary.error || summary.message || '排产初始化失败');
+    return;
+  }
+
+  ElMessage.success(summary.message || '排产初始化完成');
+};
+
+const pollInitializeProgress = async (taskId) => {
+  if (!taskId) {
+    return;
+  }
+
+  const response = await proxy.http.post(
+    `/api/WZ_OrderCycleBase/initialize-scheduling-task-progress?taskId=${taskId}`,
+    {},
+    false
+  );
+  const status = response?.status ?? response?.Status;
+  if (status === false) {
+    return;
+  }
+
+  const summary = normalizeOptimizeData(response);
+  updateProgressSummary(summary);
+  if (summary.status === 'success' || summary.status === 'failed') {
+    finishInitializeTask(summary);
+  }
+};
+
 onBeforeUnmount(() => {
   clearOptimizePoll();
+  clearInitializePoll();
 });
-
-const normalizeInitializeData = (response) => {
-  const data = response?.data ?? response?.Data ?? {};
-  const warnings = pickValue(data, 'warnings', 'Warnings') || [];
-  const capacitySchedule = pickValue(data, 'capacitySchedule', 'CapacitySchedule') || {};
-  const assignedProductionLine = pickValue(data, 'assignedProductionLine', 'AssignedProductionLine') || {};
-  const valveRule = pickValue(data, 'valveRule', 'ValveRule') || {};
-
-  return {
-    warnings: Array.isArray(warnings) ? warnings : [warnings].filter(Boolean),
-    remainingBlank: toNumber(pickValue(data, 'remainingNonBjBlankCapacityScheduleDate', 'RemainingNonBjBlankCapacityScheduleDate')),
-    capacityUpdated: toNumber(pickValue(capacitySchedule, 'updated', 'Updated')),
-    fallbackScheduleDateCount: toNumber(pickValue(capacitySchedule, 'fallbackScheduleDateCount', 'FallbackScheduleDateCount')),
-    overThresholdCount: toNumber(pickValue(capacitySchedule, 'overThresholdCount', 'OverThresholdCount')),
-    capacityFailed: toNumber(pickValue(capacitySchedule, 'failed', 'Failed')),
-    missingThreshold: toNumber(pickValue(capacitySchedule, 'missingThreshold', 'MissingThreshold')),
-    missingOutput: toNumber(pickValue(capacitySchedule, 'missingProductionOutput', 'MissingProductionOutput')),
-    assignedFailed: toNumber(pickValue(assignedProductionLine, 'failed', 'Failed')),
-    valveRuleFailed: toNumber(pickValue(valveRule, 'failed', 'Failed')),
-    preProductionOutputSynced: toNumber(pickValue(data, 'preProductionOutputSynced', 'PreProductionOutputSynced'))
-  };
-};
-
-const buildInitializeMessage = (summary) => {
-  const parts = [
-    `优化日期更新 ${summary.capacityUpdated} 条`,
-    `排产日期兜底 ${summary.fallbackScheduleDateCount} 条`,
-    `超阈值标红 ${summary.overThresholdCount} 条`,
-    `预排产同步 ${summary.preProductionOutputSynced} 条`
-  ];
-
-  if (summary.remainingBlank > 0) {
-    parts.push(`非BJ仍空 ${summary.remainingBlank} 条`);
-  }
-
-  if (summary.missingThreshold > 0) {
-    parts.push(`阈值缺失 ${summary.missingThreshold} 条`);
-  }
-
-  if (summary.missingOutput > 0) {
-    parts.push(`未命中产能 ${summary.missingOutput} 条`);
-  }
-
-  if (summary.assignedFailed > 0) {
-    parts.push(`产线失败 ${summary.assignedFailed} 条`);
-  }
-
-  if (summary.valveRuleFailed > 0) {
-    parts.push(`规则服务失败 ${summary.valveRuleFailed} 条`);
-  }
-
-  return parts.join('，');
-};
 
 const refreshGrid = () => {
   if (gridRef && gridRef.search) {
@@ -508,6 +510,7 @@ const handleOptimize = async () => {
 
   clearOptimizePoll();
   resetProgressSummary();
+  progressTaskType.value = 'optimize';
   progressVisible.value = true;
   ruleLoading.value = true;
 
@@ -551,29 +554,44 @@ const handleInitialize = async () => {
     return;
   }
 
+  clearInitializePoll();
+  resetProgressSummary();
+  progressTaskType.value = 'initialize';
+  progressVisible.value = true;
   initLoading.value = true;
 
   try {
-    const response = await proxy.http.post('/api/WZ_OrderCycleBase/initialize-scheduling');
-    refreshGrid();
+    const response = await proxy.http.post('/api/WZ_OrderCycleBase/start-initialize-scheduling-task', {}, false);
     const status = response?.status ?? response?.Status;
     if (status === false) {
       ElMessage.error(response?.message || response?.Message || '排产初始化失败');
+      initLoading.value = false;
+      refreshGrid();
       return;
     }
 
-    const summary = normalizeInitializeData(response);
-    const message = response?.message || response?.Message || buildInitializeMessage(summary);
-    if (summary.warnings.length || summary.remainingBlank > 0 || summary.missingThreshold > 0 || summary.missingOutput > 0) {
-      ElMessage.warning(message);
-    } else {
-      ElMessage.success(message || '排产初始化完成');
+    const summary = normalizeOptimizeData(response);
+    updateProgressSummary(summary);
+    const taskId = summary.taskId || progressSummary.taskId;
+    if (!taskId) {
+      initLoading.value = false;
+      ElMessage.error('排产初始化任务启动失败：未返回任务编号');
+      return;
     }
+
+    await pollInitializeProgress(taskId);
+    if (!initLoading.value) {
+      return;
+    }
+
+    initializePollTimer = setInterval(() => {
+      pollInitializeProgress(taskId).catch(() => {});
+    }, 1000);
   } catch (error) {
+    clearInitializePoll();
+    initLoading.value = false;
     ElMessage.error('排产初始化异常');
     refreshGrid();
-  } finally {
-    initLoading.value = false;
   }
 };
 
