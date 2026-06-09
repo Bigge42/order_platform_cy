@@ -27,6 +27,12 @@ namespace HDPro.CY.Order.IServices
 
         Task<InitializeSchedulingSummary> InitializeSchedulingAsync(int batchSize = 1000, CancellationToken cancellationToken = default);
 
+        Task<SchedulePredictionReceiveSummary> ReceiveSchedulePredictionReviewAsync(
+            IReadOnlyCollection<SchedulePredictionReviewReceiveDto> items,
+            CancellationToken cancellationToken = default);
+
+        WebResponseContent ExportSchedulePredictionReview(PageDataOptions pageData);
+
         string GetAssignedProductionLineSql();
     }
 
@@ -184,5 +190,55 @@ namespace HDPro.CY.Order.IServices
         public int RemainingNonBjBlankCapacityScheduleDate { get; set; }
 
         public List<string> Warnings { get; set; } = new List<string>();
+    }
+
+    public sealed class SchedulePredictionReceiveSummary
+    {
+        public int Received { get; set; }
+
+        public int Saved { get; set; }
+
+        public int Skipped { get; set; }
+    }
+
+    public sealed class SchedulePredictionReviewReceiveDto
+    {
+        public long? PredictionResultId { get; set; }
+
+        public int? OrderCycleBaseId { get; set; }
+
+        public string InputFingerprint { get; set; }
+
+        public string RequestBatchNo { get; set; }
+
+        public string ProductName { get; set; }
+
+        public string SpecModel { get; set; }
+
+        public string ValveCategory { get; set; }
+
+        public string NominalDiameter { get; set; }
+
+        public string NominalPressure { get; set; }
+
+        public string ProductionLine { get; set; }
+
+        public int? FixedCycleDays { get; set; }
+
+        public DateTime? PredictedScheduleDate { get; set; }
+
+        public DateTime? StandardDeliveryDate { get; set; }
+
+        public decimal? ConfidenceScore { get; set; }
+
+        public int? MatchedRuleCount { get; set; }
+
+        public string UsedFieldsJson { get; set; }
+
+        public string CandidateSuggestionsJson { get; set; }
+
+        public string FailureReason { get; set; }
+
+        public string FailureMessage { get; set; }
     }
 }

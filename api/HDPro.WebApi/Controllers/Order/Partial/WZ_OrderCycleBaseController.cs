@@ -5,7 +5,11 @@
  */
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Mime;
+using System.Threading;
 using System.Threading.Tasks;
 using HDPro.CY.Order.IServices;
 using HDPro.Core.Utilities;
@@ -250,6 +254,52 @@ namespace HDPro.CY.Order.Controllers
             {
                 return JsonNormal(new WebResponseContent().Error($"排产初始化失败：{ex.Message}"));
             }
+        }
+
+        /// <summary>
+        /// 接收 10.101 汇总后的空排产日期预测核对数据。
+        /// </summary>
+        [HttpPost("receive-schedule-prediction-review")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ReceiveSchedulePredictionReview(
+            [FromBody] List<SchedulePredictionReviewReceiveDto> items,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await Service.ReceiveSchedulePredictionReviewAsync(items, cancellationToken);
+                return JsonNormal(new WebResponseContent().OK("预测核对数据接收完成", result, false));
+            }
+            catch (Exception ex)
+            {
+                return JsonNormal(new WebResponseContent().Error($"预测核对数据接收失败：{ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// 导出排产日期预测核对数据。
+        /// </summary>
+        [HttpPost("export-schedule-prediction-review")]
+        [AllowAnonymous]
+        public IActionResult ExportSchedulePredictionReview([FromBody] PageDataOptions loadData)
+        {
+            var result = Service.ExportSchedulePredictionReview(loadData);
+            if (!result.Status)
+            {
+                return JsonNormal(result);
+            }
+
+            var fullPath = result.Data?.ToString();
+            if (string.IsNullOrWhiteSpace(fullPath) || !System.IO.File.Exists(fullPath))
+            {
+                return JsonNormal(new WebResponseContent().Error("导出文件不存在，请重新导出"));
+            }
+
+            return File(
+                System.IO.File.ReadAllBytes(fullPath),
+                MediaTypeNames.Application.Octet,
+                Path.GetFileName(fullPath)
+            );
         }
     }
 }

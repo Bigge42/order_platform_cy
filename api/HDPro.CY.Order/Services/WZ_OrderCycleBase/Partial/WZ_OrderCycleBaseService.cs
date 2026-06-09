@@ -22,15 +22,18 @@ using HDPro.CY.Order.IServices;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text;
+using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace HDPro.CY.Order.Services
 {
@@ -502,6 +505,472 @@ namespace HDPro.CY.Order.Services
                 .CountAsync(p => !p.CapacityScheduleDate.HasValue
                     && (p.MaterialCode == null || !p.MaterialCode.Trim().ToUpper().StartsWith("BJ")),
                     cancellationToken);
+        }
+
+        /// <summary>
+        /// 接收 10.101 汇总后的空排产日期预测数据，仅写入人工核对表，不参与现有排产逻辑。
+        /// </summary>
+        public async Task<SchedulePredictionReceiveSummary> ReceiveSchedulePredictionReviewAsync(
+            IReadOnlyCollection<SchedulePredictionReviewReceiveDto> items,
+            CancellationToken cancellationToken = default)
+        {
+            var context = _repository?.DbContext
+                ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+            var summary = new SchedulePredictionReceiveSummary
+            {
+                Received = items?.Count ?? 0
+            };
+
+            await EnsureSchedulePredictionReviewTableAsync(context, cancellationToken);
+
+            if (items == null || items.Count == 0)
+            {
+                return summary;
+            }
+
+            var uniqueItems = new Dictionary<string, SchedulePredictionReviewReceiveDto>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items)
+            {
+                var fingerprint = NormalizePredictionText(item?.InputFingerprint);
+                if (string.IsNullOrWhiteSpace(fingerprint))
+                {
+                    summary.Skipped++;
+                    continue;
+                }
+
+                item.InputFingerprint = fingerprint;
+                if (!uniqueItems.ContainsKey(fingerprint))
+                {
+                    uniqueItems[fingerprint] = item;
+                }
+                else
+                {
+                    summary.Skipped++;
+                }
+            }
+
+            if (uniqueItems.Count == 0)
+            {
+                return summary;
+            }
+
+            var table = BuildSchedulePredictionReviewDataTable(uniqueItems.Values);
+            var connection = context.Database.GetDbConnection();
+            if (connection is not SqlConnection sqlConnection)
+            {
+                throw new InvalidOperationException("排产预测核对表增量入库需要 SQL Server 连接");
+            }
+
+            var shouldClose = sqlConnection.State != ConnectionState.Open;
+            if (shouldClose)
+            {
+                await sqlConnection.OpenAsync(cancellationToken);
+            }
+
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                if (transaction.GetDbTransaction() is not SqlTransaction sqlTransaction)
+                {
+                    throw new InvalidOperationException("排产预测核对表增量入库必须使用 SQL Server 事务");
+                }
+
+                var createTempSql = @"
+IF OBJECT_ID('tempdb..#WZ_OrderCycleSchedulePredictionReviewImport') IS NOT NULL
+    DROP TABLE #WZ_OrderCycleSchedulePredictionReviewImport;
+
+CREATE TABLE #WZ_OrderCycleSchedulePredictionReviewImport
+(
+    [PredictionResultId] BIGINT NULL,
+    [OrderCycleBaseId] INT NULL,
+    [InputFingerprint] NVARCHAR(64) NOT NULL,
+    [RequestBatchNo] NVARCHAR(64) NULL,
+    [ProductName] NVARCHAR(200) NULL,
+    [SpecModel] NVARCHAR(200) NULL,
+    [ValveCategory] NVARCHAR(2000) NULL,
+    [NominalDiameter] NVARCHAR(50) NULL,
+    [NominalPressure] NVARCHAR(50) NULL,
+    [ProductionLine] NVARCHAR(50) NULL,
+    [FixedCycleDays] INT NULL,
+    [PredictedScheduleDate] DATE NULL,
+    [StandardDeliveryDate] DATE NULL,
+    [ConfidenceScore] DECIMAL(18,6) NULL,
+    [MatchedRuleCount] INT NULL,
+    [UsedFieldsJson] NVARCHAR(MAX) NULL,
+    [CandidateSuggestionsJson] NVARCHAR(MAX) NULL,
+    [FailureReason] NVARCHAR(200) NULL,
+    [FailureMessage] NVARCHAR(500) NULL
+);";
+
+                await using (var command = new SqlCommand(createTempSql, sqlConnection, sqlTransaction))
+                {
+                    command.CommandTimeout = 0;
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.CheckConstraints, sqlTransaction))
+                {
+                    bulk.DestinationTableName = "#WZ_OrderCycleSchedulePredictionReviewImport";
+                    bulk.BatchSize = table.Rows.Count;
+                    bulk.BulkCopyTimeout = 0;
+                    foreach (DataColumn column in table.Columns)
+                    {
+                        bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+                    }
+
+                    await bulk.WriteToServerAsync(table, cancellationToken);
+                }
+
+                var mergeSql = @"
+CREATE INDEX [IX_WZ_OrderCycleSchedulePredictionReviewImport_Key]
+    ON #WZ_OrderCycleSchedulePredictionReviewImport([InputFingerprint]);
+
+CREATE TABLE #WZ_OrderCycleSchedulePredictionReviewMergeResult([Action] NVARCHAR(10) NOT NULL);
+
+MERGE [dbo].[WZ_OrderCycleSchedulePredictionReview] WITH (HOLDLOCK) AS target
+USING #WZ_OrderCycleSchedulePredictionReviewImport AS source
+ON target.[InputFingerprint] = source.[InputFingerprint]
+WHEN MATCHED THEN UPDATE SET
+    [PredictionResultId] = source.[PredictionResultId],
+    [OrderCycleBaseId] = source.[OrderCycleBaseId],
+    [RequestBatchNo] = source.[RequestBatchNo],
+    [ProductName] = source.[ProductName],
+    [SpecModel] = source.[SpecModel],
+    [ValveCategory] = source.[ValveCategory],
+    [NominalDiameter] = source.[NominalDiameter],
+    [NominalPressure] = source.[NominalPressure],
+    [ProductionLine] = source.[ProductionLine],
+    [FixedCycleDays] = source.[FixedCycleDays],
+    [PredictedScheduleDate] = source.[PredictedScheduleDate],
+    [StandardDeliveryDate] = source.[StandardDeliveryDate],
+    [ConfidenceScore] = source.[ConfidenceScore],
+    [MatchedRuleCount] = source.[MatchedRuleCount],
+    [UsedFieldsJson] = source.[UsedFieldsJson],
+    [CandidateSuggestionsJson] = source.[CandidateSuggestionsJson],
+    [FailureReason] = source.[FailureReason],
+    [FailureMessage] = source.[FailureMessage],
+    [ReviewStatus] = ISNULL(NULLIF(target.[ReviewStatus], N''), N'待核对'),
+    [LastSeenAt] = GETDATE(),
+    [SeenCount] = ISNULL(target.[SeenCount], 0) + 1,
+    [IsActive] = 1
+WHEN NOT MATCHED BY TARGET THEN INSERT
+(
+    [PredictionResultId],
+    [OrderCycleBaseId],
+    [InputFingerprint],
+    [RequestBatchNo],
+    [ProductName],
+    [SpecModel],
+    [ValveCategory],
+    [NominalDiameter],
+    [NominalPressure],
+    [ProductionLine],
+    [FixedCycleDays],
+    [PredictedScheduleDate],
+    [StandardDeliveryDate],
+    [ConfidenceScore],
+    [MatchedRuleCount],
+    [UsedFieldsJson],
+    [CandidateSuggestionsJson],
+    [FailureReason],
+    [FailureMessage],
+    [ReviewStatus],
+    [ReviewRemark],
+    [FirstSeenAt],
+    [LastSeenAt],
+    [SeenCount],
+    [IsActive]
+)
+VALUES
+(
+    source.[PredictionResultId],
+    source.[OrderCycleBaseId],
+    source.[InputFingerprint],
+    source.[RequestBatchNo],
+    source.[ProductName],
+    source.[SpecModel],
+    source.[ValveCategory],
+    source.[NominalDiameter],
+    source.[NominalPressure],
+    source.[ProductionLine],
+    source.[FixedCycleDays],
+    source.[PredictedScheduleDate],
+    source.[StandardDeliveryDate],
+    source.[ConfidenceScore],
+    source.[MatchedRuleCount],
+    source.[UsedFieldsJson],
+    source.[CandidateSuggestionsJson],
+    source.[FailureReason],
+    source.[FailureMessage],
+    N'待核对',
+    NULL,
+    GETDATE(),
+    GETDATE(),
+    1,
+    1
+)
+OUTPUT $action INTO #WZ_OrderCycleSchedulePredictionReviewMergeResult;
+
+SELECT COUNT(1) FROM #WZ_OrderCycleSchedulePredictionReviewMergeResult;";
+
+                await using (var command = new SqlCommand(mergeSql, sqlConnection, sqlTransaction))
+                {
+                    command.CommandTimeout = 0;
+                    var result = await command.ExecuteScalarAsync(cancellationToken);
+                    summary.Saved = Convert.ToInt32(result);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await sqlConnection.CloseAsync();
+                }
+            }
+
+            return summary;
+        }
+
+        /// <summary>
+        /// 导出空排产日期预测核对数据，导出内容不包含订单号、计划跟踪号等订单信息。
+        /// </summary>
+        public WebResponseContent ExportSchedulePredictionReview(PageDataOptions pageData)
+        {
+            var response = new WebResponseContent();
+            try
+            {
+                var context = _repository?.DbContext
+                    ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
+
+                EnsureSchedulePredictionReviewTableAsync(context, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+
+                var list = context.Set<WZ_OrderCycleSchedulePredictionReview>()
+                    .AsNoTracking()
+                    .Where(p => p.IsActive)
+                    .OrderByDescending(p => p.LastSeenAt)
+                    .ThenByDescending(p => p.Id)
+                    .ToList();
+
+                var folder = DateTime.Now.ToString("yyyyMMdd");
+                var savePath = $"Download/ExcelExport/{folder}/".MapPath();
+                var fileName = $"排产日期预测核对{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+                if (!Directory.Exists(savePath))
+                {
+                    Directory.CreateDirectory(savePath);
+                }
+
+                var fullPath = Path.Combine(savePath, fileName);
+                WriteSchedulePredictionReviewExcel(list, fullPath);
+                return response.OK(null, fullPath);
+            }
+            catch (Exception ex)
+            {
+                return response.Error($"导出预测数据失败：{ex.Message}");
+            }
+        }
+
+        private static async Task EnsureSchedulePredictionReviewTableAsync(DbContext context, CancellationToken cancellationToken)
+        {
+            var sql = @"
+IF OBJECT_ID(N'[dbo].[WZ_OrderCycleSchedulePredictionReview]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WZ_OrderCycleSchedulePredictionReview](
+        [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WZ_OrderCycleSchedulePredictionReview] PRIMARY KEY,
+        [PredictionResultId] BIGINT NULL,
+        [OrderCycleBaseId] INT NULL,
+        [InputFingerprint] NVARCHAR(64) NOT NULL,
+        [RequestBatchNo] NVARCHAR(64) NULL,
+        [ProductName] NVARCHAR(200) NULL,
+        [SpecModel] NVARCHAR(200) NULL,
+        [ValveCategory] NVARCHAR(2000) NULL,
+        [NominalDiameter] NVARCHAR(50) NULL,
+        [NominalPressure] NVARCHAR(50) NULL,
+        [ProductionLine] NVARCHAR(50) NULL,
+        [FixedCycleDays] INT NULL,
+        [PredictedScheduleDate] DATE NULL,
+        [StandardDeliveryDate] DATE NULL,
+        [ConfidenceScore] DECIMAL(18,6) NULL,
+        [MatchedRuleCount] INT NULL,
+        [UsedFieldsJson] NVARCHAR(MAX) NULL,
+        [CandidateSuggestionsJson] NVARCHAR(MAX) NULL,
+        [FailureReason] NVARCHAR(200) NULL,
+        [FailureMessage] NVARCHAR(500) NULL,
+        [ReviewStatus] NVARCHAR(50) NOT NULL CONSTRAINT [DF_WZ_OrderCycleSchedulePredictionReview_ReviewStatus] DEFAULT(N'待核对'),
+        [ReviewRemark] NVARCHAR(500) NULL,
+        [FirstSeenAt] DATETIME NOT NULL CONSTRAINT [DF_WZ_OrderCycleSchedulePredictionReview_FirstSeenAt] DEFAULT(GETDATE()),
+        [LastSeenAt] DATETIME NOT NULL CONSTRAINT [DF_WZ_OrderCycleSchedulePredictionReview_LastSeenAt] DEFAULT(GETDATE()),
+        [SeenCount] INT NOT NULL CONSTRAINT [DF_WZ_OrderCycleSchedulePredictionReview_SeenCount] DEFAULT(1),
+        [IsActive] BIT NOT NULL CONSTRAINT [DF_WZ_OrderCycleSchedulePredictionReview_IsActive] DEFAULT(1)
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = N'UX_WZ_OrderCycleSchedulePredictionReview_InputFingerprint'
+      AND object_id = OBJECT_ID(N'dbo.WZ_OrderCycleSchedulePredictionReview')
+)
+BEGIN
+    CREATE UNIQUE INDEX [UX_WZ_OrderCycleSchedulePredictionReview_InputFingerprint]
+        ON [dbo].[WZ_OrderCycleSchedulePredictionReview]([InputFingerprint]);
+END;
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = N'IX_WZ_OrderCycleSchedulePredictionReview_IsActive_LastSeenAt'
+      AND object_id = OBJECT_ID(N'dbo.WZ_OrderCycleSchedulePredictionReview')
+)
+BEGIN
+    CREATE INDEX [IX_WZ_OrderCycleSchedulePredictionReview_IsActive_LastSeenAt]
+        ON [dbo].[WZ_OrderCycleSchedulePredictionReview]([IsActive], [LastSeenAt] DESC);
+END;";
+
+            await context.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+        }
+
+        private static DataTable BuildSchedulePredictionReviewDataTable(IEnumerable<SchedulePredictionReviewReceiveDto> items)
+        {
+            var table = new DataTable();
+            table.Columns.Add("PredictionResultId", typeof(long));
+            table.Columns.Add("OrderCycleBaseId", typeof(int));
+            table.Columns.Add("InputFingerprint", typeof(string));
+            table.Columns.Add("RequestBatchNo", typeof(string));
+            table.Columns.Add("ProductName", typeof(string));
+            table.Columns.Add("SpecModel", typeof(string));
+            table.Columns.Add("ValveCategory", typeof(string));
+            table.Columns.Add("NominalDiameter", typeof(string));
+            table.Columns.Add("NominalPressure", typeof(string));
+            table.Columns.Add("ProductionLine", typeof(string));
+            table.Columns.Add("FixedCycleDays", typeof(int));
+            table.Columns.Add("PredictedScheduleDate", typeof(DateTime));
+            table.Columns.Add("StandardDeliveryDate", typeof(DateTime));
+            table.Columns.Add("ConfidenceScore", typeof(decimal));
+            table.Columns.Add("MatchedRuleCount", typeof(int));
+            table.Columns.Add("UsedFieldsJson", typeof(string));
+            table.Columns.Add("CandidateSuggestionsJson", typeof(string));
+            table.Columns.Add("FailureReason", typeof(string));
+            table.Columns.Add("FailureMessage", typeof(string));
+
+            foreach (var item in items)
+            {
+                var row = table.NewRow();
+                row["PredictionResultId"] = ToDbValue(item.PredictionResultId);
+                row["OrderCycleBaseId"] = ToDbValue(item.OrderCycleBaseId);
+                row["InputFingerprint"] = Truncate(NormalizePredictionText(item.InputFingerprint), 64);
+                row["RequestBatchNo"] = ToDbValue(Truncate(NormalizePredictionText(item.RequestBatchNo), 64));
+                row["ProductName"] = ToDbValue(Truncate(NormalizePredictionText(item.ProductName), 200));
+                row["SpecModel"] = ToDbValue(Truncate(NormalizePredictionText(item.SpecModel), 200));
+                row["ValveCategory"] = ToDbValue(Truncate(NormalizePredictionText(item.ValveCategory), 2000));
+                row["NominalDiameter"] = ToDbValue(Truncate(NormalizePredictionText(item.NominalDiameter), 50));
+                row["NominalPressure"] = ToDbValue(Truncate(NormalizePredictionText(item.NominalPressure), 50));
+                row["ProductionLine"] = ToDbValue(Truncate(NormalizePredictionText(item.ProductionLine), 50));
+                row["FixedCycleDays"] = ToDbValue(item.FixedCycleDays);
+                row["PredictedScheduleDate"] = ToDbValue(item.PredictedScheduleDate?.Date);
+                row["StandardDeliveryDate"] = ToDbValue(item.StandardDeliveryDate?.Date);
+                row["ConfidenceScore"] = ToDbValue(item.ConfidenceScore);
+                row["MatchedRuleCount"] = ToDbValue(item.MatchedRuleCount);
+                row["UsedFieldsJson"] = ToDbValue(NormalizePredictionText(item.UsedFieldsJson));
+                row["CandidateSuggestionsJson"] = ToDbValue(NormalizePredictionText(item.CandidateSuggestionsJson));
+                row["FailureReason"] = ToDbValue(Truncate(NormalizePredictionText(item.FailureReason), 200));
+                row["FailureMessage"] = ToDbValue(Truncate(NormalizePredictionText(item.FailureMessage), 500));
+                table.Rows.Add(row);
+            }
+
+            return table;
+        }
+
+        private static void WriteSchedulePredictionReviewExcel(List<WZ_OrderCycleSchedulePredictionReview> list, string fullPath)
+        {
+            var exportColumns = new List<SchedulePredictionReviewExportColumn>
+            {
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ProductName), Title = "产品名称", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.SpecModel), Title = "规格型号", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ValveCategory), Title = "阀门类别", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.NominalDiameter), Title = "公称通径", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.NominalPressure), Title = "公称压力", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ProductionLine), Title = "生产线", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.FixedCycleDays), Title = "固定周期", Type = typeof(int) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.PredictedScheduleDate), Title = "推测排产日期", Type = typeof(DateTime) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.StandardDeliveryDate), Title = "标准交货日期", Type = typeof(DateTime) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ConfidenceScore), Title = "置信度", Type = typeof(decimal) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.UsedFieldsJson), Title = "使用字段", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.CandidateSuggestionsJson), Title = "候选结果", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.FailureReason), Title = "失败原因", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.FailureMessage), Title = "失败说明", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ReviewStatus), Title = "核对状态", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.ReviewRemark), Title = "核对备注", Type = typeof(string) },
+                new SchedulePredictionReviewExportColumn { Field = nameof(WZ_OrderCycleSchedulePredictionReview.LastSeenAt), Title = "最近发现时间", Type = typeof(DateTime) }
+            };
+
+            var properties = typeof(WZ_OrderCycleSchedulePredictionReview).GetProperties()
+                .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+            using var package = new ExcelPackage();
+            var worksheet = package.Workbook.Worksheets.Add("预测核对");
+
+            for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+            {
+                var exportColumn = exportColumns[columnIndex];
+                var cell = worksheet.Cells[1, columnIndex + 1];
+                cell.Value = exportColumn.Title;
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(Color.Gray);
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                worksheet.Column(columnIndex + 1).Width = 18D;
+            }
+
+            for (var rowIndex = 0; rowIndex < list.Count; rowIndex++)
+            {
+                var row = list[rowIndex];
+                for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
+                {
+                    var exportColumn = exportColumns[columnIndex];
+                    var property = properties[exportColumn.Field];
+                    var cell = worksheet.Cells[rowIndex + 2, columnIndex + 1];
+                    SetOrderCycleBaseCellValue(cell, property.GetValue(row), exportColumn.Type);
+                }
+            }
+
+            if (worksheet.Dimension != null)
+            {
+                worksheet.Cells[worksheet.Dimension.Address].AutoFilter = true;
+                worksheet.View.FreezePanes(2, 1);
+            }
+
+            package.SaveAs(new FileInfo(fullPath));
+        }
+
+        private static object ToDbValue(object value)
+        {
+            return value == null ? DBNull.Value : value;
+        }
+
+        private static string NormalizePredictionText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        private static string Truncate(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            {
+                return value;
+            }
+
+            return value.Substring(0, maxLength);
         }
 
         /// <summary>
@@ -1016,6 +1485,8 @@ namespace HDPro.CY.Order.Services
                     SpecialProduct = item.SpecialProduct,
                     PurchaseFlag = item.PurchaseFlag,
                     ProductName = ResolveValveRuleProductText(item, productTextMode),
+                    ProductNameRaw = item.ProductName,
+                    SpecModelRaw = item.GUI_GE_XING_HAO,
                     NominalDiameter = item.NominalDiameter,
                     NominalPressure = item.NominalPressure
                 });
@@ -1861,6 +2332,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public Type Type { get; set; } = typeof(string);
         }
 
+        private sealed class SchedulePredictionReviewExportColumn
+        {
+            public string Field { get; set; } = string.Empty;
+
+            public string Title { get; set; } = string.Empty;
+
+            public Type Type { get; set; } = typeof(string);
+        }
+
         private sealed class ValveRuleRequest
         {
             [JsonProperty("id")]
@@ -1913,6 +2393,12 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             [JsonProperty("chan_pin_ming_cheng")]
             public string ProductName { get; set; }
+
+            [JsonProperty("_product_name_raw")]
+            public string ProductNameRaw { get; set; }
+
+            [JsonProperty("_spec_model_raw")]
+            public string SpecModelRaw { get; set; }
 
             [JsonProperty("gong_cheng_tong_jing")]
             public string NominalDiameter { get; set; }

@@ -48,6 +48,11 @@
                    :loading="dictSyncLoading"
                    :disabled="syncLoading || ruleLoading || initLoading || refreshLoading"
                    @click="handleSyncDictionary">同步字典</el-button>
+        <el-button type="success"
+                   plain
+                   :loading="predictionExportLoading"
+                   :disabled="syncLoading || ruleLoading || initLoading || refreshLoading || dictSyncLoading"
+                   @click="handleExportPredictionReview">导出预测数据</el-button>
       </div>
     </template>
   </view-grid>
@@ -124,6 +129,7 @@ const initLoading = ref(false);
 const ruleLoading = ref(false);
 const refreshLoading = ref(false);
 const dictSyncLoading = ref(false);
+const predictionExportLoading = ref(false);
 const progressVisible = ref(false);
 const syncDialogVisible = ref(false);
 const syncForm = reactive({
@@ -459,6 +465,24 @@ const handleSyncDictionary = async () => {
     ElMessage.error('同步字典异常');
   } finally {
     dictSyncLoading.value = false;
+  }
+};
+
+const handleExportPredictionReview = async () => {
+  if (predictionExportLoading.value || syncLoading.value || ruleLoading.value || initLoading.value || refreshLoading.value || dictSyncLoading.value) {
+    return;
+  }
+
+  predictionExportLoading.value = true;
+  try {
+    proxy.http.download(
+      '/api/WZ_OrderCycleBase/export-schedule-prediction-review',
+      {},
+      '排产日期预测核对.xlsx',
+      'loading....'
+    );
+  } finally {
+    predictionExportLoading.value = false;
   }
 };
 //监听表单输入，做实时计算
