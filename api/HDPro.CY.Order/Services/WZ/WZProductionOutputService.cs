@@ -110,6 +110,7 @@ namespace HDPro.CY.Order.Services.WZ
             public string SpecModel { get; set; } = string.Empty;
             public string ProductModel { get; set; } = string.Empty;
             public DateTime? ProductionDate { get; set; }
+            public bool HasExternalScheduleDate { get; set; }
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
             public decimal Quantity { get; set; }
@@ -128,6 +129,7 @@ namespace HDPro.CY.Order.Services.WZ
             public string SpecModel { get; set; } = string.Empty;
             public string ProductModel { get; set; } = string.Empty;
             public DateTime ProductionDate { get; set; }
+            public bool HasExternalScheduleDate { get; set; }
             public string ValveCategory { get; set; } = string.Empty;
             public string ProductionLine { get; set; } = string.Empty;
             public decimal Quantity { get; set; }
@@ -542,6 +544,12 @@ namespace HDPro.CY.Order.Services.WZ
 
         private static ParsedProductionOutputRow ParseProductionOutputRow(EsbRow row)
         {
+            DateTime? externalScheduleDate = null;
+            if (!string.IsNullOrWhiteSpace(row.SchDate) && DateTime.TryParse(row.SchDate, out var parsedScheduleDate))
+            {
+                externalScheduleDate = parsedScheduleDate.Date;
+            }
+
             return new ParsedProductionOutputRow
             {
                 BusinessKey = BuildBusinessKey(row),
@@ -554,7 +562,8 @@ namespace HDPro.CY.Order.Services.WZ
                 MaterialId = NormalizeStr(row.MaterialId),
                 SpecModel = string.Empty,
                 ProductModel = string.Empty,
-                ProductionDate = PickDate(row),
+                ProductionDate = externalScheduleDate ?? PickDate(row),
+                HasExternalScheduleDate = externalScheduleDate.HasValue,
                 ValveCategory = NormalizeStr(row.ValveCategory),
                 ProductionLine = NormalizeStr(row.ProductionLine),
                 Quantity = row.Qty ?? 0m
@@ -585,7 +594,8 @@ namespace HDPro.CY.Order.Services.WZ
                     g.Key.ValveCategory,
                     g.Key.ProductionLine,
                     g.Key.Quantity,
-                    Count = g.Count()
+                    Count = g.Count(),
+                    HasExternalScheduleDate = g.Any(x => x.HasExternalScheduleDate)
                 })
                 .OrderByDescending(x => x.Count)
                 .ThenBy(x => x.Date)
@@ -599,6 +609,8 @@ namespace HDPro.CY.Order.Services.WZ
                 .FirstOrDefault() ?? first;
 
             var chosen = lineGroups.FirstOrDefault();
+            var detailDate = chosen?.Date ?? fallback.ProductionDate!.Value.Date;
+            var hasExternalScheduleDate = chosen?.HasExternalScheduleDate ?? fallback.HasExternalScheduleDate;
             var status = lineGroups.Count == 0
                 ? DetailStatusMissingLine
                 : lineGroups.Count == 1
@@ -617,7 +629,8 @@ namespace HDPro.CY.Order.Services.WZ
                 MaterialId = first.MaterialId,
                 SpecModel = first.SpecModel,
                 ProductModel = first.ProductModel,
-                ProductionDate = chosen?.Date ?? fallback.ProductionDate!.Value.Date,
+                ProductionDate = detailDate,
+                HasExternalScheduleDate = hasExternalScheduleDate,
                 ValveCategory = chosen?.ValveCategory ?? string.Empty,
                 ProductionLine = chosen?.ProductionLine ?? string.Empty,
                 Quantity = chosen?.Quantity ?? fallback.Quantity,
@@ -889,7 +902,7 @@ namespace HDPro.CY.Order.Services.WZ
                 {
                     detail.ProductModel = NormalizeStr(resolved.ProductModel);
                 }
-                if (resolved.ProductionDate.HasValue)
+                if (resolved.ProductionDate.HasValue && !detail.HasExternalScheduleDate)
                 {
                     detail.ProductionDate = resolved.ProductionDate.Value.Date;
                 }
@@ -1808,7 +1821,9 @@ WHERE [Enable] = 1
                     scheduleDate = billPlanDate;
                 }
 
-                if (scheduleDate.HasValue && detail.ProductionDate.Date != scheduleDate.Value.Date)
+                if (!detail.HasExternalScheduleDate
+                    && scheduleDate.HasValue
+                    && detail.ProductionDate.Date != scheduleDate.Value.Date)
                 {
                     detail.ProductionDate = scheduleDate.Value.Date;
                     updated++;
@@ -2342,7 +2357,6 @@ END;
                         ValveCategory = x.ValveCategory,
                         ProductionLine = x.ProductionLine,
                         AssignedProductionLine = x.AssignedProductionLine,
-                        ProductionDate = x.ScheduleDate,
                         NominalDiameter = x.NominalDiameter,
                         SpecModel = x.GUI_GE_XING_HAO,
                         ProductName = x.ProductName
@@ -2380,7 +2394,6 @@ END;
                             ValveCategory = x.ValveCategory,
                             ProductionLine = x.ProductionLine,
                             AssignedProductionLine = x.AssignedProductionLine,
-                            ProductionDate = x.ScheduleDate,
                             NominalDiameter = x.NominalDiameter,
                             SpecModel = x.GUI_GE_XING_HAO,
                             ProductName = x.ProductName
@@ -3301,6 +3314,7 @@ END;
                     SpecModel = NormalizeStr(row.SpecModel),
                     ProductModel = NormalizeStr(row.ProductModel),
                     ProductionDate = row.ProductionDate.Value.Date,
+                    HasExternalScheduleDate = true,
                     ValveCategory = string.Empty,
                     ProductionLine = string.Empty,
                     Quantity = row.Quantity,
