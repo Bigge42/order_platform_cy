@@ -17,8 +17,8 @@ namespace HDPro.CY.Order.Services.WZ
     /// <summary>
     /// 异常排产调整工作台独立服务。
     /// 规则口径：
-    /// 1. 工作台只拉取排产优化日期已标红超 120%，或落在 2026 法定节假日而标黄的异常订单。
-    /// 2. 选择新日期时，窗口基准产能 = WZ_ProductionOutput 实际产能 + 非异常优化订单；红色超载单和黄色节假日单不参与基准统计。
+    /// 1. 工作台拉取排产看板所有带颜色标记的订单：交期红色、超 120% 红色、法定节假日黄色、周日淡黄色。
+    /// 2. 选择新日期时，窗口基准产能 = WZ_ProductionOutput 实际产能 + 非颜色标记优化订单；颜色标记订单不参与基准统计。
     /// 3. 当前订单数量单独叠加为“插入后”产能，插入后不得超过 120% 阈值；保存后回写 WZ_OrderCycleBase.CapacityScheduleDate。
     /// 4. 保存完成后重新计算超阈值标记，并同步 WZ_PreProductionOutput / WZ_PreProductionOutput_2，保证 WZ_ProductionOutput 展示排产优化口径能看到手动调整结果。
     /// </summary>
@@ -103,14 +103,15 @@ namespace HDPro.CY.Order.Services.WZ
             var valveCategory = NormalizeText(query.ValveCategory);
             var productionLine = NormalizeText(query.ProductionLine);
 
-            var minHoliday = CapacityStatutoryHolidayDates2026.Min();
-            var maxHoliday = CapacityStatutoryHolidayDates2026.Max();
-
             var dbQuery = _db.Set<WZ_OrderCycleBase>()
                 .AsNoTracking()
-                .Where(p => p.CapacityScheduleDate.HasValue
-                    && (p.CapacityScheduleDateOverThreshold
-                        || (p.CapacityScheduleDate.Value >= minHoliday && p.CapacityScheduleDate.Value <= maxHoliday)));
+                // 先在数据库侧收敛到可能交期红色或已具备排产优化日期的数据，
+                // 再在内存中按排产看板完整颜色规则过滤，避免不同数据库 Provider 的日期函数冲突。
+                .Where(p =>
+                    (p.ReplyDeliveryDate.HasValue
+                        && p.StandardDeliveryDate.HasValue
+                        && p.ReplyDeliveryDate.Value < p.StandardDeliveryDate.Value)
+                    || p.CapacityScheduleDate.HasValue);
 
             if (!string.IsNullOrWhiteSpace(keyword))
             {
@@ -139,6 +140,8 @@ namespace HDPro.CY.Order.Services.WZ
                     ProductionLine = p.ProductionLine,
                     NominalDiameter = p.NominalDiameter,
                     OrderQty = p.OrderQty,
+                    ReplyDeliveryDate = p.ReplyDeliveryDate,
+                    StandardDeliveryDate = p.StandardDeliveryDate,
                     ScheduleDate = p.ScheduleDate,
                     CapacityScheduleDate = p.CapacityScheduleDate,
                     CapacityScheduleDateOverThreshold = p.CapacityScheduleDateOverThreshold
@@ -147,11 +150,13 @@ namespace HDPro.CY.Order.Services.WZ
 
             var abnormalRows = candidates
                 .Select(BuildOrderDto)
-                .Where(p => p.IsOverThreshold || p.IsStatutoryHoliday)
+                .Where(p => p.IsDeliveryWarning || p.IsOverThreshold || p.IsStatutoryHoliday || p.IsSundayRestDay)
                 .Where(p => string.IsNullOrWhiteSpace(abnormalType)
                     || string.Equals(abnormalType, "all", StringComparison.OrdinalIgnoreCase)
+                    || (string.Equals(abnormalType, "deliveryWarning", StringComparison.OrdinalIgnoreCase) && p.IsDeliveryWarning)
                     || (string.Equals(abnormalType, "overThreshold", StringComparison.OrdinalIgnoreCase) && p.IsOverThreshold)
-                    || (string.Equals(abnormalType, "holiday", StringComparison.OrdinalIgnoreCase) && p.IsStatutoryHoliday))
+                    || (string.Equals(abnormalType, "holiday", StringComparison.OrdinalIgnoreCase) && p.IsStatutoryHoliday)
+                    || (string.Equals(abnormalType, "sundayRest", StringComparison.OrdinalIgnoreCase) && p.IsSundayRestDay))
                 .Where(p => string.IsNullOrWhiteSpace(productionLine)
                     || NormalizeText(p.ProductionLine).Contains(productionLine, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(p => p.AbnormalLevel)
@@ -162,11 +167,13 @@ namespace HDPro.CY.Order.Services.WZ
 
             return new CapacityScheduleAdjustmentListResultDto
             {
-                Total = abnormalRows.Count,
+                Total = abnormalRows.Count(),
                 Page = page,
                 Rows = rows,
+                DeliveryWarningCount = abnormalRows.Count(p => p.IsDeliveryWarning),
                 OverThresholdCount = abnormalRows.Count(p => p.IsOverThreshold),
                 HolidayCount = abnormalRows.Count(p => p.IsStatutoryHoliday),
+                SundayRestCount = abnormalRows.Count(p => p.IsSundayRestDay),
                 Items = abnormalRows.Skip((page - 1) * rows).Take(rows).ToList(),
                 ValveCategories = abnormalRows
                     .Select(p => p.ValveCategory)
@@ -377,6 +384,8 @@ namespace HDPro.CY.Order.Services.WZ
                     ProductionLine = p.ProductionLine,
                     NominalDiameter = p.NominalDiameter,
                     OrderQty = p.OrderQty,
+                    ReplyDeliveryDate = p.ReplyDeliveryDate,
+                    StandardDeliveryDate = p.StandardDeliveryDate,
                     ScheduleDate = p.ScheduleDate,
                     CapacityScheduleDate = p.CapacityScheduleDate,
                     CapacityScheduleDateOverThreshold = p.CapacityScheduleDateOverThreshold
@@ -416,6 +425,8 @@ namespace HDPro.CY.Order.Services.WZ
                     ProductionLine = p.ProductionLine,
                     NominalDiameter = p.NominalDiameter,
                     OrderQty = p.OrderQty,
+                    ReplyDeliveryDate = p.ReplyDeliveryDate,
+                    StandardDeliveryDate = p.StandardDeliveryDate,
                     CapacityScheduleDate = p.CapacityScheduleDate,
                     CapacityScheduleDateOverThreshold = p.CapacityScheduleDateOverThreshold
                 })
@@ -425,7 +436,7 @@ namespace HDPro.CY.Order.Services.WZ
             foreach (var row in rows)
             {
                 if (!row.CapacityScheduleDate.HasValue
-                    || IsCapacityStatutoryHoliday(row.CapacityScheduleDate.Value)
+                    || IsColorMarkedOrder(row)
                     || !string.Equals(NormalizeText(row.ValveCategory), cat, StringComparison.OrdinalIgnoreCase)
                     || !string.Equals(ResolveProductionLine(row), line, StringComparison.OrdinalIgnoreCase))
                 {
@@ -673,22 +684,34 @@ VALUES
         private static CapacityScheduleAdjustmentOrderDto BuildOrderDto(OrderRow row)
         {
             var isHoliday = IsCapacityStatutoryHoliday(row.CapacityScheduleDate);
+            var isSundayRestDay = IsCapacitySundayRestDay(row.CapacityScheduleDate);
+            var isDeliveryWarning = IsReplyDeliveryDateLaterThanStandard(row);
             var isOverThreshold = row.CapacityScheduleDateOverThreshold;
-            var abnormalType = isOverThreshold && isHoliday
-                ? "overThresholdHoliday"
-                : isOverThreshold
-                    ? "overThreshold"
-                    : isHoliday
-                        ? "holiday"
-                        : string.Empty;
+            var abnormalTypes = new List<string>();
+            var abnormalTexts = new List<string>();
+            if (isDeliveryWarning)
+            {
+                abnormalTypes.Add("deliveryWarning");
+                abnormalTexts.Add("交期异常");
+            }
 
-            var abnormalText = isOverThreshold && isHoliday
-                ? "超载/节假日"
-                : isOverThreshold
-                    ? "超 120%"
-                    : isHoliday
-                        ? "法定节假日"
-                        : string.Empty;
+            if (isOverThreshold)
+            {
+                abnormalTypes.Add("overThreshold");
+                abnormalTexts.Add("超 120%");
+            }
+
+            if (isHoliday)
+            {
+                abnormalTypes.Add("holiday");
+                abnormalTexts.Add("法定节假日");
+            }
+
+            if (isSundayRestDay)
+            {
+                abnormalTypes.Add("sundayRest");
+                abnormalTexts.Add("周日");
+            }
 
             return new CapacityScheduleAdjustmentOrderDto
             {
@@ -700,14 +723,33 @@ VALUES
                 ValveCategory = NormalizeText(row.ValveCategory),
                 ProductionLine = ResolveProductionLine(row),
                 OrderQty = row.OrderQty.GetValueOrDefault(),
+                ReplyDeliveryDate = row.ReplyDeliveryDate?.Date,
+                StandardDeliveryDate = row.StandardDeliveryDate?.Date,
                 ScheduleDate = row.ScheduleDate?.Date,
                 CapacityScheduleDate = row.CapacityScheduleDate?.Date,
+                IsDeliveryWarning = isDeliveryWarning,
                 IsOverThreshold = isOverThreshold,
                 IsStatutoryHoliday = isHoliday,
-                AbnormalType = abnormalType,
-                AbnormalText = abnormalText,
-                AbnormalLevel = isOverThreshold ? 2 : isHoliday ? 1 : 0
+                IsSundayRestDay = isSundayRestDay,
+                AbnormalType = string.Join(",", abnormalTypes),
+                AbnormalText = string.Join("/", abnormalTexts),
+                AbnormalLevel = isDeliveryWarning ? 4 : isOverThreshold ? 3 : isHoliday ? 2 : isSundayRestDay ? 1 : 0
             };
+        }
+
+        private static bool IsColorMarkedOrder(OrderRow row)
+        {
+            return IsReplyDeliveryDateLaterThanStandard(row)
+                || row.CapacityScheduleDateOverThreshold
+                || IsCapacityStatutoryHoliday(row.CapacityScheduleDate)
+                || IsCapacitySundayRestDay(row.CapacityScheduleDate);
+        }
+
+        private static bool IsReplyDeliveryDateLaterThanStandard(OrderRow row)
+        {
+            return row?.ReplyDeliveryDate.HasValue == true
+                && row.StandardDeliveryDate.HasValue
+                && row.ReplyDeliveryDate.Value.Date < row.StandardDeliveryDate.Value.Date;
         }
 
         private static string ResolveProductionLine(OrderRow row)
@@ -853,6 +895,11 @@ VALUES
                 && !IsCapacityStatutoryHoliday(date);
         }
 
+        private static bool IsCapacitySundayRestDay(DateTime? date)
+        {
+            return date.HasValue && IsCapacitySundayRestDay(date.Value);
+        }
+
         private static bool IsCapacityStatutoryHoliday(DateTime? date)
         {
             return date.HasValue && IsCapacityStatutoryHoliday(date.Value);
@@ -887,6 +934,8 @@ VALUES
             public string ProductionLine { get; set; }
             public string NominalDiameter { get; set; }
             public decimal? OrderQty { get; set; }
+            public DateTime? ReplyDeliveryDate { get; set; }
+            public DateTime? StandardDeliveryDate { get; set; }
             public DateTime? ScheduleDate { get; set; }
             public DateTime? CapacityScheduleDate { get; set; }
             public bool CapacityScheduleDateOverThreshold { get; set; }

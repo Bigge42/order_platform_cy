@@ -20,8 +20,10 @@
         </el-input>
         <el-select v-model="query.abnormalType" class="filter-select" placeholder="异常类型">
           <el-option label="全部异常" value="all" />
+          <el-option label="交期异常" value="deliveryWarning" />
           <el-option label="超 120%" value="overThreshold" />
           <el-option label="法定节假日" value="holiday" />
+          <el-option label="周日" value="sundayRest" />
         </el-select>
         <el-select
           v-model="query.valveCategory"
@@ -56,12 +58,20 @@
         <strong>{{ pager.total }}</strong>
       </div>
       <div class="summary-item danger">
+        <span class="summary-label">交期异常</span>
+        <strong>{{ summary.deliveryWarningCount }}</strong>
+      </div>
+      <div class="summary-item danger">
         <span class="summary-label">超 120%</span>
         <strong>{{ summary.overThresholdCount }}</strong>
       </div>
       <div class="summary-item warning">
         <span class="summary-label">法定节假日</span>
         <strong>{{ summary.holidayCount }}</strong>
+      </div>
+      <div class="summary-item warning">
+        <span class="summary-label">周日</span>
+        <strong>{{ summary.sundayRestCount }}</strong>
       </div>
       <div class="summary-item">
         <span class="summary-label">当前产线</span>
@@ -89,9 +99,9 @@
           empty-text="暂无异常排产数据"
           @row-click="handleRowClick"
         >
-          <el-table-column label="异常" width="106" fixed>
+          <el-table-column label="异常" width="138" fixed>
             <template #default="{ row }">
-              <el-tag :type="row.isOverThreshold ? 'danger' : 'warning'" size="small" effect="dark">
+              <el-tag :type="abnormalTagType(row)" size="small" effect="dark">
                 {{ row.abnormalText }}
               </el-tag>
             </template>
@@ -104,6 +114,12 @@
           <el-table-column prop="productionLine" label="产线" width="100" show-overflow-tooltip />
           <el-table-column prop="orderQty" label="数量" width="90" align="right">
             <template #default="{ row }">{{ formatNumber(row.orderQty) }}</template>
+          </el-table-column>
+          <el-table-column label="回复交期" width="112">
+            <template #default="{ row }">{{ formatDate(row.replyDeliveryDate) }}</template>
+          </el-table-column>
+          <el-table-column label="标准交期" width="112">
+            <template #default="{ row }">{{ formatDate(row.standardDeliveryDate) }}</template>
           </el-table-column>
           <el-table-column label="排产优化日期" width="128">
             <template #default="{ row }">{{ formatDate(row.capacityScheduleDate) }}</template>
@@ -160,6 +176,14 @@
               <div>
                 <span>订单数量</span>
                 <strong>{{ formatNumber(selectedOrder.orderQty) }}</strong>
+              </div>
+              <div>
+                <span>回复交期</span>
+                <strong>{{ formatDate(selectedOrder.replyDeliveryDate) || '-' }}</strong>
+              </div>
+              <div>
+                <span>标准交期</span>
+                <strong>{{ formatDate(selectedOrder.standardDeliveryDate) || '-' }}</strong>
               </div>
             </div>
           </div>
@@ -251,8 +275,10 @@ const pager = reactive({
 })
 
 const summary = reactive({
+  deliveryWarningCount: 0,
   overThresholdCount: 0,
-  holidayCount: 0
+  holidayCount: 0,
+  sundayRestCount: 0
 })
 
 const orders = ref([])
@@ -281,10 +307,14 @@ const normalizeOrder = (row) => ({
   valveCategory: pick(row, 'valveCategory', 'ValveCategory') || '',
   productionLine: pick(row, 'productionLine', 'ProductionLine') || '',
   orderQty: Number(pick(row, 'orderQty', 'OrderQty') || 0),
+  replyDeliveryDate: pick(row, 'replyDeliveryDate', 'ReplyDeliveryDate'),
+  standardDeliveryDate: pick(row, 'standardDeliveryDate', 'StandardDeliveryDate'),
   scheduleDate: pick(row, 'scheduleDate', 'ScheduleDate'),
   capacityScheduleDate: pick(row, 'capacityScheduleDate', 'CapacityScheduleDate'),
+  isDeliveryWarning: Boolean(pick(row, 'isDeliveryWarning', 'IsDeliveryWarning')),
   isOverThreshold: Boolean(pick(row, 'isOverThreshold', 'IsOverThreshold')),
   isStatutoryHoliday: Boolean(pick(row, 'isStatutoryHoliday', 'IsStatutoryHoliday')),
+  isSundayRestDay: Boolean(pick(row, 'isSundayRestDay', 'IsSundayRestDay')),
   abnormalType: pick(row, 'abnormalType', 'AbnormalType') || '',
   abnormalText: pick(row, 'abnormalText', 'AbnormalText') || '',
   abnormalLevel: Number(pick(row, 'abnormalLevel', 'AbnormalLevel') || 0)
@@ -345,8 +375,12 @@ async function loadList() {
     const items = pick(result, 'items', 'Items') || []
     orders.value = items.map(normalizeOrder)
     pager.total = Number(pick(result, 'total', 'Total') || 0)
+    summary.deliveryWarningCount = Number(
+      pick(result, 'deliveryWarningCount', 'DeliveryWarningCount') || 0
+    )
     summary.overThresholdCount = Number(pick(result, 'overThresholdCount', 'OverThresholdCount') || 0)
     summary.holidayCount = Number(pick(result, 'holidayCount', 'HolidayCount') || 0)
+    summary.sundayRestCount = Number(pick(result, 'sundayRestCount', 'SundayRestCount') || 0)
     valveCategories.value = pick(result, 'valveCategories', 'ValveCategories') || []
     productionLines.value = pick(result, 'productionLines', 'ProductionLines') || []
 
@@ -448,13 +482,17 @@ async function saveAdjustment() {
 }
 
 function orderRowClass({ row }) {
-  if (row.isOverThreshold) {
+  if (row.isDeliveryWarning || row.isOverThreshold) {
     return 'order-row-danger'
   }
-  if (row.isStatutoryHoliday) {
+  if (row.isStatutoryHoliday || row.isSundayRestDay) {
     return 'order-row-warning'
   }
   return ''
+}
+
+function abnormalTagType(row) {
+  return row.isDeliveryWarning || row.isOverThreshold ? 'danger' : 'warning'
 }
 
 function dayClass(day) {
@@ -574,7 +612,7 @@ onMounted(loadList)
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
 }

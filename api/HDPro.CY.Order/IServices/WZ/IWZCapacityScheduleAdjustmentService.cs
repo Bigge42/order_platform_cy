@@ -38,8 +38,10 @@ namespace HDPro.CY.Order.IServices.WZ
         public int Total { get; set; }
         public int Page { get; set; }
         public int Rows { get; set; }
+        public int DeliveryWarningCount { get; set; }
         public int OverThresholdCount { get; set; }
         public int HolidayCount { get; set; }
+        public int SundayRestCount { get; set; }
         public List<CapacityScheduleAdjustmentOrderDto> Items { get; set; } = new();
         public List<string> ValveCategories { get; set; } = new();
         public List<string> ProductionLines { get; set; } = new();
@@ -55,10 +57,14 @@ namespace HDPro.CY.Order.IServices.WZ
         public string ValveCategory { get; set; } = string.Empty;
         public string ProductionLine { get; set; } = string.Empty;
         public decimal OrderQty { get; set; }
+        public DateTime? ReplyDeliveryDate { get; set; }
+        public DateTime? StandardDeliveryDate { get; set; }
         public DateTime? ScheduleDate { get; set; }
         public DateTime? CapacityScheduleDate { get; set; }
+        public bool IsDeliveryWarning { get; set; }
         public bool IsOverThreshold { get; set; }
         public bool IsStatutoryHoliday { get; set; }
+        public bool IsSundayRestDay { get; set; }
         public string AbnormalType { get; set; } = string.Empty;
         public string AbnormalText { get; set; } = string.Empty;
         public int AbnormalLevel { get; set; }
