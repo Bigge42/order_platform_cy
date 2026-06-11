@@ -1880,7 +1880,7 @@ function csvCell(value){
 }
 
 function downloadCsv(fileName, headers, rows){
-  const csv = [headers.join(','), ...rows].join('\r\n')
+  const csv = [headers.map(csvCell).join(','), ...rows].join('\r\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -2059,6 +2059,7 @@ async function exportUnknownData(){
   qs.set('start', start)
   qs.set('end', end)
   qs.set('take', '200000')
+  if (valveCategory.value?.trim()) qs.set('valveCategory', valveCategory.value.trim())
 
   unknownExportLoading.value = true
   try{
@@ -2074,11 +2075,13 @@ async function exportUnknownData(){
       return
     }
 
-    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','规格型号','阀体种类','生产线','数量','状态','业务键','人工阀体种类','人工生产线','规则备注']
+    const headers = ['排产日期','单据号','计划跟踪号','行号','EntryId','物料键','物料编码','物料ID','规格型号','产品型号','阀体种类','生产线','数量','状态','业务键','人工阀体种类','人工生产线','规则备注']
     const lines = rows.map(r => {
       const valve = r.valveCategory ?? r.ValveCategory
       const line = r.productionLine ?? r.ProductionLine
       const manualValve = cleanManualValue(valve, '未知阀类')
+      const specModel = r.specModel ?? r.SpecModel ?? r.productModel ?? r.ProductModel
+      const productModel = r.productModel ?? r.ProductModel
       return [
         getProductionDateStr(r),
         r.billNo ?? r.BillNo,
@@ -2088,7 +2091,8 @@ async function exportUnknownData(){
         r.materialKey ?? r.MaterialKey,
         r.materialCode ?? r.MaterialCode,
         r.materialId ?? r.MaterialId,
-        r.specModel ?? r.SpecModel ?? r.productModel ?? r.ProductModel,
+        specModel,
+        productModel,
         valve,
         line,
         Number(r.quantity ?? r.Quantity ?? 0),

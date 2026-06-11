@@ -85,6 +85,8 @@ namespace HDPro.CY.Order.IServices.WZ
             DateTime startDate,
             DateTime endDate,
             int take = 100000,
+            string valveCategory = null,
+            string productionLine = null,
             CancellationToken ct = default);
 
         /// <summary>

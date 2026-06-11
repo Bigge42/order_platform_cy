@@ -179,10 +179,12 @@ namespace HDPro.CY.Order.Controllers.WZ
             [FromQuery(Name = "start")] DateTime startDate,
             [FromQuery(Name = "end")] DateTime endDate,
             [FromQuery] int take = 100000,
+            [FromQuery] string valveCategory = null,
+            [FromQuery] string productionLine = null,
             CancellationToken ct = default)
         {
             take = Math.Clamp(take, 1, 200000);
-            var list = await _service.GetUnknownDetailsAsync(startDate, endDate, take, ct);
+            var list = await _service.GetUnknownDetailsAsync(startDate, endDate, take, valveCategory, productionLine, ct);
             return Ok(list);
         }
 

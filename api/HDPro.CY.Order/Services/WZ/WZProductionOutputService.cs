@@ -4279,6 +4279,8 @@ ORDER BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];", conn);
             DateTime startDate,
             DateTime endDate,
             int take = 100000,
+            string valveCategory = null,
+            string productionLine = null,
             CancellationToken ct = default)
         {
             if (endDate < startDate)
@@ -4286,6 +4288,9 @@ ORDER BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];", conn);
 
             await EnsureProductionOutputDetailTableAsync(ct);
             take = Math.Clamp(take, 1, 200000);
+            var normalizedValveCategory = NormalizeStr(valveCategory);
+            var normalizedProductionLine = NormalizeStr(productionLine);
+            var statusSql = GetSummarizableStatusSqlList();
 
             var result = new List<WZProductionOutputUnknownDetailDto>();
             var connectionString = _db.Database.GetConnectionString();
@@ -4296,59 +4301,113 @@ ORDER BY n.[ProductionDate], n.[ValveCategory], n.[ProductionLine];", conn);
 
             using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync(ct);
-            using var cmd = new SqlCommand(@"
-SELECT TOP (@Take)
+            using var cmd = new SqlCommand($@"
+WITH unknown_base AS (
+    SELECT TOP (@Take)
+        d.[ProductionDate],
+        ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
+        ISNULL(d.[BillNo], N'') AS [BillNo],
+        ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+        d.[EntryId],
+        d.[Seq],
+        ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
+        ISNULL(d.[MaterialCode], N'') AS [MaterialCode],
+        ISNULL(d.[MaterialId], N'') AS [MaterialId],
+        ISNULL(d.[SpecModel], N'') AS [RawSpecModel],
+        ISNULL(d.[ProductModel], N'') AS [RawProductModel],
+        COALESCE(
+            TRY_CONVERT(BIGINT, NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialId], N''))), N'')),
+            TRY_CONVERT(BIGINT, NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialKey], N''))), N'')),
+            TRY_CONVERT(BIGINT, NULLIF(LTRIM(RTRIM(ISNULL(d.[MaterialCode], N''))), N''))
+        ) AS [LookupMaterialId],
+        CASE
+            WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[ValveCategory], N''))), N'') IS NOT NULL
+                 AND ISNULL(d.[ValveCategory], N'') <> N'{UnknownValveCategory}'
+                THEN d.[ValveCategory]
+            ELSE N'{UnknownValveCategory}'
+        END AS [ValveCategory],
+        CASE
+            WHEN ISNULL(d.[ClassifyStatus], N'') IN ({statusSql})
+                 AND NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductionLine], N''))), N'') IS NOT NULL
+                 AND ISNULL(d.[ProductionLine], N'') <> N'{UnknownProductionLine}'
+                THEN d.[ProductionLine]
+            ELSE N'{UnknownProductionLine}'
+        END AS [ProductionLine],
+        ISNULL(d.[Quantity], 0) AS [Quantity],
+        ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
+        ISNULL(d.[RawRowCount], 0) AS [RawRowCount],
+        ISNULL(d.[LineCandidateCount], 0) AS [LineCandidateCount],
+        d.[LastSyncTime]
+    FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
+    WHERE d.[ProductionDate] >= @StartDate
+      AND d.[ProductionDate] <= @EndDate
+      AND (
+          ISNULL(d.[ClassifyStatus], N'') NOT IN ({statusSql})
+          OR NULLIF(LTRIM(RTRIM(ISNULL(d.[ValveCategory], N''))), N'') IS NULL
+          OR ISNULL(d.[ValveCategory], N'') = N'{UnknownValveCategory}'
+          OR NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductionLine], N''))), N'') IS NULL
+          OR ISNULL(d.[ProductionLine], N'') = N'{UnknownProductionLine}'
+      )
+      AND (
+          @ValveCategory = N''
+          OR CASE
+              WHEN NULLIF(LTRIM(RTRIM(ISNULL(d.[ValveCategory], N''))), N'') IS NOT NULL
+                   AND ISNULL(d.[ValveCategory], N'') <> N'{UnknownValveCategory}'
+                  THEN d.[ValveCategory]
+              ELSE N'{UnknownValveCategory}'
+          END = @ValveCategory
+      )
+      AND (
+          @ProductionLine = N''
+          OR CASE
+              WHEN ISNULL(d.[ClassifyStatus], N'') IN ({statusSql})
+                   AND NULLIF(LTRIM(RTRIM(ISNULL(d.[ProductionLine], N''))), N'') IS NOT NULL
+                   AND ISNULL(d.[ProductionLine], N'') <> N'{UnknownProductionLine}'
+                  THEN d.[ProductionLine]
+              ELSE N'{UnknownProductionLine}'
+          END = @ProductionLine
+      )
+    ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[BusinessKey]
+)
+SELECT
     d.[ProductionDate],
-    ISNULL(d.[BusinessKey], N'') AS [BusinessKey],
-    ISNULL(d.[BillNo], N'') AS [BillNo],
-    ISNULL(d.[PlanTrackingNo], N'') AS [PlanTrackingNo],
+    d.[BusinessKey],
+    d.[BillNo],
+    d.[PlanTrackingNo],
     d.[EntryId],
     d.[Seq],
-    ISNULL(d.[MaterialKey], N'') AS [MaterialKey],
-    CASE
-        WHEN NULLIF(mat.[MaterialCode], N'') IS NOT NULL
-             AND (ISNULL(d.[MaterialCode], N'') = N'' OR d.[MaterialCode] <> mat.[MaterialCode])
-            THEN mat.[MaterialCode]
-        ELSE ISNULL(d.[MaterialCode], N'')
-    END AS [MaterialCode],
-    ISNULL(d.[MaterialId], N'') AS [MaterialId],
-    COALESCE(NULLIF(mat.[SpecModel], N''), NULLIF(mat.[ProductModel], N''), N'') AS [SpecModel],
-    ISNULL(mat.[ProductModel], N'') AS [ProductModel],
-    ISNULL(d.[ValveCategory], N'') AS [ValveCategory],
-    ISNULL(d.[ProductionLine], N'') AS [ProductionLine],
-    ISNULL(d.[Quantity], 0) AS [Quantity],
-    ISNULL(d.[ClassifyStatus], N'') AS [ClassifyStatus],
-    ISNULL(d.[RawRowCount], 0) AS [RawRowCount],
-    ISNULL(d.[LineCandidateCount], 0) AS [LineCandidateCount],
+    d.[MaterialKey],
+    COALESCE(NULLIF(d.[MaterialCode], N''), CONVERT(NVARCHAR(100), m.[MaterialCode]), N'') AS [MaterialCode],
+    d.[MaterialId],
+    COALESCE(
+        NULLIF(d.[RawSpecModel], N''),
+        NULLIF(d.[RawProductModel], N''),
+        NULLIF(CONVERT(NVARCHAR(2000), m.[SpecModel]), N''),
+        NULLIF(CONVERT(NVARCHAR(2000), m.[ProductModel]), N''),
+        N'') AS [SpecModel],
+    COALESCE(
+        NULLIF(d.[RawProductModel], N''),
+        NULLIF(CONVERT(NVARCHAR(2000), m.[ProductModel]), N''),
+        NULLIF(d.[RawSpecModel], N''),
+        NULLIF(CONVERT(NVARCHAR(2000), m.[SpecModel]), N''),
+        N'') AS [ProductModel],
+    d.[ValveCategory],
+    d.[ProductionLine],
+    d.[Quantity],
+    d.[ClassifyStatus],
+    d.[RawRowCount],
+    d.[LineCandidateCount],
     d.[LastSyncTime]
-FROM [dbo].[WZ_ProductionOutputDetail] d WITH (NOLOCK)
-OUTER APPLY (
-    SELECT TOP (1)
-        CONVERT(NVARCHAR(100), m.[MaterialCode]) AS [MaterialCode],
-        CONVERT(NVARCHAR(255), ISNULL(m.[SpecModel], N'')) AS [SpecModel],
-        CONVERT(NVARCHAR(255), ISNULL(m.[ProductModel], N'')) AS [ProductModel],
-        m.[MaterialID]
-    FROM [dbo].[OCP_Material] m WITH (NOLOCK)
-    WHERE (NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode])
-       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')))
-       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')))
-       OR (TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialCode], N'')))
-    ORDER BY CASE
-        WHEN NULLIF(d.[MaterialCode], N'') IS NOT NULL AND m.[MaterialCode] = d.[MaterialCode] THEN 0
-        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialId], N'')) THEN 1
-        WHEN TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) IS NOT NULL AND m.[MaterialID] = TRY_CONVERT(BIGINT, NULLIF(d.[MaterialKey], N'')) THEN 2
-        ELSE 3
-    END
-) mat
-WHERE d.[ProductionDate] >= @StartDate
-  AND d.[ProductionDate] <= @EndDate
-  AND (d.[ClassifyStatus] NOT IN (N'matched', N'matched_order_cycle', N'matched_sync_line', N'matched_rule', N'matched_manual')
-       OR ISNULL(d.[ValveCategory], N'') = N''
-       OR ISNULL(d.[ProductionLine], N'') = N'')
+FROM unknown_base d
+LEFT JOIN [dbo].[OCP_Material] m WITH (NOLOCK)
+    ON d.[LookupMaterialId] IS NOT NULL
+   AND m.[MaterialID] = d.[LookupMaterialId]
 ORDER BY d.[ProductionDate], d.[BillNo], d.[PlanTrackingNo], d.[Seq], d.[BusinessKey];", conn);
 
             AddDateRangeParameters(cmd, startDate.Date, endDate.Date);
             cmd.Parameters.Add("@Take", SqlDbType.Int).Value = take;
+            cmd.Parameters.Add("@ValveCategory", SqlDbType.NVarChar, 50).Value = normalizedValveCategory;
+            cmd.Parameters.Add("@ProductionLine", SqlDbType.NVarChar, 50).Value = normalizedProductionLine;
 
             using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
