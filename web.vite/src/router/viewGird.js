@@ -713,6 +713,10 @@ let viewgird = [
         name: 'WZ_OrderCyclePlanModifyBoard',
         component: () => import('@/views/order/wz_ordercycleplanmodifyboard/WZ_OrderCyclePlanModifyBoard.vue')
     }    ,{
+        path: '/WZ_CapacityScheduleAdjustment',
+        name: 'WZ_CapacityScheduleAdjustment',
+        component: () => import('@/views/order/wz_capacityscheduleadjustment/WZ_CapacityScheduleAdjustment.vue')
+    }    ,{
         path: '/V_XhckkbRecord_Material',
         name: 'V_XhckkbRecord_Material',
         component: () => import('@/views/order/v_xhckkbrecord_material/V_XhckkbRecord_Material.vue')
