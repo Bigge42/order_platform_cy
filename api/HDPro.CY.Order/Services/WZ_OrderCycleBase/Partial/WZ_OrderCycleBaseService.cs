@@ -186,6 +186,7 @@ namespace HDPro.CY.Order.Services
             {
                 var row = list[rowIndex];
                 var isDeliveryLaterThanStandard = IsReplyDeliveryDateLaterThanStandard(row);
+                var isCapacityHoliday = IsCapacityStatutoryHoliday(row.CapacityScheduleDate);
                 for (var columnIndex = 0; columnIndex < exportColumns.Count; columnIndex++)
                 {
                     var exportColumn = exportColumns[columnIndex];
@@ -200,6 +201,11 @@ namespace HDPro.CY.Order.Services
                         continue;
                     }
 
+                    if (isCapacityHoliday)
+                    {
+                        ApplyHolidayWarningCellStyle(cell);
+                    }
+
                     if (!string.Equals(exportColumn.Field, nameof(WZ_OrderCycleBase.CapacityScheduleDate), StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
@@ -209,7 +215,11 @@ namespace HDPro.CY.Order.Services
                     {
                         ApplyRedWarningCellStyle(cell);
                     }
-                    else if (IsSunday(row.CapacityScheduleDate))
+                    else if (isCapacityHoliday)
+                    {
+                        ApplyHolidayWarningCellStyle(cell);
+                    }
+                    else if (row.CapacityScheduleDate.HasValue && IsCapacitySundayRestDay(row.CapacityScheduleDate.Value))
                     {
                         ApplySundayReserveCellStyle(cell);
                     }
@@ -246,6 +256,14 @@ namespace HDPro.CY.Order.Services
             cell.Style.Font.Bold = true;
             cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
             cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 247, 214));
+        }
+
+        private static void ApplyHolidayWarningCellStyle(ExcelRange cell)
+        {
+            cell.Style.Font.Color.SetColor(Color.FromArgb(140, 90, 0));
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            cell.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(255, 244, 199));
         }
 
         private static void SetOrderCycleBaseCellValue(ExcelRange cell, object value, Type type)
@@ -2365,6 +2383,55 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         private const int ReplyLeadWindowMinDays = 25;
         private const int ReplyLeadWindowMaxDays = 35;
 
+        // 2026 年业务日历依据国务院办公厅关于 2026 年部分节假日安排的通知维护；
+        // 后续年份发布后，在这里补充节假日与调休上班日，保证排产查找和标色口径一致。
+        private static readonly HashSet<DateTime> CapacityStatutoryHolidayDates2026 = new HashSet<DateTime>
+        {
+            new DateTime(2026, 1, 1),
+            new DateTime(2026, 1, 2),
+            new DateTime(2026, 1, 3),
+            new DateTime(2026, 2, 15),
+            new DateTime(2026, 2, 16),
+            new DateTime(2026, 2, 17),
+            new DateTime(2026, 2, 18),
+            new DateTime(2026, 2, 19),
+            new DateTime(2026, 2, 20),
+            new DateTime(2026, 2, 21),
+            new DateTime(2026, 2, 22),
+            new DateTime(2026, 2, 23),
+            new DateTime(2026, 4, 4),
+            new DateTime(2026, 4, 5),
+            new DateTime(2026, 4, 6),
+            new DateTime(2026, 5, 1),
+            new DateTime(2026, 5, 2),
+            new DateTime(2026, 5, 3),
+            new DateTime(2026, 5, 4),
+            new DateTime(2026, 5, 5),
+            new DateTime(2026, 6, 19),
+            new DateTime(2026, 6, 20),
+            new DateTime(2026, 6, 21),
+            new DateTime(2026, 9, 25),
+            new DateTime(2026, 9, 26),
+            new DateTime(2026, 9, 27),
+            new DateTime(2026, 10, 1),
+            new DateTime(2026, 10, 2),
+            new DateTime(2026, 10, 3),
+            new DateTime(2026, 10, 4),
+            new DateTime(2026, 10, 5),
+            new DateTime(2026, 10, 6),
+            new DateTime(2026, 10, 7)
+        };
+
+        private static readonly HashSet<DateTime> CapacityMakeupWorkdayDates2026 = new HashSet<DateTime>
+        {
+            new DateTime(2026, 1, 4),
+            new DateTime(2026, 2, 14),
+            new DateTime(2026, 2, 28),
+            new DateTime(2026, 5, 9),
+            new DateTime(2026, 9, 20),
+            new DateTime(2026, 10, 10)
+        };
+
         private static CapacityScheduleDecision ResolveCapacityScheduleDate(
             OrderCapacityCandidate order,
             List<DateTime> dates,
@@ -2427,16 +2494,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return CapacityScheduleDecision.Fail(PickFailureReason(
                 preferredAttempt.FailureReason,
                 balancedAttempt.FailureReason));
-        }
-
-        private static bool IsSunday(DateTime? date)
-        {
-            return date.HasValue && IsSunday(date.Value);
-        }
-
-        private static bool IsSunday(DateTime date)
-        {
-            return date.DayOfWeek == DayOfWeek.Sunday;
         }
 
         private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
@@ -2521,9 +2578,10 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
         // 排产优化规则：
         // 1. 原排产日优先；若插入前负载未满 100%，允许当前订单一次性推到 120% 以内。
-        // 2. 原排产日放不下时，先找取值范围内工作日，再找周六，最后找周日；每个日期都先看 100%，再看预留 120%。
-        // 3. 预留 120% 只能用于“插入前未满 100%”的日期，不能在插入前已达 100% 的日期继续塞 100%-120%。
-        // 4. 只有所有候选日期插入后都会超过 120% 时，才进入均摊超载日期。
+        // 2. 原排产日放不下时，先在取值范围内按 100% 查找：业务工作日 -> 周六休息日 -> 周日休息日 -> 法定节假日。
+        // 3. 范围内 100% 都放不下后，再按 120% 查找，顺序仍是业务工作日 -> 周六休息日 -> 周日休息日 -> 法定节假日。
+        // 4. 业务工作日包含调休上班日，排除法定节假日；预留 120% 只能用于“插入前未满 100%”的日期。
+        // 5. 只有所有候选日期插入后都会超过 120% 时，才进入均摊超载日期。
         private static CapacityScheduleDecision TryResolveForwardAssignableDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
@@ -2564,7 +2622,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
 
             failureReason = PickFailureReason(failureReason, preferredDateAttempt.FailureReason);
 
-            var workdayAttempt = TryFindForwardAssignableDate(
+            var workdayNormalAttempt = TryFindForwardNormalCapacityDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2572,17 +2630,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 index,
                 endDate,
                 quantity,
-                reserveCapacityRatio,
                 targetDate,
-                IsWorkday,
-                CapacityScheduleMode.DeliveryAdjusted,
-                CapacityScheduleMode.DailyReserve);
-            if (workdayAttempt.CapacityDate.HasValue)
+                IsCapacityWorkday,
+                CapacityScheduleMode.DeliveryAdjusted);
+            if (workdayNormalAttempt.CapacityDate.HasValue)
             {
-                return workdayAttempt;
+                return workdayNormalAttempt;
             }
 
-            var saturdayAttempt = TryFindForwardAssignableDate(
+            var saturdayNormalAttempt = TryFindForwardNormalCapacityDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2590,17 +2646,47 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 index,
                 endDate,
                 quantity,
-                reserveCapacityRatio,
                 targetDate,
-                date => date.DayOfWeek == DayOfWeek.Saturday,
-                CapacityScheduleMode.SaturdayReserve,
+                IsCapacitySaturdayRestDay,
                 CapacityScheduleMode.SaturdayReserve);
-            if (saturdayAttempt.CapacityDate.HasValue)
+            if (saturdayNormalAttempt.CapacityDate.HasValue)
             {
-                return saturdayAttempt;
+                return saturdayNormalAttempt;
             }
 
-            var sundayAttempt = TryFindForwardAssignableDate(
+            var sundayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                targetDate,
+                IsCapacitySundayRestDay,
+                CapacityScheduleMode.SundayReserve);
+            if (sundayNormalAttempt.CapacityDate.HasValue)
+            {
+                return sundayNormalAttempt;
+            }
+
+            var holidayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                targetDate,
+                IsCapacityStatutoryHoliday,
+                CapacityScheduleMode.SundayReserve);
+            if (holidayNormalAttempt.CapacityDate.HasValue)
+            {
+                return holidayNormalAttempt;
+            }
+
+            var workdayReserveAttempt = TryFindForwardReserveCapacityDate(
                 dates,
                 capacityMap,
                 cat,
@@ -2610,19 +2696,74 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 quantity,
                 reserveCapacityRatio,
                 targetDate,
-                IsSunday,
-                CapacityScheduleMode.SundayReserve,
-                CapacityScheduleMode.SundayReserve);
-            if (sundayAttempt.CapacityDate.HasValue)
+                IsCapacityWorkday,
+                CapacityScheduleMode.DailyReserve);
+            if (workdayReserveAttempt.CapacityDate.HasValue)
             {
-                return sundayAttempt;
+                return workdayReserveAttempt;
+            }
+
+            var saturdayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                IsCapacitySaturdayRestDay,
+                CapacityScheduleMode.SaturdayReserve);
+            if (saturdayReserveAttempt.CapacityDate.HasValue)
+            {
+                return saturdayReserveAttempt;
+            }
+
+            var sundayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                IsCapacitySundayRestDay,
+                CapacityScheduleMode.SundayReserve);
+            if (sundayReserveAttempt.CapacityDate.HasValue)
+            {
+                return sundayReserveAttempt;
+            }
+
+            var holidayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                IsCapacityStatutoryHoliday,
+                CapacityScheduleMode.SundayReserve);
+            if (holidayReserveAttempt.CapacityDate.HasValue)
+            {
+                return holidayReserveAttempt;
             }
 
             return CapacityScheduleDecision.Fail(PickFailureReason(
                 failureReason,
-                workdayAttempt.FailureReason,
-                saturdayAttempt.FailureReason,
-                sundayAttempt.FailureReason));
+                workdayNormalAttempt.FailureReason,
+                saturdayNormalAttempt.FailureReason,
+                sundayNormalAttempt.FailureReason,
+                holidayNormalAttempt.FailureReason,
+                workdayReserveAttempt.FailureReason,
+                saturdayReserveAttempt.FailureReason,
+                sundayReserveAttempt.FailureReason,
+                holidayReserveAttempt.FailureReason));
         }
 
         private static CapacityScheduleDecision TryAssignPreferredCapacityDate(
@@ -2644,7 +2785,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
             if (normalAttempt.CapacityDate.HasValue)
             {
-                var mode = IsWorkday(date)
+                var mode = IsCapacityWorkday(date)
                     ? CapacityScheduleMode.NormalCapacity
                     : ResolveReserveCapacityMode(date);
                 return CapacityScheduleDecision.Success(date, mode);
@@ -2656,7 +2797,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 : CapacityScheduleDecision.Fail(PickFailureReason(normalAttempt.FailureReason, reserveAttempt.FailureReason));
         }
 
-        private static CapacityScheduleDecision TryFindForwardAssignableDate(
+        private static CapacityScheduleDecision TryFindForwardNormalCapacityDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
             string cat,
@@ -2664,11 +2805,9 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             int startIndex,
             DateTime endDate,
             decimal quantity,
-            decimal reserveCapacityRatio,
             DateTime targetDate,
             Func<DateTime, bool> datePredicate,
-            CapacityScheduleMode normalMode,
-            CapacityScheduleMode reserveMode)
+            CapacityScheduleMode mode)
         {
             var failureReason = CapacityFailureReasons.ThresholdExceeded;
             for (var i = startIndex; i < dates.Count; i++)
@@ -2687,15 +2826,46 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
                 if (normalAttempt.CapacityDate.HasValue)
                 {
-                    return CapacityScheduleDecision.Success(date, normalMode);
+                    return CapacityScheduleDecision.Success(date, mode);
                 }
 
                 failureReason = PickFailureReason(failureReason, normalAttempt.FailureReason);
+            }
+
+            return CapacityScheduleDecision.Fail(failureReason);
+        }
+
+        private static CapacityScheduleDecision TryFindForwardReserveCapacityDate(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            int startIndex,
+            DateTime endDate,
+            decimal quantity,
+            decimal reserveCapacityRatio,
+            DateTime targetDate,
+            Func<DateTime, bool> datePredicate,
+            CapacityScheduleMode mode)
+        {
+            var failureReason = CapacityFailureReasons.ThresholdExceeded;
+            for (var i = startIndex; i < dates.Count; i++)
+            {
+                var date = dates[i].Date;
+                if (date > endDate.Date)
+                {
+                    break;
+                }
+
+                if (date == targetDate.Date || !datePredicate(date))
+                {
+                    continue;
+                }
 
                 var reserveAttempt = TryAssignReserveCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
                 if (reserveAttempt.CapacityDate.HasValue)
                 {
-                    return CapacityScheduleDecision.Success(date, reserveMode);
+                    return CapacityScheduleDecision.Success(date, mode);
                 }
 
                 failureReason = PickFailureReason(failureReason, reserveAttempt.FailureReason);
@@ -2704,22 +2874,64 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return CapacityScheduleDecision.Fail(failureReason);
         }
 
-        private static bool IsWorkday(DateTime date)
+        private static bool IsCapacityWorkday(DateTime date)
         {
+            if (IsCapacityMakeupWorkday(date))
+            {
+                return true;
+            }
+
+            if (IsCapacityStatutoryHoliday(date))
+            {
+                return false;
+            }
+
             return date.DayOfWeek != DayOfWeek.Saturday
                 && date.DayOfWeek != DayOfWeek.Sunday;
         }
 
+        private static bool IsCapacitySaturdayRestDay(DateTime date)
+        {
+            return date.DayOfWeek == DayOfWeek.Saturday
+                && !IsCapacityMakeupWorkday(date)
+                && !IsCapacityStatutoryHoliday(date);
+        }
+
+        private static bool IsCapacitySundayRestDay(DateTime date)
+        {
+            return date.DayOfWeek == DayOfWeek.Sunday
+                && !IsCapacityMakeupWorkday(date)
+                && !IsCapacityStatutoryHoliday(date);
+        }
+
+        private static bool IsCapacityStatutoryHoliday(DateTime? date)
+        {
+            return date.HasValue && IsCapacityStatutoryHoliday(date.Value);
+        }
+
+        private static bool IsCapacityStatutoryHoliday(DateTime date)
+        {
+            return CapacityStatutoryHolidayDates2026.Contains(date.Date);
+        }
+
+        private static bool IsCapacityMakeupWorkday(DateTime date)
+        {
+            return CapacityMakeupWorkdayDates2026.Contains(date.Date);
+        }
+
         private static CapacityScheduleMode ResolveReserveCapacityMode(DateTime date)
         {
-            if (date.DayOfWeek == DayOfWeek.Saturday)
+            if (IsCapacityWorkday(date))
+            {
+                return CapacityScheduleMode.DailyReserve;
+            }
+
+            if (IsCapacitySaturdayRestDay(date))
             {
                 return CapacityScheduleMode.SaturdayReserve;
             }
 
-            return IsSunday(date)
-                ? CapacityScheduleMode.SundayReserve
-                : CapacityScheduleMode.DailyReserve;
+            return CapacityScheduleMode.SundayReserve;
         }
 
         private static CapacityAssignAttempt TryAssignCapacityDate(

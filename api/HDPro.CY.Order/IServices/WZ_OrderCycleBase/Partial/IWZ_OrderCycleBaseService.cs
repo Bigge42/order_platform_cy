@@ -164,7 +164,7 @@ namespace HDPro.CY.Order.IServices
         public int Total { get; set; }
 
         /// <summary>
-        /// 成功回填产能排产日期的订单数
+        /// 成功回填排产优化日期的订单数
         /// </summary>
         public int Updated { get; set; }
 

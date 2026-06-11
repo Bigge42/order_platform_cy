@@ -36,9 +36,9 @@ namespace HDPro.Entity.DomainModels
         public string AssignedProductionLine { get; set; }
 
         /// <summary>
-        /// 产能排产日期
+        /// 排产优化日期
         /// </summary>
-        [Display(Name = "产能排产日期")]
+        [Display(Name = "排产优化日期")]
         [Column(TypeName = "date")]
         [Editable(true)]
         public DateTime? CapacityScheduleDate { get; set; }
