@@ -8,6 +8,7 @@
 */
 using HDPro.CY.Order.Services;
 using HDPro.Core.Extensions.AutofacManager;
+using HDPro.Core.Enums;
 using HDPro.Entity.DomainModels;
 using System.Linq;
 using HDPro.Core.Utilities;
@@ -19,6 +20,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Http;
 using HDPro.CY.Order.IRepositories;
 using HDPro.CY.Order.IServices;
+using HDPro.Core.UserManager;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -88,6 +90,132 @@ namespace HDPro.CY.Order.Services
             // 在此处添加WZ_OrderCycleBase特有的数据验证逻辑
 
             return response;
+        }
+
+        public override PageGridData<WZ_OrderCycleBase> GetPageData(PageDataOptions options)
+        {
+            if (!ShouldUseWarningFirstSort(options))
+            {
+                return base.GetPageData(options);
+            }
+
+            options = ValidatePageOptions(options, out IQueryable<WZ_OrderCycleBase> queryable, IsMultiTenancy);
+            if (QueryRelativeExpression != null)
+            {
+                queryable = QueryRelativeExpression.Invoke(queryable);
+            }
+
+            var pageGridData = new PageGridData<WZ_OrderCycleBase>();
+            if (options.Export)
+            {
+                queryable = ApplyWarningFirstSort(queryable, options);
+                if (Limit > 0)
+                {
+                    queryable = queryable.Take(Limit);
+                }
+
+                pageGridData.rows = FilterOrderCycleBaseAuthFields(queryable);
+            }
+            else
+            {
+                if (SummaryExpress != null)
+                {
+                    pageGridData.summary = SummaryExpress.Invoke(queryable);
+                }
+
+                queryable = ApplyWarningFirstSort(queryable, options);
+                queryable = repository.IQueryablePage(
+                    queryable,
+                    options.Page,
+                    options.Rows,
+                    out var rowCount,
+                    new Dictionary<string, QueryOrderBy>());
+                pageGridData.rows = FilterOrderCycleBaseAuthFields(queryable);
+                pageGridData.total = rowCount;
+            }
+
+            GetPageDataOnExecuted?.Invoke(pageGridData);
+            return pageGridData;
+        }
+
+        private static bool ShouldUseWarningFirstSort(PageDataOptions options)
+        {
+            var sort = options?.Sort?.Trim();
+            return string.IsNullOrEmpty(sort)
+                || string.Equals(sort, nameof(WZ_OrderCycleBase.Id), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IQueryable<WZ_OrderCycleBase> ApplyWarningFirstSort(
+            IQueryable<WZ_OrderCycleBase> queryable,
+            PageDataOptions options)
+        {
+            var holidayDates = CapacityStatutoryHolidayDates2026.ToArray();
+            var makeupWorkdayDates = CapacityMakeupWorkdayDates2026.ToArray();
+            var sundayRestDates = CapacitySundayRestDates2026.ToArray();
+
+            // 默认分页前先按页面颜色提示置顶，再沿用原来的 Id 顺序。
+            var warningQuery = queryable.Select(row => new
+            {
+                Row = row,
+                WarningSort =
+                    row.ReplyDeliveryDate.HasValue
+                    && row.StandardDeliveryDate.HasValue
+                    && row.ReplyDeliveryDate.Value.Date < row.StandardDeliveryDate.Value.Date
+                        ? 4
+                        : row.CapacityScheduleDateOverThreshold
+                            ? 3
+                            : row.CapacityScheduleDate.HasValue
+                              && holidayDates.Contains(row.CapacityScheduleDate.Value.Date)
+                                ? 2
+                                : row.CapacityScheduleDate.HasValue
+                                  && !holidayDates.Contains(row.CapacityScheduleDate.Value.Date)
+                                  && !makeupWorkdayDates.Contains(row.CapacityScheduleDate.Value.Date)
+                                  && sundayRestDates.Contains(row.CapacityScheduleDate.Value.Date)
+                                    ? 1
+                                    : 0
+            });
+
+            var orderedQuery = warningQuery.OrderByDescending(row => row.WarningSort);
+            return string.Equals(options?.Order, "asc", StringComparison.OrdinalIgnoreCase)
+                ? orderedQuery.ThenBy(row => row.Row.Id).Select(row => row.Row)
+                : orderedQuery.ThenByDescending(row => row.Row.Id).Select(row => row.Row);
+        }
+
+        private static List<WZ_OrderCycleBase> FilterOrderCycleBaseAuthFields(IQueryable<WZ_OrderCycleBase> queryable)
+        {
+            var tableName = nameof(WZ_OrderCycleBase);
+            var authFields = RoleContext.GetCurrentRoleAuthFields(tableName);
+            if (authFields.Length == 0)
+            {
+                return queryable.ToList();
+            }
+
+            var source = typeof(WZ_OrderCycleBase);
+            var target = typeof(WZ_OrderCycleBase);
+            var parameter = Expression.Parameter(source, "t");
+            var assignments = new List<MemberAssignment>();
+            var hideFields = TableColumnContext.GetTableHideFields(tableName);
+            var fields = source.GetProperties()
+                .Where(property => authFields.Contains(property.Name) || hideFields.Contains(property.Name))
+                .Select(property => property.Name)
+                .ToList();
+
+            foreach (var field in fields)
+            {
+                var sourceProperty = source.GetProperty(field);
+                var targetProperty = target.GetProperty(field);
+                if (sourceProperty == null || targetProperty == null)
+                {
+                    continue;
+                }
+
+                var memberAccess = Expression.MakeMemberAccess(parameter, sourceProperty);
+                assignments.Add(Expression.Bind(targetProperty, memberAccess));
+            }
+
+            var memberInit = Expression.MemberInit(Expression.New(target), assignments);
+            var expression = (Expression<Func<WZ_OrderCycleBase, WZ_OrderCycleBase>>)Expression.Lambda(memberInit, parameter);
+            return queryable.Select(expression).ToList();
         }
 
         public override WebResponseContent Export(PageDataOptions pageData)
@@ -2433,6 +2561,13 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             new DateTime(2026, 9, 20),
             new DateTime(2026, 10, 10)
         };
+
+        private static readonly HashSet<DateTime> CapacitySundayRestDates2026 = new HashSet<DateTime>(
+            Enumerable.Range(0, 365)
+                .Select(dayOffset => new DateTime(2026, 1, 1).AddDays(dayOffset))
+                .Where(date => date.DayOfWeek == DayOfWeek.Sunday
+                    && !CapacityMakeupWorkdayDates2026.Contains(date.Date)
+                    && !CapacityStatutoryHolidayDates2026.Contains(date.Date)));
 
         private static CapacityScheduleDecision ResolveCapacityScheduleDate(
             OrderCapacityCandidate order,
