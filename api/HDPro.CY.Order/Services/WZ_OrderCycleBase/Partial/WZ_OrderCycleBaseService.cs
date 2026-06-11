@@ -1204,6 +1204,7 @@ END;";
                 }
 
                 var updates = new List<WZ_OrderCycleBase>();
+                var clearCapacityScheduleIds = new List<int>();
 
                 foreach (var order in orders)
                 {
@@ -1246,6 +1247,13 @@ END;";
                     var decision = ResolveCapacityScheduleDate(order, dates, knownDates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
                     if (!decision.CapacityDate.HasValue)
                     {
+                        if (!ShouldFallbackCapacityScheduleDate(decision.FailureReason))
+                        {
+                            clearCapacityScheduleIds.Add(order.Id);
+                            summary.Skipped++;
+                            continue;
+                        }
+
                         updates.Add(new WZ_OrderCycleBase
                         {
                             Id = order.Id,
@@ -1288,6 +1296,7 @@ END;";
                 }
 
                 await UpdateCapacityScheduleDatesAsync(context, updates, cancellationToken);
+                await ClearCapacityScheduleDatesAsync(context, clearCapacityScheduleIds, cancellationToken);
             }
 
             var fallbackUpdated = await FillBlankCapacityScheduleDateByScheduleDateAsync(context, cancellationToken);
@@ -1301,9 +1310,19 @@ END;";
         private static Task<int> FillBlankCapacityScheduleDateByScheduleDateAsync(DbContext context, CancellationToken cancellationToken)
         {
             return context.Set<WZ_OrderCycleBase>()
-                .Where(p => p.ScheduleDate.HasValue && !p.CapacityScheduleDate.HasValue)
+                .Where(p => p.ScheduleDate.HasValue
+                    && !p.CapacityScheduleDate.HasValue
+                    && (!p.OrderQty.HasValue
+                        || p.OrderQty.Value <= 0
+                        || ((p.AssignedProductionLine == null || p.AssignedProductionLine == string.Empty)
+                            && (p.ProductionLine == null || p.ProductionLine == string.Empty))))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(p => p.CapacityScheduleDate, p => p.ScheduleDate), cancellationToken);
+        }
+
+        private static bool ShouldFallbackCapacityScheduleDate(string failureReason)
+        {
+            return !string.Equals(failureReason, CapacityFailureReasons.BaseCapacityReached, StringComparison.Ordinal);
         }
 
         private const int CapacityScheduleUpdateBatchSize = 1000;
@@ -1335,6 +1354,26 @@ END;";
                         .ExecuteUpdateAsync(setters => setters
                             .SetProperty(p => p.CapacityScheduleDate, capacityScheduleDate), cancellationToken);
                 }
+            }
+        }
+
+        private static async Task ClearCapacityScheduleDatesAsync(DbContext context, List<int> ids, CancellationToken cancellationToken)
+        {
+            if (ids == null || ids.Count == 0)
+            {
+                return;
+            }
+
+            DateTime? emptyDate = null;
+            var distinctIds = ids.Distinct().ToList();
+            for (var index = 0; index < distinctIds.Count; index += CapacityScheduleUpdateBatchSize)
+            {
+                var batchIds = distinctIds.Skip(index).Take(CapacityScheduleUpdateBatchSize).ToList();
+                await context.Set<WZ_OrderCycleBase>()
+                    .Where(p => batchIds.Contains(p.Id))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.CapacityScheduleDate, emptyDate)
+                        .SetProperty(p => p.CapacityScheduleDateOverThreshold, false), cancellationToken);
             }
         }
 
@@ -2480,6 +2519,11 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return searchStartDate <= endDate.Date ? searchStartDate : null;
         }
 
+        // 排产优化规则：
+        // 1. 原排产日优先；若插入前负载未满 100%，允许当前订单一次性推到 120% 以内。
+        // 2. 原排产日放不下时，先找取值范围内工作日，再找周六，最后找周日；每个日期都先看 100%，再看预留 120%。
+        // 3. 预留 120% 只能用于“插入前未满 100%”的日期，不能在插入前已达 100% 的日期继续塞 100%-120%。
+        // 4. 只有所有候选日期插入后都会超过 120% 时，才进入均摊超载日期。
         private static CapacityScheduleDecision TryResolveForwardAssignableDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
@@ -2531,7 +2575,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 reserveCapacityRatio,
                 targetDate,
                 IsWorkday,
-                true,
+                CapacityScheduleMode.DeliveryAdjusted,
                 CapacityScheduleMode.DailyReserve);
             if (workdayAttempt.CapacityDate.HasValue)
             {
@@ -2549,7 +2593,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 reserveCapacityRatio,
                 targetDate,
                 date => date.DayOfWeek == DayOfWeek.Saturday,
-                false,
+                CapacityScheduleMode.SaturdayReserve,
                 CapacityScheduleMode.SaturdayReserve);
             if (saturdayAttempt.CapacityDate.HasValue)
             {
@@ -2567,7 +2611,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 reserveCapacityRatio,
                 targetDate,
                 IsSunday,
-                false,
+                CapacityScheduleMode.SundayReserve,
                 CapacityScheduleMode.SundayReserve);
             if (sundayAttempt.CapacityDate.HasValue)
             {
@@ -2597,24 +2641,19 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.OutOfCapacityWindow);
             }
 
-            if (IsWorkday(date))
+            var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
+            if (normalAttempt.CapacityDate.HasValue)
             {
-                var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
-                if (normalAttempt.CapacityDate.HasValue)
-                {
-                    return CapacityScheduleDecision.Success(date, CapacityScheduleMode.NormalCapacity);
-                }
-
-                var reserveAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
-                return reserveAttempt.CapacityDate.HasValue
-                    ? CapacityScheduleDecision.Success(date, CapacityScheduleMode.DailyReserve)
-                    : CapacityScheduleDecision.Fail(PickFailureReason(normalAttempt.FailureReason, reserveAttempt.FailureReason));
+                var mode = IsWorkday(date)
+                    ? CapacityScheduleMode.NormalCapacity
+                    : ResolveReserveCapacityMode(date);
+                return CapacityScheduleDecision.Success(date, mode);
             }
 
-            var weekendAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
-            return weekendAttempt.CapacityDate.HasValue
+            var reserveAttempt = TryAssignReserveCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
+            return reserveAttempt.CapacityDate.HasValue
                 ? CapacityScheduleDecision.Success(date, ResolveReserveCapacityMode(date))
-                : CapacityScheduleDecision.Fail(weekendAttempt.FailureReason);
+                : CapacityScheduleDecision.Fail(PickFailureReason(normalAttempt.FailureReason, reserveAttempt.FailureReason));
         }
 
         private static CapacityScheduleDecision TryFindForwardAssignableDate(
@@ -2628,7 +2667,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             decimal reserveCapacityRatio,
             DateTime targetDate,
             Func<DateTime, bool> datePredicate,
-            bool allowNormalCapacity,
+            CapacityScheduleMode normalMode,
             CapacityScheduleMode reserveMode)
         {
             var failureReason = CapacityFailureReasons.ThresholdExceeded;
@@ -2645,18 +2684,15 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                     continue;
                 }
 
-                if (allowNormalCapacity)
+                var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
+                if (normalAttempt.CapacityDate.HasValue)
                 {
-                    var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
-                    if (normalAttempt.CapacityDate.HasValue)
-                    {
-                        return CapacityScheduleDecision.Success(date, CapacityScheduleMode.DeliveryAdjusted);
-                    }
-
-                    failureReason = PickFailureReason(failureReason, normalAttempt.FailureReason);
+                    return CapacityScheduleDecision.Success(date, normalMode);
                 }
 
-                var reserveAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
+                failureReason = PickFailureReason(failureReason, normalAttempt.FailureReason);
+
+                var reserveAttempt = TryAssignReserveCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
                 if (reserveAttempt.CapacityDate.HasValue)
                 {
                     return CapacityScheduleDecision.Success(date, reserveMode);
@@ -2714,6 +2750,39 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return CapacityAssignAttempt.Fail(CapacityFailureReasons.ThresholdExceeded);
         }
 
+        private static CapacityAssignAttempt TryAssignReserveCapacityDate(
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime date,
+            decimal quantity,
+            decimal capacityRatio)
+        {
+            if (!capacityMap.TryGetValue((cat, line, date.Date), out var bucket))
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            if (!bucket.Threshold.HasValue || bucket.Threshold.Value <= 0)
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingThreshold);
+            }
+
+            if (bucket.Quantity >= bucket.Threshold.Value)
+            {
+                return CapacityAssignAttempt.Fail(CapacityFailureReasons.BaseCapacityReached);
+            }
+
+            var capacityLimit = bucket.Threshold.Value * capacityRatio;
+            if (bucket.Quantity + quantity <= capacityLimit)
+            {
+                bucket.Quantity += quantity;
+                return CapacityAssignAttempt.Success(date.Date);
+            }
+
+            return CapacityAssignAttempt.Fail(CapacityFailureReasons.ThresholdExceeded);
+        }
+
         private static CapacityAssignAttempt TryAssignBalancedOverflowDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
@@ -2754,6 +2823,16 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 }
 
                 var projectedLoadRate = (bucket.Quantity + quantity) / bucket.Threshold.Value;
+                if (projectedLoadRate <= DailyReserveCapacityRatio)
+                {
+                    failureReason = PickFailureReason(
+                        failureReason,
+                        bucket.Quantity >= bucket.Threshold.Value
+                            ? CapacityFailureReasons.BaseCapacityReached
+                            : CapacityFailureReasons.ThresholdExceeded);
+                    continue;
+                }
+
                 var isLaterTie = selectedDate.HasValue
                     && selectedLoadRate.HasValue
                     && projectedLoadRate == selectedLoadRate.Value
@@ -2783,6 +2862,11 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             if (reasons != null && reasons.Any(p => string.Equals(p, CapacityFailureReasons.MissingThreshold, StringComparison.Ordinal)))
             {
                 return CapacityFailureReasons.MissingThreshold;
+            }
+
+            if (reasons != null && reasons.Any(p => string.Equals(p, CapacityFailureReasons.BaseCapacityReached, StringComparison.Ordinal)))
+            {
+                return CapacityFailureReasons.BaseCapacityReached;
             }
 
             if (reasons != null && reasons.Any(p => string.Equals(p, CapacityFailureReasons.ThresholdExceeded, StringComparison.Ordinal)))
@@ -2839,6 +2923,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         {
             public const string MissingProductionOutput = "missing_production_output";
             public const string MissingThreshold = "missing_threshold";
+            public const string BaseCapacityReached = "base_capacity_reached";
             public const string ThresholdExceeded = "threshold_exceeded";
             public const string OutOfCapacityWindow = "out_of_capacity_window";
         }
