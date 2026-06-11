@@ -2321,23 +2321,6 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             return index < dates.Count ? index : -1;
         }
 
-        private static int FindLastDateIndex(List<DateTime> dates, DateTime targetDate)
-        {
-            if (dates == null || dates.Count == 0)
-            {
-                return -1;
-            }
-
-            var index = dates.BinarySearch(targetDate);
-            if (index >= 0)
-            {
-                return index;
-            }
-
-            index = ~index - 1;
-            return index >= 0 ? index : -1;
-        }
-
         private const decimal DailyReserveCapacityRatio = 1.2M;
         private const int LongDeliveryGapThresholdDays = 35;
         private const int ReplyLeadWindowMinDays = 25;
@@ -2371,94 +2354,40 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
-            var normalAttempt = TryFindLatestAssignableDate(
+            var preferredAttempt = TryResolveForwardAssignableDate(
                 dates,
                 capacityMap,
                 cat,
                 line,
                 startDate,
                 endDate,
+                targetDate,
                 quantity,
-                1M,
-                IsWorkday);
-            if (normalAttempt.CapacityDate.HasValue)
+                DailyReserveCapacityRatio);
+            if (preferredAttempt.CapacityDate.HasValue)
             {
-                var mode = normalAttempt.CapacityDate.Value == targetDate.Date
-                    ? CapacityScheduleMode.NormalCapacity
-                    : CapacityScheduleMode.DeliveryAdjusted;
-                return CapacityScheduleDecision.Success(normalAttempt.CapacityDate.Value, mode);
+                return preferredAttempt;
             }
 
-            var dailyReserveAttempt = TryFindLatestAssignableDate(
-                dates,
-                capacityMap,
-                cat,
-                line,
-                startDate,
-                endDate,
-                quantity,
-                DailyReserveCapacityRatio,
-                IsWorkday);
-            if (dailyReserveAttempt.CapacityDate.HasValue)
-            {
-                return CapacityScheduleDecision.Success(dailyReserveAttempt.CapacityDate.Value, CapacityScheduleMode.DailyReserve);
-            }
-
-            var saturdayReserveAttempt = TryFindLatestAssignableDate(
-                dates,
-                capacityMap,
-                cat,
-                line,
-                startDate,
-                endDate,
-                quantity,
-                DailyReserveCapacityRatio,
-                date => date.DayOfWeek == DayOfWeek.Saturday);
-            if (saturdayReserveAttempt.CapacityDate.HasValue)
-            {
-                return CapacityScheduleDecision.Success(saturdayReserveAttempt.CapacityDate.Value, CapacityScheduleMode.SaturdayReserve);
-            }
-
-            var sundayReserveAttempt = TryFindLatestAssignableDate(
-                dates,
-                capacityMap,
-                cat,
-                line,
-                startDate,
-                endDate,
-                quantity,
-                DailyReserveCapacityRatio,
-                IsSunday);
-            if (sundayReserveAttempt.CapacityDate.HasValue)
-            {
-                return CapacityScheduleDecision.Success(sundayReserveAttempt.CapacityDate.Value, CapacityScheduleMode.SundayReserve);
-            }
-
-            var balancedAttempt = TryAssignBalancedOverflowDate(
-                dates,
-                capacityMap,
-                cat,
-                line,
-                startDate,
-                endDate,
-                quantity);
+            var overflowStartDate = ResolveCapacitySearchStartDate(startDate, endDate, targetDate);
+            var balancedAttempt = overflowStartDate.HasValue
+                ? TryAssignBalancedOverflowDate(
+                    dates,
+                    capacityMap,
+                    cat,
+                    line,
+                    overflowStartDate.Value,
+                    endDate,
+                    quantity)
+                : CapacityAssignAttempt.Fail(CapacityFailureReasons.OutOfCapacityWindow);
             if (balancedAttempt.CapacityDate.HasValue)
             {
                 return CapacityScheduleDecision.Success(balancedAttempt.CapacityDate.Value, CapacityScheduleMode.BalancedOverflow);
             }
 
             return CapacityScheduleDecision.Fail(PickFailureReason(
-                normalAttempt.FailureReason,
-                dailyReserveAttempt.FailureReason,
-                saturdayReserveAttempt.FailureReason,
-                sundayReserveAttempt.FailureReason,
+                preferredAttempt.FailureReason,
                 balancedAttempt.FailureReason));
-        }
-
-        private static bool IsWorkday(DateTime date)
-        {
-            return date.DayOfWeek != DayOfWeek.Saturday
-                && date.DayOfWeek != DayOfWeek.Sunday;
         }
 
         private static bool IsSunday(DateTime? date)
@@ -2545,47 +2474,216 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             }
         }
 
-        private static CapacityAssignAttempt TryFindLatestAssignableDate(
+        private static DateTime? ResolveCapacitySearchStartDate(DateTime startDate, DateTime endDate, DateTime targetDate)
+        {
+            var searchStartDate = targetDate.Date > startDate.Date ? targetDate.Date : startDate.Date;
+            return searchStartDate <= endDate.Date ? searchStartDate : null;
+        }
+
+        private static CapacityScheduleDecision TryResolveForwardAssignableDate(
             List<DateTime> dates,
             Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
             string cat,
             string line,
             DateTime startDate,
             DateTime endDate,
+            DateTime targetDate,
             decimal quantity,
-            decimal capacityRatio,
-            Func<DateTime, bool> datePredicate)
+            decimal reserveCapacityRatio)
         {
-            var index = FindLastDateIndex(dates, endDate.Date);
+            var searchStartDate = ResolveCapacitySearchStartDate(startDate, endDate, targetDate);
+            if (!searchStartDate.HasValue)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.OutOfCapacityWindow);
+            }
+
+            var index = FindFirstDateIndex(dates, searchStartDate.Value);
             if (index < 0)
             {
-                return CapacityAssignAttempt.Fail(CapacityFailureReasons.MissingProductionOutput);
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
             var failureReason = CapacityFailureReasons.ThresholdExceeded;
-            for (var i = index; i >= 0; i--)
+            var preferredDateAttempt = TryAssignPreferredCapacityDate(
+                capacityMap,
+                cat,
+                line,
+                targetDate,
+                searchStartDate.Value,
+                endDate,
+                quantity,
+                reserveCapacityRatio);
+            if (preferredDateAttempt.CapacityDate.HasValue)
+            {
+                return preferredDateAttempt;
+            }
+
+            failureReason = PickFailureReason(failureReason, preferredDateAttempt.FailureReason);
+
+            var workdayAttempt = TryFindForwardAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                IsWorkday,
+                true,
+                CapacityScheduleMode.DailyReserve);
+            if (workdayAttempt.CapacityDate.HasValue)
+            {
+                return workdayAttempt;
+            }
+
+            var saturdayAttempt = TryFindForwardAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                date => date.DayOfWeek == DayOfWeek.Saturday,
+                false,
+                CapacityScheduleMode.SaturdayReserve);
+            if (saturdayAttempt.CapacityDate.HasValue)
+            {
+                return saturdayAttempt;
+            }
+
+            var sundayAttempt = TryFindForwardAssignableDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                targetDate,
+                IsSunday,
+                false,
+                CapacityScheduleMode.SundayReserve);
+            if (sundayAttempt.CapacityDate.HasValue)
+            {
+                return sundayAttempt;
+            }
+
+            return CapacityScheduleDecision.Fail(PickFailureReason(
+                failureReason,
+                workdayAttempt.FailureReason,
+                saturdayAttempt.FailureReason,
+                sundayAttempt.FailureReason));
+        }
+
+        private static CapacityScheduleDecision TryAssignPreferredCapacityDate(
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime targetDate,
+            DateTime searchStartDate,
+            DateTime endDate,
+            decimal quantity,
+            decimal reserveCapacityRatio)
+        {
+            var date = targetDate.Date;
+            if (date < searchStartDate.Date || date > endDate.Date)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.OutOfCapacityWindow);
+            }
+
+            if (IsWorkday(date))
+            {
+                var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
+                if (normalAttempt.CapacityDate.HasValue)
+                {
+                    return CapacityScheduleDecision.Success(date, CapacityScheduleMode.NormalCapacity);
+                }
+
+                var reserveAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
+                return reserveAttempt.CapacityDate.HasValue
+                    ? CapacityScheduleDecision.Success(date, CapacityScheduleMode.DailyReserve)
+                    : CapacityScheduleDecision.Fail(PickFailureReason(normalAttempt.FailureReason, reserveAttempt.FailureReason));
+            }
+
+            var weekendAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
+            return weekendAttempt.CapacityDate.HasValue
+                ? CapacityScheduleDecision.Success(date, ResolveReserveCapacityMode(date))
+                : CapacityScheduleDecision.Fail(weekendAttempt.FailureReason);
+        }
+
+        private static CapacityScheduleDecision TryFindForwardAssignableDate(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            int startIndex,
+            DateTime endDate,
+            decimal quantity,
+            decimal reserveCapacityRatio,
+            DateTime targetDate,
+            Func<DateTime, bool> datePredicate,
+            bool allowNormalCapacity,
+            CapacityScheduleMode reserveMode)
+        {
+            var failureReason = CapacityFailureReasons.ThresholdExceeded;
+            for (var i = startIndex; i < dates.Count; i++)
             {
                 var date = dates[i].Date;
-                if (date < startDate.Date)
+                if (date > endDate.Date)
                 {
                     break;
                 }
 
-                if (!datePredicate(date))
+                if (date == targetDate.Date || !datePredicate(date))
                 {
                     continue;
                 }
 
-                var attempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, capacityRatio);
-                if (attempt.CapacityDate.HasValue)
+                if (allowNormalCapacity)
                 {
-                    return attempt;
+                    var normalAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, 1M);
+                    if (normalAttempt.CapacityDate.HasValue)
+                    {
+                        return CapacityScheduleDecision.Success(date, CapacityScheduleMode.DeliveryAdjusted);
+                    }
+
+                    failureReason = PickFailureReason(failureReason, normalAttempt.FailureReason);
                 }
 
-                failureReason = PickFailureReason(failureReason, attempt.FailureReason);
+                var reserveAttempt = TryAssignCapacityDate(capacityMap, cat, line, date, quantity, reserveCapacityRatio);
+                if (reserveAttempt.CapacityDate.HasValue)
+                {
+                    return CapacityScheduleDecision.Success(date, reserveMode);
+                }
+
+                failureReason = PickFailureReason(failureReason, reserveAttempt.FailureReason);
             }
 
-            return CapacityAssignAttempt.Fail(failureReason);
+            return CapacityScheduleDecision.Fail(failureReason);
+        }
+
+        private static bool IsWorkday(DateTime date)
+        {
+            return date.DayOfWeek != DayOfWeek.Saturday
+                && date.DayOfWeek != DayOfWeek.Sunday;
+        }
+
+        private static CapacityScheduleMode ResolveReserveCapacityMode(DateTime date)
+        {
+            if (date.DayOfWeek == DayOfWeek.Saturday)
+            {
+                return CapacityScheduleMode.SaturdayReserve;
+            }
+
+            return IsSunday(date)
+                ? CapacityScheduleMode.SundayReserve
+                : CapacityScheduleMode.DailyReserve;
         }
 
         private static CapacityAssignAttempt TryAssignCapacityDate(
