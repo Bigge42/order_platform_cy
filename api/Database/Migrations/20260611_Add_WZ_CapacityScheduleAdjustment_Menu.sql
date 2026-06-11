@@ -18,13 +18,26 @@ DECLARE @AuthData INT;
 DECLARE @LinkType INT;
 DECLARE @Enable TINYINT;
 DECLARE @MenuType INT;
+DECLARE @TargetAuthValue NVARCHAR(1000) = N'Search,Update';
+
+SELECT TOP (1)
+    @ParentId = Menu_Id
+FROM dbo.Sys_Menu
+WHERE MenuName = N'计划管理'
+  AND ISNULL(MenuType, 0) = 0
+ORDER BY ISNULL(OrderNo, 0) DESC, Menu_Id;
+
+IF @ParentId IS NULL
+BEGIN
+    PRINT N'错误：未找到“计划管理”菜单，请先确认父级菜单。';
+    RETURN;
+END;
 
 SELECT TOP (1)
     @SourceMenuId = Menu_Id,
-    @ParentId = ParentId,
     @Auth = Auth,
     @Icon = Icon,
-    @OrderNo = ISNULL(OrderNo, 0) + 1,
+    @OrderNo = CASE WHEN ParentId = @ParentId THEN ISNULL(OrderNo, 0) + 1 ELSE NULL END,
     @AuthData = AuthData,
     @LinkType = LinkType,
     @Enable = Enable,
@@ -37,22 +50,6 @@ ORDER BY
     CASE WHEN Url = N'/WZ_OrderCycleBase' THEN 0 ELSE 1 END,
     Menu_Id;
 
-IF @ParentId IS NULL
-BEGIN
-    SELECT TOP (1)
-        @ParentId = Menu_Id
-    FROM dbo.Sys_Menu
-    WHERE MenuName = N'计划管理'
-      AND ISNULL(MenuType, 0) = 0
-    ORDER BY ISNULL(OrderNo, 0) DESC, Menu_Id;
-END;
-
-IF @ParentId IS NULL
-BEGIN
-    PRINT N'错误：未找到“排产智能体优化看板”或“计划管理”菜单，请先确认父级菜单。';
-    RETURN;
-END;
-
 SET @Auth = COALESCE(NULLIF(@Auth, N''), N'[
   {"text":"查询","value":"Search"},
   {"text":"编辑","value":"Update"}
@@ -61,8 +58,8 @@ SET @Icon = COALESCE(NULLIF(@Icon, N''), N'el-icon-warning-outline');
 SET @OrderNo = COALESCE(@OrderNo, (SELECT ISNULL(MAX(OrderNo), 0) + 1 FROM dbo.Sys_Menu WHERE ParentId = @ParentId));
 SET @AuthData = COALESCE(@AuthData, 0);
 SET @LinkType = COALESCE(@LinkType, 0);
-SET @Enable = COALESCE(@Enable, 1);
-SET @MenuType = COALESCE(@MenuType, 0);
+SET @Enable = 1;
+SET @MenuType = 0;
 
 SELECT TOP (1)
     @NewMenuId = Menu_Id
@@ -124,8 +121,8 @@ BEGIN
         LinkType = COALESCE(LinkType, @LinkType),
         Icon = COALESCE(NULLIF(Icon, N''), @Icon),
         OrderNo = COALESCE(OrderNo, @OrderNo),
-        Enable = COALESCE(Enable, @Enable),
-        MenuType = COALESCE(MenuType, @MenuType),
+        Enable = 1,
+        MenuType = 0,
         Modifier = N'Codex',
         ModifyDate = GETDATE()
     WHERE Menu_Id = @NewMenuId;
@@ -166,5 +163,121 @@ BEGIN
       );
 
     PRINT N'已复制排产智能体优化看板角色授权到异常排产调整工作台。';
+END;
+
+IF OBJECT_ID(N'dbo.Sys_RoleAuth', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.Sys_Role', N'U') IS NOT NULL
+BEGIN
+    DECLARE @TargetRoles TABLE(Role_Id INT NOT NULL PRIMARY KEY);
+    DECLARE @TargetNames TABLE(Name NVARCHAR(50) NOT NULL PRIMARY KEY);
+
+    INSERT INTO @TargetNames(Name)
+    VALUES (N'辛防'), (N'任新'), (N'川仪管理员');
+
+    INSERT INTO @TargetRoles(Role_Id)
+    SELECT DISTINCT r.Role_Id
+    FROM dbo.Sys_Role AS r
+    WHERE EXISTS
+    (
+        SELECT 1
+        FROM @TargetNames AS targetName
+        WHERE targetName.Name = LTRIM(RTRIM(r.RoleName))
+    )
+      AND ISNULL(r.Enable, 1) = 1;
+
+    IF OBJECT_ID(N'dbo.Sys_User', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO @TargetRoles(Role_Id)
+        SELECT DISTINCT roleId
+        FROM
+        (
+            SELECT r.Role_Id AS roleId
+            FROM dbo.Sys_User AS u
+            INNER JOIN dbo.Sys_Role AS r
+                ON CHARINDEX(
+                    N',' + CONVERT(NVARCHAR(20), r.Role_Id) + N',',
+                    N',' + REPLACE(ISNULL(u.RoleIds, N''), N' ', N'') + N','
+                ) > 0
+            WHERE EXISTS
+            (
+                SELECT 1
+                FROM @TargetNames AS targetName
+                WHERE targetName.Name = LTRIM(RTRIM(u.UserTrueName))
+                   OR targetName.Name = LTRIM(RTRIM(u.UserName))
+            )
+              AND ISNULL(r.Enable, 1) = 1
+
+            UNION ALL
+
+            SELECT u.Role_Id AS roleId
+            FROM dbo.Sys_User AS u
+            WHERE EXISTS
+              (
+                  SELECT 1
+                  FROM @TargetNames AS targetName
+                  WHERE targetName.Name = LTRIM(RTRIM(u.UserTrueName))
+                     OR targetName.Name = LTRIM(RTRIM(u.UserName))
+              )
+              AND u.Role_Id IS NOT NULL
+        ) AS source
+        WHERE roleId IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM @TargetRoles AS target WHERE target.Role_Id = source.roleId);
+    END;
+
+    IF OBJECT_ID(N'dbo.Sys_UserRole', N'U') IS NOT NULL
+       AND OBJECT_ID(N'dbo.Sys_User', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO @TargetRoles(Role_Id)
+        SELECT DISTINCT ur.RoleId
+        FROM dbo.Sys_User AS u
+        INNER JOIN dbo.Sys_UserRole AS ur ON ur.UserId = u.User_Id
+        WHERE EXISTS
+          (
+              SELECT 1
+              FROM @TargetNames AS targetName
+              WHERE targetName.Name = LTRIM(RTRIM(u.UserTrueName))
+                 OR targetName.Name = LTRIM(RTRIM(u.UserName))
+          )
+          AND ISNULL(ur.Enable, 1) = 1
+          AND NOT EXISTS (SELECT 1 FROM @TargetRoles AS target WHERE target.Role_Id = ur.RoleId);
+    END;
+
+    INSERT INTO dbo.Sys_RoleAuth
+    (
+        Role_Id,
+        User_Id,
+        Menu_Id,
+        AuthValue,
+        AuthMenuData,
+        Creator,
+        CreateDate
+    )
+    SELECT
+        target.Role_Id,
+        NULL,
+        @NewMenuId,
+        @TargetAuthValue,
+        NULL,
+        N'Codex',
+        GETDATE()
+    FROM @TargetRoles AS target
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.Sys_RoleAuth AS auth
+        WHERE auth.Menu_Id = @NewMenuId
+          AND auth.Role_Id = target.Role_Id
+    );
+
+    UPDATE auth
+    SET AuthValue = @TargetAuthValue,
+        Modifier = N'Codex',
+        ModifyDate = GETDATE()
+    FROM dbo.Sys_RoleAuth AS auth
+    INNER JOIN @TargetRoles AS target ON target.Role_Id = auth.Role_Id
+    WHERE auth.Menu_Id = @NewMenuId
+      AND ISNULL(auth.AuthValue, N'') <> @TargetAuthValue;
+
+    PRINT N'已授权辛防、任新、川仪管理员查看并使用异常排产调整工作台。';
 END;
 GO
