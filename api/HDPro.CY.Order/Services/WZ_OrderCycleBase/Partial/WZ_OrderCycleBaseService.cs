@@ -891,12 +891,14 @@ SELECT COUNT(1) FROM #WZ_OrderCycleSchedulePredictionReviewMergeResult;";
                     .GetAwaiter()
                     .GetResult();
 
-                var list = context.Set<WZ_OrderCycleSchedulePredictionReview>()
-                    .AsNoTracking()
-                    .Where(p => p.IsActive)
-                    .OrderByDescending(p => p.LastSeenAt)
-                    .ThenByDescending(p => p.Id)
-                    .ToList();
+                var list = (
+                    from review in context.Set<WZ_OrderCycleSchedulePredictionReview>().AsNoTracking()
+                    join orderCycle in context.Set<WZ_OrderCycleBase>().AsNoTracking()
+                        on review.OrderCycleBaseId equals (int?)orderCycle.Id
+                    where review.IsActive && !orderCycle.ScheduleDate.HasValue
+                    orderby review.LastSeenAt descending, review.Id descending
+                    select review
+                ).ToList();
 
                 var folder = DateTime.Now.ToString("yyyyMMdd");
                 var savePath = $"Download/ExcelExport/{folder}/".MapPath();
