@@ -1250,29 +1250,7 @@ END;";
             var context = _repository?.DbContext
                 ?? throw new InvalidOperationException("订单周期仓储未正确初始化");
 
-            var orders = await context.Set<WZ_OrderCycleBase>()
-                .AsNoTracking()
-                .Where(p => p.ScheduleDate.HasValue
-                    && p.OrderQty.HasValue
-                    && ((p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty)
-                        || (p.ProductionLine != null && p.ProductionLine != string.Empty)))
-                .OrderBy(p => p.ScheduleDate)
-                .ThenBy(p => p.Id)
-                .Select(p => new OrderCapacityCandidate
-                {
-                    Id = p.Id,
-                    ScheduleDate = p.ScheduleDate,
-                    OrderQty = p.OrderQty,
-                    ValveCategory = p.ValveCategory,
-                    AssignedProductionLine = p.AssignedProductionLine,
-                    ProductionLine = p.ProductionLine,
-                    NominalDiameter = p.NominalDiameter,
-                    StandardDeliveryDate = p.StandardDeliveryDate,
-                    ReplyDeliveryDate = p.ReplyDeliveryDate,
-                    RequestedDeliveryDate = p.RequestedDeliveryDate,
-                    FixedCycleDays = p.FixedCycleDays
-                })
-                .ToListAsync(cancellationToken);
+            var orders = await LoadAllSchedulingOrdersAsync(context, cancellationToken);
 
             var summary = new CapacityScheduleSummary
             {
@@ -1281,79 +1259,9 @@ END;";
 
             if (orders.Count > 0)
             {
-                var thresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken);
-                var outputs = await context.Set<WZ_ProductionOutput>()
-                    .AsNoTracking()
-                    .ToListAsync(cancellationToken);
-
-                var capacityMap = new Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket>();
-                var categoryLineDates = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
-                var outputThresholdMap = new Dictionary<(string Cat, string Line), decimal>();
-
-                foreach (var output in outputs)
-                {
-                    if (output == null)
-                    {
-                        continue;
-                    }
-
-                    var cat = NormalizeCapacityText(output.ValveCategory);
-                    var line = NormalizeCapacityText(output.ProductionLine);
-                    if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
-                    {
-                        continue;
-                    }
-
-                    var lineKey = (cat, line);
-                    if (output.CurrentThreshold.HasValue && output.CurrentThreshold.Value > 0)
-                    {
-                        outputThresholdMap[lineKey] = outputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
-                            ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
-                            : output.CurrentThreshold.Value;
-                    }
-
-                    var date = output.ProductionDate.Date;
-                    var key = (cat, line, date);
-
-                    if (!capacityMap.TryGetValue(key, out var bucket))
-                    {
-                        bucket = new CapacityBucket
-                        {
-                            Quantity = output.Quantity,
-                            Threshold = ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold)
-                        };
-                        capacityMap[key] = bucket;
-                    }
-                    else
-                    {
-                        bucket.Quantity += output.Quantity;
-                        bucket.Threshold = MergeThreshold(
-                            bucket.Threshold,
-                            ResolveCapacityThreshold(thresholdMap, outputThresholdMap, cat, line, output.CurrentThreshold));
-                    }
-
-                    if (!categoryLineDates.TryGetValue(lineKey, out var dates))
-                    {
-                        dates = new HashSet<DateTime>();
-                        categoryLineDates[lineKey] = dates;
-                    }
-
-                    dates.Add(date);
-                }
-
-                var capacityDateList = new Dictionary<(string Cat, string Line), List<DateTime>>();
-                var capacityDateSets = new Dictionary<(string Cat, string Line), HashSet<DateTime>>();
-                foreach (var item in categoryLineDates)
-                {
-                    var dateSet = item.Value;
-                    var dates = dateSet.ToList();
-                    dates.Sort();
-                    capacityDateList[item.Key] = dates;
-                    capacityDateSets[item.Key] = dateSet;
-                }
-
+                var loadPool = await BuildBaseLoadPoolAsync(context, cancellationToken);
                 var updates = new List<WZ_OrderCycleBase>();
-                var clearCapacityScheduleIds = new List<int>();
+                var resetIds = orders.Select(p => p.Id).Distinct().ToList();
 
                 foreach (var order in orders)
                 {
@@ -1365,55 +1273,31 @@ END;";
                         continue;
                     }
 
-                    var targetDate = order.ScheduleDate.Value.Date;
                     var cat = NormalizeCapacityText(order.ValveCategory);
                     var line = ResolveCapacityLine(order);
                     if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
                     {
-                        updates.Add(new WZ_OrderCycleBase
-                        {
-                            Id = order.Id,
-                            CapacityScheduleDate = targetDate
-                        });
-                        summary.Updated++;
-                        summary.FallbackScheduleDateCount++;
+                        RegisterCapacityScheduleFailure(summary, CapacityFailureReasons.MissingProductionOutput);
                         continue;
                     }
 
-                    var capacityLineKey = (cat, line);
-                    if (!capacityDateList.TryGetValue(capacityLineKey, out var dates))
+                    if (!TryGetStrictCapacityWindow(order, out var startDate, out var endDate))
                     {
-                        dates = new List<DateTime>();
-                        capacityDateList[capacityLineKey] = dates;
+                        RegisterCapacityScheduleFailure(summary, CapacityFailureReasons.OutOfCapacityWindow);
+                        continue;
                     }
 
-                    if (!capacityDateSets.TryGetValue(capacityLineKey, out var knownDates))
-                    {
-                        knownDates = new HashSet<DateTime>();
-                        capacityDateSets[capacityLineKey] = knownDates;
-                    }
-
-                    var decision = ResolveCapacityScheduleDate(order, dates, knownDates, capacityMap, thresholdMap, outputThresholdMap, cat, line, targetDate);
+                    var candidateDates = BuildCandidateDates(startDate, endDate);
+                    var decision = IsShortCycleCapacityOrder(order)
+                        ? TryPickShortCycleCapacityDate(loadPool, cat, line, candidateDates, order.OrderQty.Value)
+                        : TryPickBestCapacityDate(loadPool, cat, line, candidateDates, order.OrderQty.Value);
                     if (!decision.CapacityDate.HasValue)
                     {
-                        if (!ShouldFallbackCapacityScheduleDate(decision.FailureReason))
-                        {
-                            clearCapacityScheduleIds.Add(order.Id);
-                            summary.Skipped++;
-                            continue;
-                        }
-
-                        updates.Add(new WZ_OrderCycleBase
-                        {
-                            Id = order.Id,
-                            CapacityScheduleDate = targetDate
-                        });
-
-                        summary.Updated++;
-                        summary.FallbackScheduleDateCount++;
+                        RegisterCapacityScheduleFailure(summary, decision.FailureReason);
                         continue;
                     }
 
+                    AddPendingLoad(loadPool, cat, line, decision.CapacityDate.Value, order.OrderQty.Value);
                     updates.Add(new WZ_OrderCycleBase
                     {
                         Id = order.Id,
@@ -1444,16 +1328,594 @@ END;";
                     }
                 }
 
+                await ClearCapacityScheduleDatesAsync(context, resetIds, cancellationToken);
                 await UpdateCapacityScheduleDatesAsync(context, updates, cancellationToken);
-                await ClearCapacityScheduleDatesAsync(context, clearCapacityScheduleIds, cancellationToken);
             }
 
-            var fallbackUpdated = await FillBlankCapacityScheduleDateByScheduleDateAsync(context, cancellationToken);
-            summary.Updated += fallbackUpdated;
-            summary.FallbackScheduleDateCount += fallbackUpdated;
             summary.OverThresholdCount = await UpdateCapacityScheduleDateOverThresholdFlagsAsync(context, cancellationToken);
 
             return summary;
+        }
+
+        private static readonly decimal[] CapacitySafeFillLoadRates = { 0.8M, 0.9M, 1M };
+
+        private static readonly int[] CapacityDateRanks = { 0, 1, 2, 3 };
+
+        private static async Task<List<OrderCapacityCandidate>> LoadAllSchedulingOrdersAsync(DbContext context, CancellationToken cancellationToken)
+        {
+            var orders = await context.Set<WZ_OrderCycleBase>()
+                .AsNoTracking()
+                .Where(p => p.ScheduleDate.HasValue
+                    && p.OrderQty.HasValue
+                    && ((p.AssignedProductionLine != null && p.AssignedProductionLine != string.Empty)
+                        || (p.ProductionLine != null && p.ProductionLine != string.Empty)))
+                .Select(p => new OrderCapacityCandidate
+                {
+                    Id = p.Id,
+                    ScheduleDate = p.ScheduleDate,
+                    OrderQty = p.OrderQty,
+                    ValveCategory = p.ValveCategory,
+                    AssignedProductionLine = p.AssignedProductionLine,
+                    ProductionLine = p.ProductionLine,
+                    NominalDiameter = p.NominalDiameter,
+                    StandardDeliveryDate = p.StandardDeliveryDate,
+                    ReplyDeliveryDate = p.ReplyDeliveryDate,
+                    RequestedDeliveryDate = p.RequestedDeliveryDate,
+                    FixedCycleDays = p.FixedCycleDays
+                })
+                .ToListAsync(cancellationToken);
+
+            orders.Sort(CompareSchedulingOrders);
+            return orders;
+        }
+
+        private static int CompareSchedulingOrders(OrderCapacityCandidate left, OrderCapacityCandidate right)
+        {
+            var result = CompareNullableDate(left.ReplyDeliveryDate, right.ReplyDeliveryDate);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = left.FixedCycleDays.GetValueOrDefault(int.MaxValue)
+                .CompareTo(right.FixedCycleDays.GetValueOrDefault(int.MaxValue));
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = GetCapacityWindowDays(left).CompareTo(GetCapacityWindowDays(right));
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = right.OrderQty.GetValueOrDefault().CompareTo(left.OrderQty.GetValueOrDefault());
+            return result != 0 ? result : left.Id.CompareTo(right.Id);
+        }
+
+        private static int CompareNullableDate(DateTime? left, DateTime? right)
+        {
+            if (left.HasValue && right.HasValue)
+            {
+                return left.Value.Date.CompareTo(right.Value.Date);
+            }
+
+            if (left.HasValue)
+            {
+                return -1;
+            }
+
+            return right.HasValue ? 1 : 0;
+        }
+
+        private static int GetCapacityWindowDays(OrderCapacityCandidate order)
+        {
+            if (!order.StandardDeliveryDate.HasValue || !order.ReplyDeliveryDate.HasValue)
+            {
+                return int.MaxValue;
+            }
+
+            var days = (order.ReplyDeliveryDate.Value.Date - order.StandardDeliveryDate.Value.Date).Days;
+            return days >= 0 ? days : int.MaxValue;
+        }
+
+        private static async Task<CapacityLoadPool> BuildBaseLoadPoolAsync(DbContext context, CancellationToken cancellationToken)
+        {
+            var loadPool = new CapacityLoadPool
+            {
+                ThresholdMap = await LoadCapacityThresholdMapAsync(context, cancellationToken)
+            };
+
+            var outputs = await context.Set<WZ_ProductionOutput>()
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            foreach (var output in outputs)
+            {
+                if (output == null || !output.CurrentThreshold.HasValue || output.CurrentThreshold.Value <= 0)
+                {
+                    continue;
+                }
+
+                var cat = NormalizeCapacityText(output.ValveCategory);
+                var line = NormalizeCapacityText(output.ProductionLine);
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var lineKey = (cat, line);
+                loadPool.OutputThresholdMap[lineKey] = loadPool.OutputThresholdMap.TryGetValue(lineKey, out var existingThreshold)
+                    ? MergeThreshold(existingThreshold, output.CurrentThreshold).GetValueOrDefault(existingThreshold)
+                    : output.CurrentThreshold.Value;
+            }
+
+            foreach (var output in outputs)
+            {
+                if (output == null)
+                {
+                    continue;
+                }
+
+                var cat = NormalizeCapacityText(output.ValveCategory);
+                var line = NormalizeCapacityText(output.ProductionLine);
+                if (string.IsNullOrWhiteSpace(cat) || string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var bucket = GetOrCreateLoadBucket(loadPool, cat, line, output.ProductionDate.Date, output.CurrentThreshold);
+                bucket.BaseQty += output.Quantity;
+                bucket.Threshold = MergeThreshold(
+                    bucket.Threshold,
+                    ResolveCapacityThreshold(loadPool.ThresholdMap, loadPool.OutputThresholdMap, cat, line, output.CurrentThreshold));
+            }
+
+            return loadPool;
+        }
+
+        private static bool TryGetStrictCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
+        {
+            startDate = DateTime.MinValue;
+            endDate = DateTime.MinValue;
+            if (!order.StandardDeliveryDate.HasValue || !order.ReplyDeliveryDate.HasValue)
+            {
+                return false;
+            }
+
+            startDate = order.StandardDeliveryDate.Value.Date;
+            endDate = order.ReplyDeliveryDate.Value.Date;
+            return endDate >= startDate;
+        }
+
+        private static List<DateTime> BuildCandidateDates(DateTime startDate, DateTime endDate)
+        {
+            var dates = new List<DateTime>();
+            startDate = startDate.Date;
+            endDate = endDate.Date;
+            if (endDate < startDate)
+            {
+                return dates;
+            }
+
+            for (var date = startDate; date <= endDate; date = date.AddDays(1))
+            {
+                dates.Add(date);
+            }
+
+            return dates;
+        }
+
+        private static CapacityScheduleDecision TryPickShortCycleCapacityDate(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            IReadOnlyList<DateTime> candidateDates,
+            decimal quantity)
+        {
+            if (candidateDates == null || candidateDates.Count == 0 || quantity <= 0)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.OutOfCapacityWindow);
+            }
+
+            var failureReason = CapacityFailureReasons.MissingProductionOutput;
+            foreach (var dateRank in CapacityDateRanks)
+            {
+                for (var index = 0; index < candidateDates.Count; index++)
+                {
+                    var date = candidateDates[index];
+                    if (GetCapacityDateRank(date) != dateRank)
+                    {
+                        continue;
+                    }
+
+                    var evaluation = EvaluateCandidateDate(loadPool, cat, line, date, quantity, index);
+                    if (!evaluation.CanEvaluate)
+                    {
+                        failureReason = PickFailureReason(failureReason, evaluation.FailureReason);
+                        continue;
+                    }
+
+                    if (evaluation.ProjectedLoadRate <= 1M)
+                    {
+                        return CapacityScheduleDecision.Success(date, ResolveSafeFillCapacityMode(date));
+                    }
+
+                    failureReason = PickFailureReason(failureReason, CapacityFailureReasons.ThresholdExceeded);
+                }
+            }
+
+            var balancedDate = TryPickBalancedOverflowCapacityDate(loadPool, cat, line, candidateDates, quantity);
+            if (balancedDate.CapacityDate.HasValue)
+            {
+                return CapacityScheduleDecision.Success(balancedDate.CapacityDate.Value, CapacityScheduleMode.BalancedOverflow);
+            }
+
+            return CapacityScheduleDecision.Fail(PickFailureReason(failureReason, balancedDate.FailureReason));
+        }
+
+        private static CapacityAssignAttempt TryPickBalancedOverflowCapacityDate(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            IReadOnlyList<DateTime> candidateDates,
+            decimal quantity)
+        {
+            CapacityCandidateEvaluation? best = null;
+            var failureReason = CapacityFailureReasons.MissingProductionOutput;
+            for (var index = 0; index < candidateDates.Count; index++)
+            {
+                var evaluation = EvaluateCandidateDate(loadPool, cat, line, candidateDates[index], quantity, index);
+                if (!evaluation.CanEvaluate)
+                {
+                    failureReason = PickFailureReason(failureReason, evaluation.FailureReason);
+                    continue;
+                }
+
+                if (best == null || CompareBalancedCapacityCandidateEvaluation(evaluation, best) < 0)
+                {
+                    best = evaluation;
+                }
+            }
+
+            return best != null
+                ? CapacityAssignAttempt.Success(best.Date)
+                : CapacityAssignAttempt.Fail(failureReason);
+        }
+
+        private static CapacityScheduleDecision TryPickBestCapacityDate(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            IReadOnlyList<DateTime> candidateDates,
+            decimal quantity)
+        {
+            if (candidateDates == null || candidateDates.Count == 0 || quantity <= 0)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.OutOfCapacityWindow);
+            }
+
+            var failureReason = CapacityFailureReasons.MissingThreshold;
+            foreach (var maxLoadRate in CapacitySafeFillLoadRates)
+            {
+                foreach (var dateRank in CapacityDateRanks)
+                {
+                    CapacityCandidateEvaluation? best = null;
+                    for (var index = 0; index < candidateDates.Count; index++)
+                    {
+                        var date = candidateDates[index];
+                        if (GetCapacityDateRank(date) != dateRank)
+                        {
+                            continue;
+                        }
+
+                        var evaluation = EvaluateCandidateDateWithSegment(
+                            loadPool,
+                            cat,
+                            line,
+                            date,
+                            quantity,
+                            index,
+                            candidateDates[0],
+                            candidateDates[candidateDates.Count - 1]);
+                        if (!evaluation.CanEvaluate)
+                        {
+                            failureReason = PickFailureReason(failureReason, evaluation.FailureReason);
+                            continue;
+                        }
+
+                        if (evaluation.ProjectedLoadRate <= maxLoadRate)
+                        {
+                            if (best == null || CompareCapacityCandidateEvaluation(evaluation, best) < 0)
+                            {
+                                best = evaluation;
+                            }
+                        }
+                        else
+                        {
+                            failureReason = PickFailureReason(failureReason, CapacityFailureReasons.ThresholdExceeded);
+                        }
+                    }
+
+                    if (best != null)
+                    {
+                        return CapacityScheduleDecision.Success(best.Date, ResolveSafeFillCapacityMode(best.Date));
+                    }
+                }
+            }
+
+            return CapacityScheduleDecision.Fail(failureReason);
+        }
+
+        private static CapacityCandidateEvaluation EvaluateCandidateDate(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            DateTime date,
+            decimal quantity,
+            int candidateIndex)
+        {
+            var bucket = GetOrCreateLoadBucket(loadPool, cat, line, date, null);
+            if (!bucket.Threshold.HasValue || bucket.Threshold.Value <= 0)
+            {
+                return CapacityCandidateEvaluation.Fail(date, candidateIndex, CapacityFailureReasons.MissingThreshold);
+            }
+
+            var projectedLoadRate = (bucket.BaseQty + bucket.PendingQty + quantity) / bucket.Threshold.Value;
+            return CapacityCandidateEvaluation.Success(
+                date,
+                candidateIndex,
+                projectedLoadRate,
+                GetCapacityDateRank(date),
+                projectedLoadRate);
+        }
+
+        private static CapacityCandidateEvaluation EvaluateCandidateDateWithSegment(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            DateTime date,
+            decimal quantity,
+            int candidateIndex,
+            DateTime startDate,
+            DateTime endDate)
+        {
+            var evaluation = EvaluateCandidateDate(loadPool, cat, line, date, quantity, candidateIndex);
+            if (!evaluation.CanEvaluate)
+            {
+                return evaluation;
+            }
+
+            var segmentDates = BuildNearbyWorkdaySegment(date, startDate, endDate);
+            var loadRates = new List<decimal>();
+            decimal totalRemainingCapacity = 0M;
+            decimal totalThreshold = 0M;
+
+            foreach (var segmentDate in segmentDates)
+            {
+                var bucket = GetOrCreateLoadBucket(loadPool, cat, line, segmentDate, null);
+                if (!bucket.Threshold.HasValue || bucket.Threshold.Value <= 0)
+                {
+                    continue;
+                }
+
+                var loadQty = bucket.BaseQty + bucket.PendingQty;
+                if (segmentDate.Date == date.Date)
+                {
+                    loadQty += quantity;
+                }
+
+                loadRates.Add(loadQty / bucket.Threshold.Value);
+                totalThreshold += bucket.Threshold.Value;
+                totalRemainingCapacity += Math.Max(0M, bucket.Threshold.Value - loadQty);
+            }
+
+            if (loadRates.Count == 0)
+            {
+                evaluation.SegmentScore = evaluation.ProjectedLoadRate;
+                return evaluation;
+            }
+
+            var averageLoadRate = loadRates.Average();
+            var maxLoadRate = loadRates.Max();
+            var loadRateStdDev = CalculateStdDev(loadRates, averageLoadRate);
+            var remainingCapacityRatio = totalThreshold > 0M ? totalRemainingCapacity / totalThreshold : 0M;
+            evaluation.SegmentScore =
+                evaluation.ProjectedLoadRate * 100M
+                + averageLoadRate * 40M
+                + maxLoadRate * 30M
+                + loadRateStdDev * 20M
+                - remainingCapacityRatio * 20M
+                + candidateIndex * 0.001M;
+            return evaluation;
+        }
+
+        private static void AddPendingLoad(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            DateTime date,
+            decimal quantity)
+        {
+            var bucket = GetOrCreateLoadBucket(loadPool, cat, line, date, null);
+            bucket.PendingQty += quantity;
+        }
+
+        private static CapacityLoadBucket GetOrCreateLoadBucket(
+            CapacityLoadPool loadPool,
+            string cat,
+            string line,
+            DateTime date,
+            decimal? fallbackThreshold)
+        {
+            var key = (cat, line, date.Date);
+            if (!loadPool.Buckets.TryGetValue(key, out var bucket))
+            {
+                bucket = new CapacityLoadBucket
+                {
+                    Threshold = ResolveCapacityThreshold(
+                        loadPool.ThresholdMap,
+                        loadPool.OutputThresholdMap,
+                        cat,
+                        line,
+                        fallbackThreshold)
+                };
+                loadPool.Buckets[key] = bucket;
+                return bucket;
+            }
+
+            bucket.Threshold = MergeThreshold(
+                bucket.Threshold,
+                ResolveCapacityThreshold(loadPool.ThresholdMap, loadPool.OutputThresholdMap, cat, line, fallbackThreshold));
+            return bucket;
+        }
+
+        private static int CompareCapacityCandidateEvaluation(CapacityCandidateEvaluation left, CapacityCandidateEvaluation right)
+        {
+            var result = left.SegmentScore.CompareTo(right.SegmentScore);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = left.ProjectedLoadRate.CompareTo(right.ProjectedLoadRate);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = left.DateRank.CompareTo(right.DateRank);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return left.CandidateIndex.CompareTo(right.CandidateIndex);
+        }
+
+        private static int CompareBalancedCapacityCandidateEvaluation(CapacityCandidateEvaluation left, CapacityCandidateEvaluation right)
+        {
+            var result = left.ProjectedLoadRate.CompareTo(right.ProjectedLoadRate);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = left.DateRank.CompareTo(right.DateRank);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return left.CandidateIndex.CompareTo(right.CandidateIndex);
+        }
+
+        private static List<DateTime> BuildNearbyWorkdaySegment(DateTime date, DateTime startDate, DateTime endDate)
+        {
+            var segmentDates = new List<DateTime>();
+            startDate = startDate.Date;
+            endDate = endDate.Date;
+
+            var previousWorkdays = new List<DateTime>();
+            for (var current = date.Date.AddDays(-1); current >= startDate && previousWorkdays.Count < 2; current = current.AddDays(-1))
+            {
+                if (IsCapacityWorkday(current))
+                {
+                    previousWorkdays.Add(current);
+                }
+            }
+
+            previousWorkdays.Reverse();
+            segmentDates.AddRange(previousWorkdays);
+            segmentDates.Add(date.Date);
+
+            for (var current = date.Date.AddDays(1); current <= endDate && segmentDates.Count < previousWorkdays.Count + 3; current = current.AddDays(1))
+            {
+                if (IsCapacityWorkday(current))
+                {
+                    segmentDates.Add(current);
+                }
+            }
+
+            return segmentDates;
+        }
+
+        private static decimal CalculateStdDev(IReadOnlyList<decimal> values, decimal average)
+        {
+            if (values == null || values.Count <= 1)
+            {
+                return 0M;
+            }
+
+            var variance = values.Sum(value =>
+            {
+                var diff = value - average;
+                return diff * diff;
+            }) / values.Count;
+
+            return (decimal)Math.Sqrt((double)variance);
+        }
+
+        private static int GetCapacityDateRank(DateTime date)
+        {
+            if (IsCapacityWorkday(date))
+            {
+                return 0;
+            }
+
+            if (IsCapacitySaturdayRestDay(date))
+            {
+                return 1;
+            }
+
+            if (IsCapacitySundayRestDay(date))
+            {
+                return 2;
+            }
+
+            return 3;
+        }
+
+        private static CapacityScheduleMode ResolveSafeFillCapacityMode(DateTime date)
+        {
+            if (IsCapacityWorkday(date))
+            {
+                return CapacityScheduleMode.NormalCapacity;
+            }
+
+            if (IsCapacitySaturdayRestDay(date))
+            {
+                return CapacityScheduleMode.SaturdayReserve;
+            }
+
+            return CapacityScheduleMode.SundayReserve;
+        }
+
+        private static void RegisterCapacityScheduleFailure(CapacityScheduleSummary summary, string failureReason)
+        {
+            if (string.Equals(failureReason, CapacityFailureReasons.MissingThreshold, StringComparison.Ordinal))
+            {
+                summary.MissingThreshold++;
+                summary.Skipped++;
+                return;
+            }
+
+            if (string.Equals(failureReason, CapacityFailureReasons.MissingProductionOutput, StringComparison.Ordinal))
+            {
+                summary.MissingProductionOutput++;
+                summary.Skipped++;
+                return;
+            }
+
+            if (string.Equals(failureReason, CapacityFailureReasons.ThresholdExceeded, StringComparison.Ordinal)
+                || string.Equals(failureReason, CapacityFailureReasons.BaseCapacityReached, StringComparison.Ordinal))
+            {
+                summary.Failed++;
+                return;
+            }
+
+            summary.Skipped++;
         }
 
         private static Task<int> FillBlankCapacityScheduleDateByScheduleDateAsync(DbContext context, CancellationToken cancellationToken)
@@ -3477,6 +3939,73 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public decimal Quantity { get; set; }
 
             public decimal? Threshold { get; set; }
+        }
+
+        private sealed class CapacityLoadPool
+        {
+            public Dictionary<(string Cat, string Line, DateTime Date), CapacityLoadBucket> Buckets { get; } =
+                new Dictionary<(string Cat, string Line, DateTime Date), CapacityLoadBucket>();
+
+            public IReadOnlyDictionary<(string Cat, string Line), decimal> ThresholdMap { get; set; } =
+                new Dictionary<(string Cat, string Line), decimal>();
+
+            public Dictionary<(string Cat, string Line), decimal> OutputThresholdMap { get; } =
+                new Dictionary<(string Cat, string Line), decimal>();
+        }
+
+        private sealed class CapacityLoadBucket
+        {
+            public decimal BaseQty { get; set; }
+
+            public decimal PendingQty { get; set; }
+
+            public decimal? Threshold { get; set; }
+        }
+
+        private sealed class CapacityCandidateEvaluation
+        {
+            public DateTime Date { get; set; }
+
+            public int CandidateIndex { get; set; }
+
+            public decimal ProjectedLoadRate { get; set; }
+
+            public decimal SegmentScore { get; set; }
+
+            public int DateRank { get; set; }
+
+            public bool CanEvaluate { get; set; }
+
+            public string FailureReason { get; set; } = string.Empty;
+
+            public static CapacityCandidateEvaluation Success(
+                DateTime date,
+                int candidateIndex,
+                decimal projectedLoadRate,
+                int dateRank,
+                decimal segmentScore)
+            {
+                return new CapacityCandidateEvaluation
+                {
+                    Date = date.Date,
+                    CandidateIndex = candidateIndex,
+                    ProjectedLoadRate = projectedLoadRate,
+                    SegmentScore = segmentScore,
+                    DateRank = dateRank,
+                    CanEvaluate = true
+                };
+            }
+
+            public static CapacityCandidateEvaluation Fail(DateTime date, int candidateIndex, string failureReason)
+            {
+                return new CapacityCandidateEvaluation
+                {
+                    Date = date.Date,
+                    CandidateIndex = candidateIndex,
+                    FailureReason = failureReason,
+                    CanEvaluate = false
+                };
+            }
         }
 
         private enum CapacityScheduleMode
