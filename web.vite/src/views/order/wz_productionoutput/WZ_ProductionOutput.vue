@@ -29,7 +29,12 @@
 
         <!-- 日期范围（同一年） -->
         <span class="ph-sub">范围：</span>
+        <el-radio-group v-model="rangePickType" size="small" class="range-mode" @change="onRangePickTypeChange">
+          <el-radio-button label="date">日期</el-radio-button>
+          <el-radio-button label="month">月份</el-radio-button>
+        </el-radio-group>
         <el-date-picker
+          v-if="rangePickType === 'date'"
           v-model="dateRangeModel"
           type="daterange"
           size="small"
@@ -39,6 +44,21 @@
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :disabled-date="disabledRange"
+          @change="onDateRangeChange"
+        />
+        <el-date-picker
+          v-else
+          v-model="monthRangeModel"
+          type="monthrange"
+          size="small"
+          style="width:224px"
+          unlink-panels
+          range-separator="至"
+          start-placeholder="开始月份"
+          end-placeholder="结束月份"
+          format="YYYY-MM"
+          :disabled-date="disabledRange"
+          @change="onMonthRangeChange"
         />
 
         <el-button class="btn-ghost" size="small" @click="resetFullYear">重置全年</el-button>
@@ -281,7 +301,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick, getCurrentInstance } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, getCurrentInstance } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import store from '@/store/index'
 
@@ -321,6 +341,7 @@ const SALES_AMOUNT_AXIS = {
   bgFill: '#f8fafc',
   bgStroke: '#dbe3ee'
 }
+const RANGE_STORAGE_KEY = 'WZ_ProductionOutput:lastRange'
 
 /* ===== 工具函数 ===== */
 const fmtYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -552,33 +573,169 @@ const actualCellBaselineMeta = ref('')
 const salesAmountLoaded = ref(false)
 
 /* 年份选项（±3 年） */
-const yearOptions = Array.from({length:7}, (_,i)=> state.year - 3 + i)
+const yearOptions = computed(() => Array.from({length:7}, (_,i)=> state.year - 3 + i))
 
 /* 日期控件 */
+const rangePickType = ref('date')
 const disabledRange  = d => d.getFullYear() !== state.year
+let rangeAutoLoadTimer = null
+
+function toDateOnly(value){
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function parseStoredYMD(value){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''))
+  if (!match) return null
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function setDateRangeValue(value){
+  if (!Array.isArray(value) || value.length < 2 || !value[0] || !value[1]) return false
+  const start = toDateOnly(value[0])
+  const end = toDateOnly(value[1])
+  if (!start || !end || start.getFullYear() !== end.getFullYear()) return false
+  state.rangeStart = start <= end ? start : end
+  state.rangeEnd = start <= end ? end : start
+  state.year = state.rangeStart.getFullYear()
+  return true
+}
+
+function setMonthRangeValue(value){
+  if (!Array.isArray(value) || value.length < 2 || !value[0] || !value[1]) return false
+  const startMonth = toDateOnly(value[0])
+  const endMonth = toDateOnly(value[1])
+  if (!startMonth || !endMonth || startMonth.getFullYear() !== endMonth.getFullYear()) return false
+  const start = startMonth <= endMonth ? startMonth : endMonth
+  const end = startMonth <= endMonth ? endMonth : startMonth
+  state.rangeStart = new Date(start.getFullYear(), start.getMonth(), 1)
+  state.rangeEnd = new Date(end.getFullYear(), end.getMonth() + 1, 0)
+  state.year = state.rangeStart.getFullYear()
+  return true
+}
+
+function saveRangePreference(){
+  if (typeof window === 'undefined') return
+  try{
+    window.localStorage.setItem(RANGE_STORAGE_KEY, JSON.stringify({
+      start: fmtYMD(state.rangeStart),
+      end: fmtYMD(state.rangeEnd),
+      pickType: rangePickType.value
+    }))
+  }catch(e){
+    console.warn('[WZ_ProductionOutput] range save failed', e)
+  }
+}
+
+function restoreRangePreference(){
+  if (typeof window === 'undefined') return
+  try{
+    const raw = window.localStorage.getItem(RANGE_STORAGE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    const start = parseStoredYMD(saved?.start)
+    const end = parseStoredYMD(saved?.end)
+    if (!start || !end || start.getFullYear() !== end.getFullYear()) return
+    rangePickType.value = saved?.pickType === 'month' ? 'month' : 'date'
+    if (rangePickType.value === 'month') {
+      setMonthRangeValue([start, end])
+    } else {
+      setDateRangeValue([start, end])
+    }
+  }catch(e){
+    console.warn('[WZ_ProductionOutput] range restore failed', e)
+  }
+}
+
+function clearCurrentRangeTimer(){
+  if (!rangeAutoLoadTimer || typeof window === 'undefined') return
+  window.clearTimeout(rangeAutoLoadTimer)
+  rangeAutoLoadTimer = null
+}
+
+function clearRangeDataBeforeReload(){
+  rawRows.value = []
+  state.categories = []
+  state.data = {}
+  resetSalesAmountData(false)
+  actualCellBaseline.value = {}
+  actualCellBaselineMeta.value = ''
+}
+
+async function loadCurrentViewMode(){
+  if (viewMode.value === 'preproduction') {
+    await loadPreProduction()
+  } else if (viewMode.value === 'optimized') {
+    await loadOptimizedPreProduction()
+  } else {
+    await loadData()
+  }
+}
+
+function scheduleRangeAutoLoad(){
+  if (typeof window === 'undefined') return
+  clearRangeDataBeforeReload()
+  renderAll()
+  clearCurrentRangeTimer()
+  rangeAutoLoadTimer = window.setTimeout(() => {
+    rangeAutoLoadTimer = null
+    loadCurrentViewMode()
+  }, 250)
+}
+
+function commitRangeChange(autoLoad = false){
+  saveRangePreference()
+  if (autoLoad) {
+    scheduleRangeAutoLoad()
+  } else {
+    renderAll()
+  }
+}
+
 const dateRangeModel = computed({
   get(){
     return [state.rangeStart, state.rangeEnd]
   },
   set(value){
-    if (!Array.isArray(value) || value.length < 2 || !value[0] || !value[1]) return
-    const start = new Date(value[0])
-    const end = new Date(value[1])
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return
-    state.rangeStart = start <= end ? start : end
-    state.rangeEnd = start <= end ? end : start
-    renderAll()
+    setDateRangeValue(value)
   }
 })
+const monthRangeModel = computed({
+  get(){
+    return [
+      new Date(state.rangeStart.getFullYear(), state.rangeStart.getMonth(), 1),
+      new Date(state.rangeEnd.getFullYear(), state.rangeEnd.getMonth(), 1)
+    ]
+  },
+  set(value){
+    setMonthRangeValue(value)
+  }
+})
+function onDateRangeChange(value){
+  if (setDateRangeValue(value)) commitRangeChange(true)
+}
+function onMonthRangeChange(value){
+  if (setMonthRangeValue(value)) commitRangeChange(true)
+}
+function onRangePickTypeChange(value){
+  if (value === 'month' && setMonthRangeValue(monthRangeModel.value)) {
+    commitRangeChange(true)
+  } else {
+    saveRangePreference()
+  }
+}
 function onYearChange(){
   state.rangeStart = new Date(state.year,0,1)
   state.rangeEnd   = new Date(state.year,11,31)
-  renderAll()
+  commitRangeChange(true)
 }
 function resetFullYear(){
   state.rangeStart = new Date(state.year,0,1)
   state.rangeEnd   = new Date(state.year,11,31)
-  renderAll()
+  commitRangeChange(true)
 }
 function toggleBig(){ state.big=!state.big; renderAll() }
 function toggleCompact(){ state.compact=!state.compact; nextTick(()=>renderAll()) }
@@ -2127,7 +2284,11 @@ function applyCurrentThresholdToRows(){
 }
 
 /* 首次渲染空图 */
-onMounted(()=>{ renderAll() })
+onMounted(()=>{
+  restoreRangePreference()
+  renderAll()
+})
+onBeforeUnmount(()=>{ clearCurrentRangeTimer() })
 </script>
 
 <style scoped>
