@@ -1269,7 +1269,8 @@ END;";
                     NominalDiameter = p.NominalDiameter,
                     StandardDeliveryDate = p.StandardDeliveryDate,
                     ReplyDeliveryDate = p.ReplyDeliveryDate,
-                    RequestedDeliveryDate = p.RequestedDeliveryDate
+                    RequestedDeliveryDate = p.RequestedDeliveryDate,
+                    FixedCycleDays = p.FixedCycleDays
                 })
                 .ToListAsync(cancellationToken);
 
@@ -2509,6 +2510,7 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         }
 
         private const decimal DailyReserveCapacityRatio = 1.2M;
+        private const int ShortCycleMaxFixedCycleDays = 45;
         private const int LongDeliveryGapThresholdDays = 35;
         private const int ReplyLeadWindowMinDays = 25;
         private const int ReplyLeadWindowMaxDays = 35;
@@ -2586,7 +2588,8 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
 
-            if (!TryGetCapacityWindow(order, out var startDate, out var endDate))
+            var isShortCycle = IsShortCycleCapacityOrder(order);
+            if (!TryGetCapacityWindow(order, out var startDate, out var endDate, isShortCycle))
             {
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
             }
@@ -2595,6 +2598,40 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             if (dates.Count == 0)
             {
                 return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            if (isShortCycle)
+            {
+                var shortCycleAttempt = TryResolveShortCycleAssignableDate(
+                    dates,
+                    capacityMap,
+                    cat,
+                    line,
+                    startDate,
+                    endDate,
+                    quantity,
+                    DailyReserveCapacityRatio);
+                if (shortCycleAttempt.CapacityDate.HasValue)
+                {
+                    return shortCycleAttempt;
+                }
+
+                var shortCycleBalancedAttempt = TryAssignBalancedOverflowDate(
+                    dates,
+                    capacityMap,
+                    cat,
+                    line,
+                    startDate,
+                    endDate,
+                    quantity);
+                if (shortCycleBalancedAttempt.CapacityDate.HasValue)
+                {
+                    return CapacityScheduleDecision.Success(shortCycleBalancedAttempt.CapacityDate.Value, CapacityScheduleMode.BalancedOverflow);
+                }
+
+                return CapacityScheduleDecision.Fail(PickFailureReason(
+                    shortCycleAttempt.FailureReason,
+                    shortCycleBalancedAttempt.FailureReason));
             }
 
             var preferredAttempt = TryResolveForwardAssignableDate(
@@ -2633,7 +2670,11 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
                 balancedAttempt.FailureReason));
         }
 
-        private static bool TryGetCapacityWindow(OrderCapacityCandidate order, out DateTime startDate, out DateTime endDate)
+        private static bool TryGetCapacityWindow(
+            OrderCapacityCandidate order,
+            out DateTime startDate,
+            out DateTime endDate,
+            bool keepFullWindow = false)
         {
             startDate = order.StandardDeliveryDate?.Date ?? DateTime.MinValue;
             endDate = order.ReplyDeliveryDate?.Date ?? DateTime.MinValue;
@@ -2645,6 +2686,11 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             if (endDate < startDate)
             {
                 endDate = startDate;
+                return true;
+            }
+
+            if (keepFullWindow)
+            {
                 return true;
             }
 
@@ -2661,6 +2707,13 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             }
 
             return true;
+        }
+
+        private static bool IsShortCycleCapacityOrder(OrderCapacityCandidate order)
+        {
+            return order?.FixedCycleDays.HasValue == true
+                && order.FixedCycleDays.Value > 0
+                && order.FixedCycleDays.Value <= ShortCycleMaxFixedCycleDays;
         }
 
         private static void EnsureCapacityWindow(
@@ -2711,6 +2764,172 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
         {
             var searchStartDate = targetDate.Date > startDate.Date ? targetDate.Date : startDate.Date;
             return searchStartDate <= endDate.Date ? searchStartDate : null;
+        }
+
+        // 40/45 天短周期从标准交货日期开始填充窗口内最早可用产能，避免近期产能空置。
+        private static CapacityScheduleDecision TryResolveShortCycleAssignableDate(
+            List<DateTime> dates,
+            Dictionary<(string Cat, string Line, DateTime Date), CapacityBucket> capacityMap,
+            string cat,
+            string line,
+            DateTime startDate,
+            DateTime endDate,
+            decimal quantity,
+            decimal reserveCapacityRatio)
+        {
+            var index = FindFirstDateIndex(dates, startDate.Date);
+            if (index < 0)
+            {
+                return CapacityScheduleDecision.Fail(CapacityFailureReasons.MissingProductionOutput);
+            }
+
+            var excludedDate = DateTime.MinValue;
+            var failureReason = CapacityFailureReasons.ThresholdExceeded;
+
+            var workdayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                excludedDate,
+                IsCapacityWorkday,
+                CapacityScheduleMode.DeliveryAdjusted);
+            if (workdayNormalAttempt.CapacityDate.HasValue)
+            {
+                return workdayNormalAttempt;
+            }
+
+            failureReason = PickFailureReason(failureReason, workdayNormalAttempt.FailureReason);
+
+            var workdayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                excludedDate,
+                IsCapacityWorkday,
+                CapacityScheduleMode.DailyReserve);
+            if (workdayReserveAttempt.CapacityDate.HasValue)
+            {
+                return workdayReserveAttempt;
+            }
+
+            var saturdayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                excludedDate,
+                IsCapacitySaturdayRestDay,
+                CapacityScheduleMode.SaturdayReserve);
+            if (saturdayNormalAttempt.CapacityDate.HasValue)
+            {
+                return saturdayNormalAttempt;
+            }
+
+            var saturdayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                excludedDate,
+                IsCapacitySaturdayRestDay,
+                CapacityScheduleMode.SaturdayReserve);
+            if (saturdayReserveAttempt.CapacityDate.HasValue)
+            {
+                return saturdayReserveAttempt;
+            }
+
+            var sundayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                excludedDate,
+                IsCapacitySundayRestDay,
+                CapacityScheduleMode.SundayReserve);
+            if (sundayNormalAttempt.CapacityDate.HasValue)
+            {
+                return sundayNormalAttempt;
+            }
+
+            var sundayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                excludedDate,
+                IsCapacitySundayRestDay,
+                CapacityScheduleMode.SundayReserve);
+            if (sundayReserveAttempt.CapacityDate.HasValue)
+            {
+                return sundayReserveAttempt;
+            }
+
+            var holidayNormalAttempt = TryFindForwardNormalCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                excludedDate,
+                IsCapacityStatutoryHoliday,
+                CapacityScheduleMode.SundayReserve);
+            if (holidayNormalAttempt.CapacityDate.HasValue)
+            {
+                return holidayNormalAttempt;
+            }
+
+            var holidayReserveAttempt = TryFindForwardReserveCapacityDate(
+                dates,
+                capacityMap,
+                cat,
+                line,
+                index,
+                endDate,
+                quantity,
+                reserveCapacityRatio,
+                excludedDate,
+                IsCapacityStatutoryHoliday,
+                CapacityScheduleMode.SundayReserve);
+            if (holidayReserveAttempt.CapacityDate.HasValue)
+            {
+                return holidayReserveAttempt;
+            }
+
+            return CapacityScheduleDecision.Fail(PickFailureReason(
+                failureReason,
+                workdayNormalAttempt.FailureReason,
+                workdayReserveAttempt.FailureReason,
+                saturdayNormalAttempt.FailureReason,
+                saturdayReserveAttempt.FailureReason,
+                sundayNormalAttempt.FailureReason,
+                sundayReserveAttempt.FailureReason,
+                holidayNormalAttempt.FailureReason,
+                holidayReserveAttempt.FailureReason));
         }
 
         // 排产优化规则：
@@ -3249,6 +3468,8 @@ WHERE ProductionLine IS NOT NULL AND LTRIM(RTRIM(ProductionLine)) <> N'';";
             public DateTime? ReplyDeliveryDate { get; set; }
 
             public DateTime? RequestedDeliveryDate { get; set; }
+
+            public int? FixedCycleDays { get; set; }
         }
 
         private sealed class CapacityBucket
